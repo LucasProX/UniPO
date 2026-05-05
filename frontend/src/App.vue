@@ -2,7 +2,7 @@
   <div class="app-shell relative min-h-screen overflow-x-hidden pb-28 lg:h-screen lg:overflow-hidden">
     <header class="mx-auto flex h-[84px] w-[min(1600px,calc(100vw-24px))] items-center justify-between px-1">
       <button class="flex items-center gap-3 text-left" @click="activeView = 'home'">
-        <span class="grid h-12 w-12 place-items-center rounded-[16px] bg-[#19202f] text-lg font-black text-white shadow-lg">PO</span>
+        <img src="/favicon.svg" alt="UniPO" class="h-12 w-12 rounded-[16px] shadow-lg" />
         <span>
           <span class="block text-lg font-black leading-5 text-[#19202f]">UniPO</span>
           <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[#718097]">Campus Feed</span>
