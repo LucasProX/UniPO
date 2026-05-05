@@ -1,4 +1,6 @@
 .env
+AGENT.md
+agent.md
 node_modules/
 dist/
 target/
