@@ -9,6 +9,9 @@ INSERT INTO majors (id, school_id, college_id, name, code, status, created_at, u
 (3, 1, 2, '视觉传达设计', 'visual-design', 'active', NOW(), NOW()),
 (4, 1, 3, '工商管理', 'business-admin', 'active', NOW(), NOW());
 
+INSERT INTO users (id, public_uid, email, password_hash, nickname, avatar_url, school_id, college_id, major_id, college, major, grade, verified_status, role, operator_scope, level, xp, level_title, status, created_at, updated_at, last_login_at) VALUES
+(1, '24052000', 'good@biecuoguo.local', '$2a$10$wk7CCZlbaVQAdnGxkEZd1Oa/K72SNrU04/UPlF7gXU9USuSB5nF6G', 'good', 'https://api.dicebear.com/8.x/initials/svg?seed=good', 1, 1, 1, '计算机学院', '计算机科学与技术', '大二', 'verified', 'USER', 'student', 1, 0, '新同学', 'active', NOW(), NOW(), NOW());
+
 UPDATE users
 SET college_id = 1,
     major_id = 1,
