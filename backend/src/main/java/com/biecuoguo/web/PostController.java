@@ -39,6 +39,11 @@ public class PostController {
         return ApiResponse.ok(postService.dontMiss(currentUser(authentication)));
     }
 
+    @GetMapping("/interaction-notices")
+    public ApiResponse<List<PostDtos.InteractionNoticeView>> interactionNotices() {
+        return ApiResponse.ok(postService.interactionNotices(SecurityUtils.currentUser()));
+    }
+
     @PostMapping
     public ApiResponse<PostDtos.PostView> create(@Valid @RequestBody PostDtos.CreatePostRequest request) {
         return ApiResponse.ok(postService.create(request, SecurityUtils.currentUser()));

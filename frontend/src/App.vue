@@ -29,7 +29,7 @@
         </button>
         <button class="icon-button relative" title="消息" @click="navigateTo('messages')">
           <Bell :size="19" />
-          <span v-if="unreadCount" class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#ff3b30] px-1 text-[10px] font-black text-white">{{ unreadCount }}</span>
+          <span v-if="notificationTotalCount" class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-[#ff3b30] px-1 text-[10px] font-black text-white">{{ notificationTotalCount }}</span>
         </button>
         <button class="hidden rounded-full bg-[#19202f] px-4 py-2 text-sm font-bold text-white sm:inline-flex" @click="openProfileView">
           {{ isAuthenticated ? currentUser.nickname : '登录' }}
@@ -173,7 +173,7 @@
                     <div class="po-card__middle">
                       <div class="po-card__copy">
                         <h2 class="po-card__title">{{ compactPostTitle(post.title) }}</h2>
-                        <p class="po-card__excerpt">{{ post.excerpt || post.content }}</p>
+                        <p class="po-card__excerpt">{{ plainPostContent(post.excerpt || post.content) }}</p>
                         <div class="flex flex-wrap gap-1.5">
                           <span v-for="tag in post.tags.slice(0, 3)" :key="tag" class="mini-chip">{{ tag }}</span>
                         </div>
@@ -208,14 +208,120 @@
               <p class="text-sm font-black text-[#718097]">所有同学都能发 PO</p>
               <h1 class="mt-2 text-4xl font-black tracking-normal text-[#19202f]">发一条校园 PO</h1>
               <div class="mt-6 grid gap-4">
-                <select v-model="draft.board" class="field">
-                  <option value="school">校 PO</option>
-                  <option value="college">院 PO</option>
-                  <option value="major">专业 PO</option>
-                </select>
-                <input v-model="draft.title" class="field" placeholder="标题，比如：数据结构实验报告别只写代码" />
-                <textarea v-model="draft.content" class="field min-h-40" placeholder="写清楚发生了什么、适合谁、下一步怎么做"></textarea>
-                <input v-model="draft.coverUrl" class="field" placeholder="图片 URL，后续接入上传接口后自动填入" />
+                <div
+                  class="compose-board-selector"
+                  :class="composeErrors.board ? 'compose-board-selector--error' : ''"
+                  :style="{ '--compose-board-index': composeBoardIndex }"
+                  role="radiogroup"
+                  aria-label="选择发布范围"
+                >
+                  <span class="compose-board-selector__thumb"></span>
+                  <button
+                    v-for="option in composeBoardOptions"
+                    :key="option.value"
+                    type="button"
+                    class="compose-board-option"
+                    :class="draft.board === option.value ? 'compose-board-option--active' : ''"
+                    role="radio"
+                    :aria-checked="draft.board === option.value"
+                    @click="selectDraftBoard(option.value)"
+                  >
+                    <span class="compose-board-option__icon">
+                      <component :is="option.icon" :size="19" />
+                    </span>
+                    <span class="min-w-0">
+                      <strong>{{ option.label }}</strong>
+                      <small>{{ option.description }}</small>
+                    </span>
+                  </button>
+                </div>
+                <p v-if="composeErrors.board" class="compose-field-error">{{ composeErrors.board }}</p>
+                <input v-model="draft.title" class="field" :class="composeErrors.title ? 'field--error' : ''" placeholder="标题，比如：数据结构实验报告别只写代码" @input="composeErrors.title = ''" />
+                <p v-if="composeErrors.title" class="compose-field-error">{{ composeErrors.title }}</p>
+                <section class="compose-editor" :class="composeErrors.content ? 'compose-editor--error' : ''">
+                  <div class="compose-editor__toolbar" aria-label="正文工具栏">
+                    <div class="compose-editor__group">
+                      <button type="button" class="compose-editor__tool" title="加粗" @click="formatDraftContent('bold')">
+                        <Bold :size="17" />
+                      </button>
+                      <button type="button" class="compose-editor__tool compose-editor__tool--text" title="大字号" @click="applyDraftFont('large')">
+                        <Type :size="18" />
+                        <span>大</span>
+                      </button>
+                      <button type="button" class="compose-editor__tool compose-editor__tool--text" title="小字号" @click="applyDraftFont('small')">
+                        <Type :size="14" />
+                        <span>小</span>
+                      </button>
+                      <button type="button" class="compose-editor__tool" title="插入清单" @click="formatDraftContent('insertUnorderedList')">
+                        <ListPlus :size="17" />
+                      </button>
+                    </div>
+
+                    <div class="compose-editor__group compose-editor__group--emojis" aria-label="常用表情">
+                      <button
+                        v-for="emoji in editorEmojis"
+                        :key="emoji"
+                        type="button"
+                        class="compose-editor__emoji"
+                        :title="`插入 ${emoji}`"
+                        @click="insertDraftText(emoji)"
+                      >
+                        {{ emoji }}
+                      </button>
+                    </div>
+
+                    <div class="compose-editor__group compose-editor__group--colors" aria-label="文字颜色">
+                      <Palette :size="16" />
+                      <button
+                        v-for="color in editorColors"
+                        :key="color.value"
+                        type="button"
+                        class="compose-editor__swatch"
+                        :style="{ '--swatch-color': color.value }"
+                        :title="color.label"
+                        @click="applyDraftColor(color.value)"
+                      ></button>
+                    </div>
+
+                    <label class="compose-editor__tool" title="插入图片">
+                      <ImagePlus :size="17" />
+                      <input class="sr-only" type="file" accept="image/*" @change="handleInlinePostImageFile" />
+                    </label>
+                  </div>
+                  <div
+                    ref="postContentInput"
+                    class="compose-editor__body compose-editor__body--rich"
+                    contenteditable="true"
+                    role="textbox"
+                    aria-multiline="true"
+                    data-placeholder="写清楚发生了什么、适合谁、下一步怎么做"
+                    @input="syncDraftContentFromEditor"
+                    @blur="syncDraftContentFromEditor"
+                    @paste="handleDraftPaste"
+                  ></div>
+                  <div class="compose-editor__footer">
+                    <span>{{ draftContentLength }}/2000</span>
+                    <span v-if="draftInlineImageCount">已插入 {{ draftInlineImageCount }} 张图</span>
+                  </div>
+                </section>
+                <p v-if="composeErrors.content" class="compose-field-error">{{ composeErrors.content }}</p>
+                <section class="compose-cover-card">
+                  <div v-if="draft.coverUrl" class="compose-cover-card__preview">
+                    <img :src="draft.coverUrl" alt="" />
+                    <span>封面预览</span>
+                  </div>
+                  <div class="compose-cover-card__actions">
+                    <div>
+                      <p>封面图片</p>
+                      <span>{{ draft.coverUrl ? '已上传，可以随时更换' : '用于首页卡片和通知缩略图' }}</span>
+                    </div>
+                    <label class="compose-cover-card__button">
+                      <Upload :size="17" />
+                      {{ draft.coverUrl ? '更换封面' : '上传封面图片' }}
+                      <input class="sr-only" type="file" accept="image/*" @change="handlePostImageFile" />
+                    </label>
+                  </div>
+                </section>
                 <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white" @click="publishLocalPost">发布 PO</button>
               </div>
             </section>
@@ -355,16 +461,24 @@
 
               <div class="mt-5 grid gap-3">
                 <article v-for="notice in activeNotices" :key="notice.id" class="notice-card">
-                  <img :src="notice.actor.avatarUrl || fallbackAvatar(notice.actor.nickname)" alt="" class="h-11 w-11 rounded-[16px]" />
-                  <div class="min-w-0 flex-1">
-                    <p class="text-sm font-black text-[#19202f]">{{ notice.actor.nickname }}</p>
-                    <p class="mt-1 text-sm text-[#596579]">{{ notice.text }}</p>
-                    <button v-if="notice.post" class="mt-3 w-full rounded-[18px] bg-white/74 p-3 text-left" @click="openPost(notice.post)">
-                      <span class="line-clamp-1 text-sm font-black text-[#19202f]">{{ notice.post.title }}</span>
-                      <span class="mt-1 block truncate text-xs font-bold text-[#718097]">{{ notice.post.excerpt }}</span>
-                    </button>
+                  <button class="notice-card__main" type="button" @click="notice.post ? openPost(notice.post) : undefined">
+                    <img :src="notice.actor.avatarUrl || fallbackAvatar(notice.actor.nickname)" alt="" class="notice-card__avatar" />
+                    <div class="notice-card__copy">
+                      <p v-if="notice.commentContent" class="notice-card__message notice-card__message--comment">
+                        <span class="notice-card__message-prefix">{{ notice.commentPrefix || `${notice.actor.nickname} 给你评论：` }}</span>
+                        <span class="notice-card__message-content">{{ notice.commentContent.trim() }}</span>
+                      </p>
+                      <p v-else class="notice-card__message">{{ notice.text }}</p>
+                    </div>
+                  </button>
+                  <button v-if="notice.post" class="notice-card__post" type="button" @click="openPost(notice.post)">
+                    <img :src="notice.coverUrl || fallbackCover(notice.post.id)" alt="" />
+                    <span>{{ notice.post.title }}</span>
+                  </button>
+                  <div v-else class="notice-card__time-only">
+                    <time>{{ formatPublishedAt(notice.createdAt) }}</time>
                   </div>
-                  <time class="text-xs font-black text-[#718097]">{{ formatPublishedAt(notice.createdAt) }}</time>
+                  <time v-if="notice.post" class="notice-card__time">{{ formatPublishedAt(notice.createdAt) }}</time>
                 </article>
                 <div v-if="!activeNotices.length" class="rounded-[24px] bg-white/58 p-5 text-center text-sm font-bold text-[#718097]">
                   这里还没有新的互动
@@ -442,24 +556,35 @@
                   </div>
                 </div>
 
+                <div class="profile-social-strip profile-social-strip--plain">
+                  <div class="profile-social-pill">
+                    <strong>{{ viewedProfile.stats.following }}</strong>
+                    <span>关注</span>
+                  </div>
+                  <div class="profile-social-pill">
+                    <strong>{{ viewedProfile.stats.followers }}</strong>
+                    <span>粉丝</span>
+                  </div>
+                </div>
+
                 <div class="profile-copy">
                   <p class="profile-motto">座右铭：{{ extractProfileMotto(viewedProfile.profile.bio) }}</p>
                   <p class="profile-bio">{{ stripProfileMotto(viewedProfile.profile.bio) || '还没有个人简介。' }}</p>
                 </div>
 
-                <div class="mt-6 grid grid-cols-4 gap-3 max-[760px]:grid-cols-2">
-                  <Metric label="作品" :value="viewedProfile.stats.posts" />
-                  <Metric label="关注" :value="viewedProfile.stats.following" />
-                  <Metric label="粉丝" :value="viewedProfile.stats.followers" />
-                  <Metric label="评论" :value="viewedProfile.stats.comments" />
+                <div class="profile-tabs mt-8" :style="{ '--active-profile-index': activeViewedProfileTabIndex }">
+                  <span class="profile-tabs__thumb"></span>
+                  <button v-for="tab in viewedProfileTabs" :key="tab.key" class="profile-tabs__item" :class="viewedProfileTab === tab.key ? 'text-white' : 'text-[#657086]'" @click="viewedProfileTab = tab.key">
+                    <span>{{ tab.label }}</span>
+                    <strong>{{ tab.count }}</strong>
+                  </button>
                 </div>
 
                 <div class="mt-8 flex items-center justify-between gap-3">
-                  <h2 class="text-xl font-black text-[#19202f]">TA 的 PO</h2>
-                  <span class="text-xs font-black text-[#718097]">{{ viewedProfilePosts.length }} 条</span>
+                  <h2 class="text-xl font-black text-[#19202f]">{{ viewedProfileSectionTitle }}（{{ viewedProfileSectionCount }}条）</h2>
                 </div>
                 <div class="mt-5 grid grid-cols-3 gap-4 max-[1180px]:grid-cols-2 max-[760px]:grid-cols-1">
-                  <article v-for="post in viewedProfilePosts" :key="post.id" class="po-card group" :class="selectedPost?.id === post.id ? 'po-card--selected' : ''" @click="openPost(post)">
+                  <article v-for="post in viewedProfileGridPosts" :key="post.id" class="po-card group" :class="selectedPost?.id === post.id ? 'po-card--selected' : ''" @click="openPost(post)">
                     <div class="po-card__body">
                       <div class="po-card__content">
                         <div class="flex items-start justify-between gap-4">
@@ -476,7 +601,7 @@
                         <div class="po-card__middle">
                           <div class="po-card__copy">
                             <h2 class="po-card__title">{{ compactPostTitle(post.title) }}</h2>
-                            <p class="po-card__excerpt">{{ post.excerpt || post.content }}</p>
+                            <p class="po-card__excerpt">{{ plainPostContent(post.excerpt || post.content) }}</p>
                             <div class="flex flex-wrap gap-1.5">
                               <span v-for="tag in post.tags.slice(0, 3)" :key="tag" class="mini-chip">{{ tag }}</span>
                             </div>
@@ -522,6 +647,17 @@
                   </div>
                   <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white" @click="openProfileEditor">编辑资料</button>
                 </div>
+                <div class="profile-social-strip">
+                  <div class="profile-social-pill">
+                    <strong>{{ userStats.following }}</strong>
+                    <span>关注</span>
+                  </div>
+                  <div class="profile-social-pill">
+                    <strong>{{ userStats.followers }}</strong>
+                    <span>粉丝</span>
+                  </div>
+                </div>
+
                 <div class="profile-copy">
                   <p class="profile-motto">座右铭：{{ profileMotto }}</p>
                   <p class="profile-bio">{{ stripProfileMotto(currentUser.bio) || '还没有个人简介。' }}</p>
@@ -555,7 +691,7 @@
                         <div class="po-card__middle">
                           <div class="po-card__copy">
                             <h2 class="po-card__title">{{ compactPostTitle(post.title) }}</h2>
-                            <p class="po-card__excerpt">{{ post.excerpt || post.content }}</p>
+                            <p class="po-card__excerpt">{{ plainPostContent(post.excerpt || post.content) }}</p>
                             <div class="flex flex-wrap gap-1.5">
                               <span v-for="tag in post.tags.slice(0, 3)" :key="tag" class="mini-chip">{{ tag }}</span>
                             </div>
@@ -612,11 +748,26 @@
             </button>
           </div>
 
-          <div class="mt-4 grid gap-2">
-            <button v-for="post in selectedCalendarPosts" :key="post.id" class="calendar-post-row" @click="openPost(post)">
-              <span class="mini-chip">{{ boardName(post.board) }}</span>
-              <strong class="line-clamp-1">{{ post.title }}</strong>
-            </button>
+          <div class="operator-announcements mt-4">
+            <div class="flex items-center justify-between gap-3">
+              <p>运营公告</p>
+              <span>{{ operatorAnnouncements.length }} 条</span>
+            </div>
+            <div class="operator-announcements__viewport mt-2">
+              <div
+                class="operator-announcements__track"
+                :class="announcementCarouselTransition ? '' : 'operator-announcements__track--instant'"
+                :style="{ transform: `translateY(-${announcementCarouselIndex * announcementCarouselStep}px)` }"
+              >
+                <article v-for="notice in operatorAnnouncementLoop" :key="notice.loopKey" class="operator-announcement-row">
+                  <span class="mini-chip">{{ notice.badge }}</span>
+                  <div class="min-w-0">
+                    <strong>{{ notice.title }}</strong>
+                    <small>{{ notice.summary }}</small>
+                  </div>
+                </article>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -624,7 +775,7 @@
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm font-black text-[#718097]">签到</p>
-              <h2 class="mt-1 text-2xl font-black text-[#19202f]">Lv.{{ currentUser.level }} {{ levelTitleFor(currentUser.level) }}</h2>
+              <h2 class="mt-1 text-2xl font-black text-[#19202f]">{{ isAuthenticated ? `Lv.${currentUser.level} ${levelTitleFor(currentUser.level)}` : '登录后查看等级' }}</h2>
             </div>
             <span class="relative grid h-12 w-12 place-items-center rounded-[18px] bg-[#19202f] text-white">
               <CheckCircle2 :size="23" />
@@ -634,11 +785,11 @@
 
           <div class="mt-4">
             <div class="flex items-center justify-between text-xs font-black text-[#718097]">
-              <span>{{ currentUser.xp }} XP</span>
-              <span>{{ currentLevelNeed }} XP</span>
+              <span>{{ isAuthenticated ? `${currentUser.xp} XP` : '登录后同步' }}</span>
+              <span>{{ isAuthenticated ? `${currentLevelNeed} XP` : '-- XP' }}</span>
             </div>
             <div class="mt-2 h-3 overflow-hidden rounded-full bg-white/72">
-              <span class="block h-full rounded-full bg-[#007aff]" :style="{ width: `${levelProgress}%` }"></span>
+              <span class="block h-full rounded-full bg-[#007aff]" :style="{ width: `${isAuthenticated ? levelProgress : 0}%` }"></span>
             </div>
           </div>
 
@@ -648,8 +799,13 @@
           </blockquote>
 
           <p class="mt-4 text-xs leading-5 text-[#718097]">签到是稳定入口，连签会加成；日活经验上限 900 XP，重度用户约 1 年满级。</p>
-          <button class="mt-4 w-full rounded-full px-5 py-3 text-sm font-black transition" :class="checkedInToday ? 'bg-white text-[#718097]' : 'bg-[#19202f] text-white hover:-translate-y-0.5'" @click="doCheckIn">
-            {{ checkedInToday ? `已签到 · 连续 ${checkinStreak} 天` : `今日签到 +${checkinReward} XP` }}
+          <button
+            class="mt-4 w-full rounded-full px-5 py-3 text-sm font-black transition"
+            :class="checkedInToday ? 'bg-white text-[#718097]' : 'bg-[#19202f] text-white hover:-translate-y-0.5'"
+            :disabled="checkingIn"
+            @click="doCheckIn"
+          >
+            {{ checkinButtonText }}
           </button>
         </section>
       </aside>
@@ -692,8 +848,11 @@
             </div>
 
             <h1 class="mt-6 text-[clamp(30px,5vw,48px)] font-black leading-tight tracking-normal text-[#19202f]">{{ expandedPost.title }}</h1>
-            <p class="mt-4 whitespace-pre-line text-base leading-8 text-[#405067]">{{ expandedPost.content }}</p>
+            <div class="rich-post-content mt-4" v-html="renderRichPostContent(expandedPost.content)"></div>
             <img :src="expandedPost.coverUrl || fallbackCover(expandedPost.id)" alt="" class="mt-5 max-h-[440px] w-full rounded-[28px] object-cover" />
+            <div v-if="expandedPostExtraImages.length" class="detail-image-grid">
+              <img v-for="url in expandedPostExtraImages" :key="url" :src="url" alt="" />
+            </div>
 
             <div class="mt-5 flex flex-wrap gap-2">
               <span v-for="tag in expandedPost.tags" :key="tag" class="mini-chip">{{ tag }}</span>
@@ -844,11 +1003,13 @@
               <span class="absolute inset-0 grid place-items-center bg-[#19202f]/34 text-white opacity-0 transition group-hover:opacity-100">
                 <Upload :size="22" />
               </span>
+              <span v-if="profileAvatarUploading" class="absolute inset-x-0 bottom-0 bg-[#19202f]/72 py-1 text-center text-[11px] font-black text-white">上传中</span>
               <input class="sr-only" type="file" accept="image/*" @change="handleAvatarFile" />
             </label>
             <div class="min-w-0">
               <p class="truncate text-lg font-black text-[#19202f]">{{ profileDraft.nickname || 'Lucas同学' }}</p>
               <p class="mt-1 text-sm font-bold text-[#718097]">UID {{ profileDraft.publicUid }} · {{ levelTitleFor(currentUser.level) }}</p>
+              <p v-if="profileAvatarUploadError" class="mt-2 text-xs font-black text-[#ff3b30]">{{ profileAvatarUploadError }}</p>
             </div>
           </div>
 
@@ -865,8 +1026,55 @@
               <span class="text-xs font-black text-[#718097]">座右铭</span>
               <input v-model="profileDraft.motto" class="field" maxlength="30" placeholder="30 字以内的座右铭" />
             </label>
-            <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white" @click="saveProfile">保存资料</button>
+            <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="profileAvatarUploading" @click="saveProfile">
+              {{ profileAvatarUploading ? '头像上传中...' : '保存资料' }}
+            </button>
           </div>
+        </section>
+      </div>
+    </Transition>
+
+    <Transition name="detail-pop">
+      <div v-if="avatarCropOpen" class="fixed inset-0 z-[65] grid place-items-center bg-[#0f172a]/42 p-4 backdrop-blur-sm" @click.self="cancelAvatarCrop">
+        <section class="avatar-crop-panel">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-xs font-black uppercase text-[#718097]">头像裁剪</p>
+              <h2 class="mt-1 text-2xl font-black text-[#19202f]">选择正方形区域</h2>
+            </div>
+            <button class="icon-button" @click="cancelAvatarCrop"><X :size="18" /></button>
+          </div>
+          <div
+            ref="avatarCropFrame"
+            class="avatar-crop-frame mt-5"
+            @pointerdown="startAvatarCropDrag"
+            @pointermove="moveAvatarCropDrag"
+            @pointerup="endAvatarCropDrag"
+            @pointercancel="endAvatarCropDrag"
+            @pointerleave="endAvatarCropDrag"
+          >
+            <img
+              v-if="avatarCropImageUrl"
+              :src="avatarCropImageUrl"
+              alt=""
+              class="avatar-crop-image"
+              :style="avatarCropImageStyle"
+              draggable="false"
+            />
+            <div class="avatar-crop-mask"></div>
+            <div class="avatar-crop-box"></div>
+          </div>
+          <label class="avatar-crop-control mt-5">
+            <span>缩放</span>
+            <input v-model.number="avatarCropScale" type="range" :min="avatarCropMinScale" :max="avatarCropMaxScale" step="0.01" @input="normalizeAvatarCrop" />
+          </label>
+          <div class="mt-5 grid grid-cols-2 gap-3">
+            <button class="avatar-crop-button avatar-crop-button--ghost" @click="cancelAvatarCrop">取消</button>
+            <button class="avatar-crop-button" :disabled="profileAvatarUploading" @click="confirmAvatarCrop">
+              {{ profileAvatarUploading ? '上传中...' : '确认裁剪' }}
+            </button>
+          </div>
+          <p v-if="profileAvatarUploadError" class="mt-3 text-xs font-black text-[#ff3b30]">{{ profileAvatarUploadError }}</p>
         </section>
       </div>
     </Transition>
@@ -922,7 +1130,7 @@
           <div class="flex items-start justify-between gap-4">
             <div>
               <h2 class="text-2xl font-black text-[#19202f]">等级铭牌</h2>
-              <p class="mt-1 text-sm font-bold text-[#718097]">1-100 级样式和经验表</p>
+              <p class="mt-1 text-sm font-bold text-[#718097]">每 10 级一个阶段铭牌</p>
             </div>
             <button class="icon-button" @click="showLevelCatalog = false"><X :size="18" /></button>
           </div>
@@ -933,19 +1141,21 @@
               <span>{{ levelTitleFor(currentUser.level) }}</span>
             </button>
             <div>
-              <p class="text-sm font-black text-[#19202f]">当前 {{ currentUser.xp }} XP</p>
+              <p class="text-sm font-black text-[#19202f]">Lv.{{ currentUser.level }} {{ levelTitleFor(currentUser.level) }}</p>
               <p class="mt-1 text-xs font-bold text-[#718097]">距离下一级还需要 {{ Math.max(0, currentLevelNeed - currentUser.xp) }} XP</p>
             </div>
           </div>
 
           <div class="level-catalog-table thin-scrollbar">
-            <article v-for="item in levelCatalog" :key="item.level" class="level-catalog-row" :class="item.level === currentUser.level ? 'level-catalog-row--current' : ''">
+            <article v-for="item in levelCatalog" :key="item.rangeLabel" class="level-catalog-row" :class="item.active ? 'level-catalog-row--current' : ''">
               <button class="level-nameplate level-nameplate--catalog" :class="item.className">
-                <strong>Lv.{{ item.level }}</strong>
+                <strong>{{ item.rangeLabel }}</strong>
                 <span>{{ item.title }}</span>
               </button>
-              <span>累计 {{ item.totalXp }} XP</span>
-              <span>{{ item.level === maxLevel ? '满级' : `下一级 +${item.nextXp} XP` }}</span>
+              <div>
+                <strong>{{ item.active ? '当前阶段' : item.summary }}</strong>
+                <small>{{ item.description }}</small>
+              </div>
             </article>
           </div>
         </section>
@@ -974,12 +1184,12 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
 import dayjs from 'dayjs';
-import { AtSign, Bell, Bookmark, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, Heart, Home, LogIn, LogOut, Menu, MessageCircle, PlusCircle, Reply, Search, Send, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
-import { authApi, campusApi, mediaApi, postApi, userApi } from './lib/api';
-import type { AuthorView, BoardCode, BoardView, CommentView, ConversationView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
+import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
+import { apiErrorMessage, authApi, campusApi, mediaApi, postApi, userApi } from './lib/api';
+import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
-type MessageTabKey = 'likes' | 'mentions' | 'comments' | 'followers';
+type MessageTabKey = 'likes' | 'favorites' | 'comments' | 'followers';
 type ProfileTabKey = 'posts' | 'likes' | 'favorites';
 
 interface ProfileDraft {
@@ -991,6 +1201,14 @@ interface ProfileDraft {
   motto: string;
   levelTitle: string;
   grade?: string;
+}
+
+interface ComposeDraft {
+  board: Exclude<BoardCode, 'recommend'>;
+  title: string;
+  content: string;
+  coverUrl: string;
+  images: string[];
 }
 
 interface CampusPost extends PostView {
@@ -1038,13 +1256,23 @@ interface CalendarDay {
 }
 
 interface NoticeItem {
-  id: number;
+  id: string;
   type: MessageTabKey;
   actor: CampusPost['author'];
   text: string;
   post?: CampusPost;
+  coverUrl?: string;
+  commentContent?: string;
+  commentPrefix?: string;
   createdAt: string;
   unread: boolean;
+}
+
+interface OperatorAnnouncement {
+  id: number;
+  badge: string;
+  title: string;
+  summary: string;
 }
 
 const Metric = defineComponent({
@@ -1066,6 +1294,7 @@ const selectedDate = ref<string | null>(null);
 const posts = ref<CampusPost[]>(fallbackPosts());
 const boards = ref<BoardView[]>(fallbackBoards());
 const comments = ref<CampusComment[]>(fallbackComments());
+const interactionNotices = ref<InteractionNoticeView[]>([]);
 const conversations = ref<ConversationView[]>(fallbackConversations());
 const conversationMessages = ref<Record<number, CampusMessage[]>>(fallbackConversationMessages());
 const profilePosts = ref<CampusPost[]>([]);
@@ -1073,15 +1302,19 @@ const profileLikedPosts = ref<CampusPost[]>([]);
 const profileFavoritePosts = ref<CampusPost[]>([]);
 const viewedProfile = ref<PublicProfileView | null>(null);
 const viewedProfilePosts = ref<CampusPost[]>([]);
+const viewedProfileLikedPosts = ref<CampusPost[]>([]);
+const viewedProfileFavoritePosts = ref<CampusPost[]>([]);
 const unreadCount = ref(1);
 const profileTab = ref<ProfileTabKey>('posts');
+const viewedProfileTab = ref<ProfileTabKey>('posts');
 const currentUser = ref<UserProfile>(fallbackUser());
 const userStats = ref<UserStats>(fallbackStats());
 const selectedPost = ref<CampusPost | null>(posts.value[0] || null);
 const expandedPost = ref<CampusPost | null>(null);
 const spotlightIndex = ref(0);
 const checkedInToday = ref(false);
-const checkinStreak = ref(18);
+const checkinStreak = ref(0);
+const checkingIn = ref(false);
 const checkinCelebrating = ref(false);
 const lastCheckinXp = ref(0);
 const importNotice = ref(false);
@@ -1090,6 +1323,7 @@ const editDraft = ref<Course | null>(null);
 const profileDraft = ref<ProfileDraft | null>(null);
 const selectedWeek = ref(12);
 const activeMessageTab = ref<MessageTabKey>('likes');
+const readMessageNoticeIds = ref<Set<string>>(new Set());
 const showPostCommentBox = ref(false);
 const newCommentText = ref('');
 const replyTargetId = ref<number | null>(null);
@@ -1097,33 +1331,104 @@ const replyText = ref('');
 const expandedReplyCounts = ref<Record<number, number>>({});
 const activeConversationId = ref<number | null>(null);
 const messageInput = ref('');
-const dismissedMessageTabUnread = ref<Partial<Record<MessageTabKey, boolean>>>({});
 const courseIdSeed = ref(1000);
 const authNotice = ref('');
 const showLoginDialog = ref(false);
 const showLevelCatalog = ref(false);
 const accountDrawerOpen = ref(false);
 const profileAvatarPreviewUrl = ref('');
+const profileAvatarUploading = ref(false);
+const profileAvatarUploadError = ref('');
+const avatarCropOpen = ref(false);
+const avatarCropImageUrl = ref('');
+const avatarCropSourceFile = ref<File | null>(null);
+const avatarCropFrame = ref<HTMLElement | null>(null);
+const avatarCropNaturalWidth = ref(0);
+const avatarCropNaturalHeight = ref(0);
+const avatarCropScale = ref(1);
+const avatarCropMinScale = ref(1);
+const avatarCropMaxScale = ref(4);
+const avatarCropOffsetX = ref(0);
+const avatarCropOffsetY = ref(0);
+const postImagePreviewUrl = ref('');
+const postContentInput = ref<HTMLElement | null>(null);
+const composeErrors = ref({ board: '', title: '', content: '' });
 const isAuthenticated = ref(Boolean(localStorage.getItem('bcg_token')));
 const loginDraft = ref({
   email: 'good',
   password: 'good'
 });
 const todayKey = dayjs().format('YYYY-MM-DD');
+const readMessageNoticeStoragePrefix = 'bcg_read_message_notices';
 let spotlightTimer: number | undefined;
 let conversationListTimer: number | undefined;
 let activeConversationTimer: number | undefined;
 let presenceHeartbeatTimer: number | undefined;
+let announcementCarouselTimer: number | undefined;
+let profileAvatarUploadToken = 0;
+let profileAvatarUploadPromise: Promise<string | null> | null = null;
+let avatarCropDragState: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
 let refreshingConversations = false;
 let refreshingActiveConversation = false;
 let activePostOpenToken = 0;
 
-const draft = ref({
-  board: 'school' as BoardCode,
+const draft = ref<ComposeDraft>({
+  board: 'school',
   title: '',
   content: '',
-  coverUrl: ''
+  coverUrl: '',
+  images: []
 });
+
+const composeBoardOptions = [
+  { value: 'school', label: '校 PO', description: '全校同学可见', icon: School },
+  { value: 'college', label: '院 PO', description: '学院范围同步', icon: Building2 },
+  { value: 'major', label: '专业 PO', description: '专业同学优先', icon: GraduationCap }
+] satisfies Array<{ value: ComposeDraft['board']; label: string; description: string; icon: Component }>;
+
+const editorEmojis = ['👍', '😭', '🔥', '✨', '🙏', '👀', '✅', '💡'];
+const editorColors = [
+  { label: '蓝色重点', value: '#007aff' },
+  { label: '红色提醒', value: '#ff3b30' },
+  { label: '绿色通过', value: '#22c55e' },
+  { label: '紫色标记', value: '#7c3aed' }
+];
+const announcementCarouselIndex = ref(0);
+const announcementCarouselTransition = ref(true);
+const announcementCarouselStep = 86;
+
+const operatorAnnouncements: OperatorAnnouncement[] = [
+  {
+    id: 1,
+    badge: '公告',
+    title: '新版首页运营位正在灰度调整',
+    summary: '右侧公告区后续会同步网站运营发布的规则、活动和功能更新。'
+  },
+  {
+    id: 2,
+    badge: '提醒',
+    title: '内容反馈入口即将接入后台',
+    summary: '举报、置顶、公告配置将逐步进入运营后台统一维护。'
+  },
+  {
+    id: 3,
+    badge: '规则',
+    title: '校园 PO 发布规范本周更新',
+    summary: '标题、图片、活动时间和联系方式将增加更清晰的审核提示。'
+  },
+  {
+    id: 4,
+    badge: '活动',
+    title: '优质避坑 PO 将进入首页推荐池',
+    summary: '被同学收藏、评论补充的信息会优先进入运营巡检列表。'
+  },
+  {
+    id: 5,
+    badge: '维护',
+    title: '对象存储图片服务已切换到私有桶',
+    summary: '站内图片会通过平台接口读取，外部不会直接暴露存储桶地址。'
+  }
+];
 
 const dockItems = [
   { key: 'home', label: '首页', icon: Home },
@@ -1135,7 +1440,7 @@ const dockItems = [
 
 const messageTabs = [
   { key: 'likes', label: '点赞我的', icon: Heart },
-  { key: 'mentions', label: '@我的', icon: AtSign },
+  { key: 'favorites', label: '收藏我的', icon: Bookmark },
   { key: 'comments', label: '评论我的', icon: MessageCircle },
   { key: 'followers', label: '关注我的', icon: UserPlus }
 ] satisfies Array<{ key: MessageTabKey; label: string; icon: Component }>;
@@ -1156,6 +1461,18 @@ const levelTiers = [
   '绩点造化尊',
   '学海无双尊',
   '校园万古名'
+];
+const levelTierDescriptions = [
+  '刚进入校园 PO 的新同学，先从稳定发布和互动开始。',
+  '开始形成自己的信息雷达，能帮同学避开小坑。',
+  '活跃在多个社团和校园场景，信息覆盖更广。',
+  '资料、复盘和学习线索贡献明显增多。',
+  '对课程和作业节奏更敏感，能给出可执行建议。',
+  '项目、实训、竞赛方向的经验开始沉淀。',
+  '生活服务、美食、校园路线都能补充可靠信息。',
+  '升学、成绩、选课相关内容更有参考价值。',
+  '已经是校园信息网络里的高可信贡献者。',
+  '顶级铭牌阶段，校园 PO 里的标志性账号。'
 ];
 
 const dailyQuotes = [
@@ -1242,6 +1559,22 @@ const profileGridPosts = computed(() => {
   if (profileTab.value === 'favorites') return profileFavoritePosts.value;
   return profilePosts.value;
 });
+const viewedProfileTabs = computed(() => {
+  const stats = viewedProfile.value?.stats || fallbackStats();
+  return [
+    { key: 'posts' as ProfileTabKey, label: '作品', count: stats.posts },
+    { key: 'likes' as ProfileTabKey, label: '喜欢', count: stats.likedPosts },
+    { key: 'favorites' as ProfileTabKey, label: '收藏', count: stats.favorites }
+  ];
+});
+const activeViewedProfileTabIndex = computed(() => Math.max(0, viewedProfileTabs.value.findIndex((tab) => tab.key === viewedProfileTab.value)));
+const viewedProfileGridPosts = computed(() => {
+  if (viewedProfileTab.value === 'likes') return viewedProfileLikedPosts.value;
+  if (viewedProfileTab.value === 'favorites') return viewedProfileFavoritePosts.value;
+  return viewedProfilePosts.value;
+});
+const viewedProfileSectionTitle = computed(() => viewedProfileTab.value === 'posts' ? 'TA 的 PO' : viewedProfileTab.value === 'likes' ? 'TA 喜欢的 PO' : 'TA 收藏的 PO');
+const viewedProfileSectionCount = computed(() => viewedProfileTabs.value.find((tab) => tab.key === viewedProfileTab.value)?.count || 0);
 
 const detailComments = computed(() => expandedPost.value ? commentsForPost(expandedPost.value) : []);
 const rootDetailComments = computed(() => detailComments.value.filter((comment) => !comment.parentId));
@@ -1252,59 +1585,96 @@ const activeConversationMessages = computed(() => activeConversationId.value == 
   ? []
   : [...(conversationMessages.value[activeConversationId.value] || [])].sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf()));
 const privateConversations = computed(() => conversations.value.filter((conversation) => !isFollowOnlyConversation(conversation)));
+const privateUnreadCount = computed(() => privateConversations.value.reduce((sum, conversation) => sum + Math.max(0, conversation.unreadCount || 0), 0));
 const latestFollowNotices = computed(() => conversations.value
   .filter((conversation) => isFollowNoticeText(conversation.lastMessage))
   .map((conversation) => ({
-    id: 1000 + conversation.id,
+    id: `follow-${conversation.id}`,
     type: 'followers' as MessageTabKey,
     actor: conversation.peer,
-    text: '关注了你',
+    text: `${conversation.peer.nickname} 关注了你`,
     createdAt: conversation.lastMessageAt || conversation.updatedAt,
-    unread: conversation.unreadCount > 0
+    unread: conversation.unreadCount > 0 && !readMessageNoticeIds.value.has(`follow-${conversation.id}`)
   })));
 const messageTabUnreadCounts = computed<Record<MessageTabKey, number>>(() => {
-  const counts = { likes: 0, mentions: 0, comments: 0, followers: 0 };
+  const counts = { likes: 0, favorites: 0, comments: 0, followers: 0 };
   noticeItems.value.forEach((notice) => {
-    if (notice.unread && !dismissedMessageTabUnread.value[notice.type]) counts[notice.type] += 1;
+    if (notice.unread) counts[notice.type] += 1;
   });
   latestFollowNotices.value.forEach((notice) => {
-    if (notice.unread && !dismissedMessageTabUnread.value.followers) counts.followers += 1;
+    if (notice.unread) counts.followers += 1;
   });
   return counts;
 });
+const interactionUnreadCount = computed(() => Object.values(messageTabUnreadCounts.value).reduce((sum, count) => sum + count, 0));
+const notificationTotalCount = computed(() => privateUnreadCount.value + interactionUnreadCount.value);
+const composeBoardIndex = computed(() => Math.max(0, composeBoardOptions.findIndex((option) => option.value === draft.value.board)));
+const draftContentLength = computed(() => plainPostContent(draft.value.content).length);
+const draftInlineImageCount = computed(() => inlineImageUrls(draft.value.content).length);
 const currentLevelNeed = computed(() => levelXpNeed(currentUser.value.level));
 const levelProgress = computed(() => Math.min(100, Math.round((currentUser.value.xp / currentLevelNeed.value) * 100)));
-const levelCatalog = computed(() => Array.from({ length: maxLevel }, (_, index) => {
-  const level = index + 1;
+const avatarCropImageStyle = computed(() => ({
+  width: `${avatarCropNaturalWidth.value * avatarCropScale.value}px`,
+  height: `${avatarCropNaturalHeight.value * avatarCropScale.value}px`,
+  transform: `translate(calc(-50% + ${avatarCropOffsetX.value}px), calc(-50% + ${avatarCropOffsetY.value}px))`
+}));
+const expandedPostExtraImages = computed(() => {
+  const post = expandedPost.value;
+  return post ? Array.from(new Set([...post.images, ...inlineImageUrls(post.content)])).filter((url) => url !== post.coverUrl) : [];
+});
+const levelCatalog = computed(() => Array.from({ length: Math.ceil(maxLevel / 10) }, (_, index) => {
+  const from = index * 10 + 1;
+  const to = Math.min(maxLevel, from + 9);
   return {
-    level,
-    title: levelTitleFor(level),
-    className: levelBadgeClass(level),
-    totalXp: totalXpForLevel(level),
-    nextXp: level >= maxLevel ? 0 : levelXpNeed(level)
+    rangeLabel: `${from}-${to}`,
+    title: levelTiers[index],
+    className: levelBadgeClass(from),
+    active: currentUser.value.level >= from && currentUser.value.level <= to,
+    summary: `Lv.${from} 到 Lv.${to}`,
+    description: levelTierDescriptions[index]
   };
 }));
 const checkinBaseXp = computed(() => xpForLevel(currentUser.value.level));
 const checkinReward = computed(() => checkinBaseXp.value + Math.min(60, checkinStreak.value * 3));
+const checkinButtonText = computed(() => {
+  if (!isAuthenticated.value) return '登录后签到';
+  if (checkingIn.value) return '签到中...';
+  return checkedInToday.value ? `已签到 · 连续 ${checkinStreak.value} 天` : `今日签到 +${checkinReward.value} XP`;
+});
 const scheduleDays = computed(() => Array.from({ length: 7 }, (_, index) => {
   const date = termStart.add(selectedWeek.value - 1, 'week').add(index, 'day');
   const names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
   return { key: index + 1, name: names[index], date: date.format('M/D') };
 }));
 
-const noticeItems = computed<NoticeItem[]>(() => {
-  const [first, second, third, fourth] = posts.value;
-  return [
-    { id: 1, type: 'likes', actor: first.author, text: `点赞了你的 PO，最近 2 小时又多了 ${first.last2hLikes || 12} 个赞。`, post: first, createdAt: dayjs().subtract(6, 'minute').toISOString(), unread: true },
-    { id: 2, type: 'likes', actor: second.author, text: '收藏后又给你点了赞，说明这条信息确实有用。', post: second, createdAt: dayjs().subtract(24, 'minute').toISOString(), unread: true },
-    { id: 3, type: 'mentions', actor: third.author, text: '@ 了你：这个实验报告模板你之前是不是整理过？', post: third, createdAt: dayjs().subtract(35, 'minute').toISOString(), unread: true },
-    { id: 4, type: 'comments', actor: fourth.author, text: '评论了你的 PO：这个点位我认证，下午两点以后会吵一点。', post: fourth, createdAt: dayjs().subtract(42, 'minute').toISOString(), unread: true }
-  ];
-});
+const noticeItems = computed<NoticeItem[]>(() => interactionNotices.value.map((notice) => {
+  const post = enrichApiPosts([notice.post])[0];
+  const noticeId = interactionNoticeKey(notice);
+  const tab = interactionNoticeTab(notice.type);
+  return {
+    id: noticeId,
+    type: tab,
+    actor: notice.actor,
+    text: interactionNoticeText(notice.actor.nickname, notice),
+    post,
+    coverUrl: post.coverUrl || fallbackCover(post.id),
+    commentContent: notice.commentContent,
+    commentPrefix: tab === 'comments' ? `${notice.actor.nickname}${notice.type === 'reply' ? ' 给你的评论回复：' : ' 给你评论：'}` : undefined,
+    createdAt: notice.createdAt,
+    unread: Boolean(notice.unread) && !readMessageNoticeIds.value.has(noticeId)
+  };
+}));
 const activeNotices = computed<NoticeItem[]>(() => [
   ...noticeItems.value,
   ...latestFollowNotices.value
 ].filter((notice) => notice.type === activeMessageTab.value));
+const operatorAnnouncementLoop = computed(() => [
+  ...operatorAnnouncements,
+  ...operatorAnnouncements.slice(0, 2)
+].map((notice, index) => ({
+  ...notice,
+  loopKey: `${notice.id}-${index}`
+})));
 
 onMounted(async () => {
   await loadCampus();
@@ -1314,12 +1684,29 @@ onMounted(async () => {
   conversationListTimer = window.setInterval(() => {
     refreshConversations();
   }, 3000);
+  announcementCarouselTimer = window.setInterval(() => {
+    const nextIndex = announcementCarouselIndex.value + 1;
+    announcementCarouselTransition.value = true;
+    announcementCarouselIndex.value = nextIndex;
+    if (nextIndex >= operatorAnnouncements.length) {
+      window.setTimeout(() => {
+        announcementCarouselTransition.value = false;
+        announcementCarouselIndex.value = 0;
+        window.setTimeout(() => {
+          announcementCarouselTransition.value = true;
+        }, 40);
+      }, 560);
+    }
+  }, 5000);
   startPresenceHeartbeat();
 });
 
 onBeforeUnmount(() => {
   if (spotlightTimer) window.clearInterval(spotlightTimer);
   if (conversationListTimer) window.clearInterval(conversationListTimer);
+  if (announcementCarouselTimer) window.clearInterval(announcementCarouselTimer);
+  clearPostImagePreview();
+  clearAvatarCrop();
   stopActiveConversationPolling();
   stopPresenceHeartbeat();
 });
@@ -1354,8 +1741,13 @@ async function loadAuthenticatedData() {
     profilePosts.value = [];
     profileLikedPosts.value = [];
     profileFavoritePosts.value = [];
+    interactionNotices.value = [];
+    readMessageNoticeIds.value = new Set();
+    resetCheckInState();
     viewedProfile.value = null;
     viewedProfilePosts.value = [];
+    viewedProfileLikedPosts.value = [];
+    viewedProfileFavoritePosts.value = [];
     unreadCount.value = 0;
     activeConversationId.value = null;
     stopPresenceHeartbeat();
@@ -1373,8 +1765,13 @@ async function loadAuthenticatedData() {
     profilePosts.value = [];
     profileLikedPosts.value = [];
     profileFavoritePosts.value = [];
+    interactionNotices.value = [];
+    readMessageNoticeIds.value = new Set();
+    resetCheckInState();
     viewedProfile.value = null;
     viewedProfilePosts.value = [];
+    viewedProfileLikedPosts.value = [];
+    viewedProfileFavoritePosts.value = [];
     unreadCount.value = 0;
     activeConversationId.value = null;
     stopPresenceHeartbeat();
@@ -1383,14 +1780,17 @@ async function loadAuthenticatedData() {
 
   isAuthenticated.value = true;
   currentUser.value = me;
+  readMessageNoticeIds.value = loadReadMessageNoticeIds(me.id);
   startPresenceHeartbeat();
-  const [stats, messageList, unread, myPosts, myLikes, myFavorites] = await Promise.all([
+  const [stats, messageList, unread, myPosts, myLikes, myFavorites, notices, checkIn] = await Promise.all([
     safe(() => campusApi.stats(), fallbackStats()),
     safe(() => campusApi.conversations(), fallbackConversations()),
     safe(() => campusApi.unreadCount(), 0),
     safe(() => campusApi.myPosts(), [] as PostView[]),
     safe(() => campusApi.myLikes(), [] as PostView[]),
-    safe(() => campusApi.myFavorites(), [] as PostView[])
+    safe(() => campusApi.myFavorites(), [] as PostView[]),
+    safe(() => campusApi.interactionNotices(), [] as InteractionNoticeView[]),
+    safe(() => campusApi.checkInStatus(), null as CheckInView | null)
   ]);
   userStats.value = stats;
   conversations.value = messageList;
@@ -1398,18 +1798,24 @@ async function loadAuthenticatedData() {
   profilePosts.value = enrichApiPosts(myPosts);
   profileLikedPosts.value = enrichApiPosts(myLikes);
   profileFavoritePosts.value = enrichApiPosts(myFavorites);
+  interactionNotices.value = notices;
+  if (checkIn) applyCheckInView(checkIn);
+  markOpenMessageTabRead();
 }
 
 async function refreshConversations() {
   if (!isAuthenticated.value || !localStorage.getItem('bcg_token') || refreshingConversations) return;
   refreshingConversations = true;
   try {
-    const [messageList, unread] = await Promise.all([
+    const [messageList, unread, notices] = await Promise.all([
       campusApi.conversations(),
-      campusApi.unreadCount()
+      campusApi.unreadCount(),
+      campusApi.interactionNotices()
     ]);
     const activeId = activeConversationId.value;
     conversations.value = messageList.map((conversation) => activeId === conversation.id ? { ...conversation, unreadCount: 0 } : conversation);
+    interactionNotices.value = notices;
+    markOpenMessageTabRead();
     unreadCount.value = activeId == null
       ? unread
       : Math.max(0, unread - (messageList.find((conversation) => conversation.id === activeId)?.unreadCount || 0));
@@ -1417,6 +1823,59 @@ async function refreshConversations() {
     // Keep the current local state when a poll races with logout or a dev-server hiccup.
   } finally {
     refreshingConversations = false;
+  }
+}
+
+async function refreshInteractionNotices() {
+  if (!isAuthenticated.value || !localStorage.getItem('bcg_token')) return;
+  interactionNotices.value = await safe(() => campusApi.interactionNotices(), interactionNotices.value);
+  markOpenMessageTabRead();
+}
+
+function readMessageNoticeStorageKey(userId = currentUser.value.id) {
+  return `${readMessageNoticeStoragePrefix}_${userId || 'guest'}`;
+}
+
+function loadReadMessageNoticeIds(userId: number) {
+  try {
+    const stored = localStorage.getItem(readMessageNoticeStorageKey(userId));
+    const ids = stored ? JSON.parse(stored) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveReadMessageNoticeIds() {
+  if (!currentUser.value.id) return;
+  localStorage.setItem(readMessageNoticeStorageKey(), JSON.stringify([...readMessageNoticeIds.value].slice(-300)));
+}
+
+function interactionNoticeKey(notice: InteractionNoticeView) {
+  return `${notice.type}-${notice.id}`;
+}
+
+function interactionNoticeTab(type: InteractionNoticeView['type']): MessageTabKey {
+  if (type === 'like') return 'likes';
+  if (type === 'favorite') return 'favorites';
+  return 'comments';
+}
+
+function markMessageTabRead(tab: MessageTabKey) {
+  const visibleIds = [
+    ...noticeItems.value,
+    ...latestFollowNotices.value
+  ]
+    .filter((notice) => notice.type === tab && notice.unread)
+    .map((notice) => notice.id);
+  if (!visibleIds.length) return;
+  readMessageNoticeIds.value = new Set([...readMessageNoticeIds.value, ...visibleIds]);
+  saveReadMessageNoticeIds();
+}
+
+function markOpenMessageTabRead() {
+  if (activeView.value === 'messages' && activeConversationId.value == null) {
+    markMessageTabRead(activeMessageTab.value);
   }
 }
 
@@ -1461,12 +1920,17 @@ async function openAuthorProfile(author: AuthorView) {
     return;
   }
   const fallbackProfile = publicProfileFromAuthor(author);
-  const [profile, authorPosts] = await Promise.all([
+  viewedProfileTab.value = 'posts';
+  const [profile, authorPosts, likedPosts, favoritePosts] = await Promise.all([
     safe(() => campusApi.userProfile(uid), fallbackProfile),
-    safe(() => campusApi.userPosts(uid), posts.value.filter((post) => post.author.uid === uid) as PostView[])
+    safe(() => campusApi.userPosts(uid), posts.value.filter((post) => post.author.uid === uid) as PostView[]),
+    safe(() => campusApi.userLikes(uid), [] as PostView[]),
+    safe(() => campusApi.userFavorites(uid), [] as PostView[])
   ]);
   viewedProfile.value = profile;
   viewedProfilePosts.value = enrichApiPosts(authorPosts);
+  viewedProfileLikedPosts.value = enrichApiPosts(likedPosts);
+  viewedProfileFavoritePosts.value = enrichApiPosts(favoritePosts);
   activeView.value = profile.mine ? 'profile' : 'user-profile';
   await nextTick();
   document.querySelector('.home-feed')?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1482,19 +1946,22 @@ function navigateTo(view: ViewKey) {
     return;
   }
   activeView.value = view;
+  if (view === 'messages') markMessageTabRead(activeMessageTab.value);
   if (view !== 'messages') closeConversation();
 }
 
 function selectMessageTab(tab: MessageTabKey) {
   activeMessageTab.value = tab;
-  dismissedMessageTabUnread.value = {
-    ...dismissedMessageTabUnread.value,
-    [tab]: true
-  };
+  markMessageTabRead(tab);
 }
 
 function syncProfileDraft() {
   clearAvatarPreview();
+  clearAvatarCrop();
+  profileAvatarUploadToken += 1;
+  profileAvatarUploading.value = false;
+  profileAvatarUploadError.value = '';
+  profileAvatarUploadPromise = null;
   profileDraft.value = {
     id: currentUser.value.id,
     publicUid: currentUser.value.publicUid,
@@ -1569,6 +2036,11 @@ function openProfileEditor() {
 
 function closeProfileEditor() {
   clearAvatarPreview();
+  clearAvatarCrop();
+  profileAvatarUploadToken += 1;
+  profileAvatarUploading.value = false;
+  profileAvatarUploadError.value = '';
+  profileAvatarUploadPromise = null;
   profileDraft.value = null;
 }
 
@@ -1579,18 +2051,328 @@ function clearAvatarPreview() {
   }
 }
 
+function clearAvatarCrop() {
+  if (avatarCropImageUrl.value) {
+    URL.revokeObjectURL(avatarCropImageUrl.value);
+  }
+  avatarCropOpen.value = false;
+  avatarCropImageUrl.value = '';
+  avatarCropSourceFile.value = null;
+  avatarCropNaturalWidth.value = 0;
+  avatarCropNaturalHeight.value = 0;
+  avatarCropScale.value = 1;
+  avatarCropMinScale.value = 1;
+  avatarCropMaxScale.value = 4;
+  avatarCropOffsetX.value = 0;
+  avatarCropOffsetY.value = 0;
+  avatarCropDragState = null;
+}
+
+function clearPostImagePreview() {
+  if (postImagePreviewUrl.value) {
+    URL.revokeObjectURL(postImagePreviewUrl.value);
+    postImagePreviewUrl.value = '';
+  }
+}
+
+function selectDraftBoard(board: ComposeDraft['board']) {
+  draft.value.board = board;
+  composeErrors.value.board = '';
+}
+
+function syncDraftContentFromEditor() {
+  draft.value.content = postContentInput.value?.innerHTML || '';
+  if (plainPostContent(draft.value.content).trim()) composeErrors.value.content = '';
+}
+
+function focusDraftEditor() {
+  postContentInput.value?.focus();
+}
+
+function insertDraftHtml(html: string) {
+  focusDraftEditor();
+  document.execCommand('insertHTML', false, html);
+  syncDraftContentFromEditor();
+}
+
+function insertDraftText(text: string) {
+  focusDraftEditor();
+  document.execCommand('insertText', false, text);
+  syncDraftContentFromEditor();
+}
+
+function formatDraftContent(command: 'bold' | 'insertUnorderedList') {
+  focusDraftEditor();
+  document.execCommand(command, false);
+  syncDraftContentFromEditor();
+}
+
+function applyDraftColor(color: string) {
+  focusDraftEditor();
+  document.execCommand('foreColor', false, color);
+  syncDraftContentFromEditor();
+}
+
+function applyDraftFont(size: 'large' | 'small') {
+  const className = size === 'large' ? 'rich-post-content__large' : 'rich-post-content__small';
+  focusDraftEditor();
+  document.execCommand('fontSize', false, size === 'large' ? '5' : '2');
+  postContentInput.value?.querySelectorAll('font[size]').forEach((node) => {
+    const span = document.createElement('span');
+    span.className = className;
+    span.innerHTML = node.innerHTML;
+    node.replaceWith(span);
+  });
+  syncDraftContentFromEditor();
+}
+
+function handleDraftPaste(event: ClipboardEvent) {
+  event.preventDefault();
+  insertDraftText(event.clipboardData?.getData('text/plain') || '');
+}
+
+function resetDraftEditor() {
+  if (postContentInput.value) postContentInput.value.innerHTML = '';
+}
+
+function validateDraft() {
+  syncDraftContentFromEditor();
+  const errors = {
+    board: draft.value.board ? '' : '请选择发布范围',
+    title: draft.value.title.trim() ? '' : '请填写标题',
+    content: plainPostContent(draft.value.content).trim() ? '' : '请填写正文内容'
+  };
+  composeErrors.value = errors;
+  return !errors.board && !errors.title && !errors.content;
+}
+
+function setDraftSelection(start: number, end = start) {
+  nextTick(() => {
+    postContentInput.value?.focus();
+    if (postContentInput.value instanceof HTMLTextAreaElement) {
+      postContentInput.value.setSelectionRange(start, end);
+    }
+  });
+}
+
+function wrapDraftContent(prefix: string, suffix = prefix, placeholder = '内容') {
+  const input = postContentInput.value instanceof HTMLTextAreaElement ? postContentInput.value : null;
+  const start = input?.selectionStart ?? draft.value.content.length;
+  const end = input?.selectionEnd ?? draft.value.content.length;
+  const selected = draft.value.content.slice(start, end) || placeholder;
+  const nextText = `${prefix}${selected}${suffix}`;
+  draft.value.content = `${draft.value.content.slice(0, start)}${nextText}${draft.value.content.slice(end)}`;
+  const selectionStart = start + prefix.length;
+  setDraftSelection(selectionStart, selectionStart + selected.length);
+}
+
 async function handleAvatarFile(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file || !profileDraft.value) return;
+  profileAvatarUploadToken += 1;
+  profileAvatarUploadError.value = '';
+  profileAvatarUploading.value = false;
+  profileAvatarUploadPromise = null;
   clearAvatarPreview();
-  profileAvatarPreviewUrl.value = URL.createObjectURL(file);
+  await openAvatarCrop(file);
+  input.value = '';
+}
+
+async function openAvatarCrop(file: File) {
+  clearAvatarCrop();
+  avatarCropSourceFile.value = file;
+  avatarCropImageUrl.value = URL.createObjectURL(file);
   try {
-    const uploaded = await mediaApi.upload(file, 'avatar');
-    profileDraft.value.avatarUrl = uploaded.url;
-    clearAvatarPreview();
+    const dimensions = await readImageDimensions(avatarCropImageUrl.value);
+    avatarCropNaturalWidth.value = dimensions.width;
+    avatarCropNaturalHeight.value = dimensions.height;
+    avatarCropOpen.value = true;
+    await nextTick();
+    resetAvatarCrop();
   } catch {
-    showAuthNotice('头像已先本地预览；要保存到账号里，请先启动 MinIO 对象存储');
+    profileAvatarUploadError.value = '图片读取失败，请换一张图片试试';
+    clearAvatarCrop();
+  }
+}
+
+function resetAvatarCrop() {
+  const frameSize = avatarCropFrame.value?.clientWidth || 300;
+  const cropSize = frameSize * 0.72;
+  const minScale = Math.max(cropSize / avatarCropNaturalWidth.value, cropSize / avatarCropNaturalHeight.value);
+  avatarCropMinScale.value = Number.isFinite(minScale) && minScale > 0 ? minScale : 1;
+  avatarCropMaxScale.value = Math.max(4, avatarCropMinScale.value * 3);
+  avatarCropScale.value = avatarCropMinScale.value;
+  avatarCropOffsetX.value = 0;
+  avatarCropOffsetY.value = 0;
+  normalizeAvatarCrop();
+}
+
+function normalizeAvatarCrop() {
+  if (!avatarCropNaturalWidth.value || !avatarCropNaturalHeight.value) return;
+  if (avatarCropScale.value < avatarCropMinScale.value) avatarCropScale.value = avatarCropMinScale.value;
+  if (avatarCropScale.value > avatarCropMaxScale.value) avatarCropScale.value = avatarCropMaxScale.value;
+  const frameSize = avatarCropFrame.value?.clientWidth || 300;
+  const cropSize = frameSize * 0.72;
+  const displayWidth = avatarCropNaturalWidth.value * avatarCropScale.value;
+  const displayHeight = avatarCropNaturalHeight.value * avatarCropScale.value;
+  avatarCropOffsetX.value = clampNumber(avatarCropOffsetX.value, (cropSize - displayWidth) / 2, (displayWidth - cropSize) / 2);
+  avatarCropOffsetY.value = clampNumber(avatarCropOffsetY.value, (cropSize - displayHeight) / 2, (displayHeight - cropSize) / 2);
+}
+
+function startAvatarCropDrag(event: PointerEvent) {
+  if (!avatarCropOpen.value) return;
+  avatarCropDragState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: avatarCropOffsetX.value,
+    originY: avatarCropOffsetY.value
+  };
+  avatarCropFrame.value?.setPointerCapture(event.pointerId);
+}
+
+function moveAvatarCropDrag(event: PointerEvent) {
+  if (!avatarCropDragState || avatarCropDragState.pointerId !== event.pointerId) return;
+  avatarCropOffsetX.value = avatarCropDragState.originX + event.clientX - avatarCropDragState.startX;
+  avatarCropOffsetY.value = avatarCropDragState.originY + event.clientY - avatarCropDragState.startY;
+  normalizeAvatarCrop();
+}
+
+function endAvatarCropDrag(event: PointerEvent) {
+  if (!avatarCropDragState || avatarCropDragState.pointerId !== event.pointerId) return;
+  avatarCropFrame.value?.releasePointerCapture(event.pointerId);
+  avatarCropDragState = null;
+}
+
+function cancelAvatarCrop() {
+  if (profileAvatarUploading.value) return;
+  clearAvatarCrop();
+}
+
+async function confirmAvatarCrop() {
+  if (!avatarCropSourceFile.value || !profileDraft.value) return;
+  profileAvatarUploadError.value = '';
+  profileAvatarUploading.value = true;
+  const uploadToken = ++profileAvatarUploadToken;
+  const draftId = profileDraft.value.id;
+  try {
+    const croppedFile = await createCroppedAvatarFile();
+    profileAvatarPreviewUrl.value = URL.createObjectURL(croppedFile);
+    profileAvatarUploadPromise = mediaApi.upload(croppedFile, 'avatar')
+      .then((uploaded) => {
+        if (uploadToken !== profileAvatarUploadToken || profileDraft.value?.id !== draftId) return null;
+        profileDraft.value.avatarUrl = uploaded.url;
+        clearAvatarPreview();
+        clearAvatarCrop();
+        return uploaded.url;
+      })
+      .catch((error) => {
+        if (uploadToken === profileAvatarUploadToken) {
+          const message = apiErrorMessage(error, '头像上传失败，请确认图片大小和对象存储配置');
+          profileAvatarUploadError.value = message;
+          showAuthNotice(message);
+          clearAvatarPreview();
+        }
+        return null;
+      })
+      .finally(() => {
+        if (uploadToken === profileAvatarUploadToken) {
+          profileAvatarUploading.value = false;
+        }
+      });
+    await profileAvatarUploadPromise;
+  } catch {
+    if (uploadToken === profileAvatarUploadToken) {
+      profileAvatarUploading.value = false;
+      profileAvatarUploadError.value = '头像裁剪失败，请换一张图片试试';
+    }
+  }
+}
+
+async function createCroppedAvatarFile() {
+  if (!avatarCropImageUrl.value || !avatarCropFrame.value) throw new Error('missing crop source');
+  const image = await loadImageElement(avatarCropImageUrl.value);
+  const frameSize = avatarCropFrame.value.clientWidth || 300;
+  const cropSize = frameSize * 0.72;
+  const displayWidth = avatarCropNaturalWidth.value * avatarCropScale.value;
+  const displayHeight = avatarCropNaturalHeight.value * avatarCropScale.value;
+  const imageLeft = frameSize / 2 - displayWidth / 2 + avatarCropOffsetX.value;
+  const imageTop = frameSize / 2 - displayHeight / 2 + avatarCropOffsetY.value;
+  const cropLeft = (frameSize - cropSize) / 2;
+  const cropTop = (frameSize - cropSize) / 2;
+  const sourceX = (cropLeft - imageLeft) / avatarCropScale.value;
+  const sourceY = (cropTop - imageTop) / avatarCropScale.value;
+  const sourceSize = cropSize / avatarCropScale.value;
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('missing canvas context');
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, 512, 512);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png', 0.92));
+  if (!blob) throw new Error('empty canvas blob');
+  return new File([blob], avatarCropFilename(avatarCropSourceFile.value), { type: 'image/png' });
+}
+
+function readImageDimensions(url: string) {
+  return loadImageElement(url).then((image) => ({ width: image.naturalWidth, height: image.naturalHeight }));
+}
+
+function loadImageElement(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('image load failed'));
+    image.src = url;
+  });
+}
+
+function avatarCropFilename(file: File | null) {
+  const stem = file?.name ? file.name.replace(/\.[^.]+$/, '') : 'avatar';
+  return `${stem || 'avatar'}-square.png`;
+}
+
+async function handlePostImageFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!isAuthenticated.value) {
+    input.value = '';
+    openLoginDialog('请先登录后上传图片');
+    return;
+  }
+  const previousCoverUrl = draft.value.coverUrl;
+  clearPostImagePreview();
+    postImagePreviewUrl.value = URL.createObjectURL(file);
+    draft.value.coverUrl = postImagePreviewUrl.value;
+  try {
+    const uploaded = await mediaApi.upload(file, 'post');
+    draft.value.coverUrl = uploaded.url;
+    clearPostImagePreview();
+  } catch (error) {
+    draft.value.coverUrl = previousCoverUrl;
+    clearPostImagePreview();
+    showAuthNotice(apiErrorMessage(error, '图片上传失败，请确认图片大小和对象存储配置'));
+  }
+  input.value = '';
+}
+
+async function handleInlinePostImageFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (!isAuthenticated.value) {
+    input.value = '';
+    openLoginDialog('请先登录后插入图片');
+    return;
+  }
+  try {
+    const uploaded = await mediaApi.upload(file, 'post');
+    insertDraftHtml(`<div><img src="${uploaded.url}" alt="插入图片" /></div><div><br></div>`);
+  } catch (error) {
+    showAuthNotice(apiErrorMessage(error, '图片上传失败，请确认图片大小和对象存储配置'));
   }
   input.value = '';
 }
@@ -1602,6 +2384,10 @@ async function saveProfile() {
     return;
   }
   if (!profileDraft.value) return;
+  if (profileAvatarUploading.value && profileAvatarUploadPromise) {
+    const uploadedUrl = await profileAvatarUploadPromise;
+    if (!uploadedUrl || !profileDraft.value) return;
+  }
   const updated = await safe(() => userApi.updateProfile({
     nickname: profileDraft.value?.nickname?.trim(),
     avatarUrl: profileDraft.value?.avatarUrl?.trim(),
@@ -1630,13 +2416,17 @@ async function saveProfile() {
 }
 
 async function publishLocalPost() {
-  if (!draft.value.title.trim() || !draft.value.content.trim()) return;
+  if (!validateDraft()) return;
+  const contentHtml = sanitizeRichHtml(draft.value.content.trim());
+  const coverUrl = draft.value.coverUrl.trim();
+  const imageUrls = Array.from(new Set([...draft.value.images, ...inlineImageUrls(contentHtml)].filter(Boolean)));
+  const cleanContent = plainPostContent(contentHtml);
   const payload = {
     board: draft.value.board,
     title: draft.value.title.trim(),
-    content: draft.value.content.trim(),
-    coverUrl: draft.value.coverUrl.trim() || undefined,
-    images: draft.value.coverUrl.trim() ? [draft.value.coverUrl.trim()] : [],
+    content: contentHtml,
+    coverUrl: coverUrl || undefined,
+    images: imageUrls,
     tags: ['新PO', boardName(draft.value.board)]
   };
   const apiPost = localStorage.getItem('bcg_token') ? await safe(() => postApi.create(payload), null) : null;
@@ -1646,7 +2436,7 @@ async function publishLocalPost() {
     sourceType: 'student',
     title: payload.title,
     content: payload.content,
-    excerpt: payload.content.slice(0, 120),
+    excerpt: cleanContent.slice(0, 120),
     coverUrl: payload.coverUrl || fallbackCover(Date.now()),
     images: payload.images,
     riskLevel: 'normal',
@@ -1674,7 +2464,10 @@ async function publishLocalPost() {
   }
   selectedPost.value = post;
   activeView.value = 'home';
-  draft.value = { board: 'school', title: '', content: '', coverUrl: '' };
+  clearPostImagePreview();
+  draft.value = { board: 'school', title: '', content: '', coverUrl: '', images: [] };
+  composeErrors.value = { board: '', title: '', content: '' };
+  resetDraftEditor();
 }
 
 async function togglePostLike(post: CampusPost) {
@@ -1690,6 +2483,7 @@ async function togglePostLike(post: CampusPost) {
     ? [post, ...profileLikedPosts.value.filter((item) => item.id !== post.id)]
     : profileLikedPosts.value.filter((item) => item.id !== post.id);
   await refreshPostFromServer(post.id);
+  await refreshInteractionNotices();
 }
 
 async function togglePostFavorite(post: CampusPost) {
@@ -1705,6 +2499,7 @@ async function togglePostFavorite(post: CampusPost) {
     ? [post, ...profileFavoritePosts.value.filter((item) => item.id !== post.id)]
     : profileFavoritePosts.value.filter((item) => item.id !== post.id);
   await refreshPostFromServer(post.id);
+  await refreshInteractionNotices();
 }
 
 function togglePostCommentBox() {
@@ -1722,6 +2517,7 @@ async function submitPostComment() {
   expandedPost.value.commentCount += 1;
   userStats.value.comments += 1;
   await refreshPostFromServer(expandedPost.value.id);
+  await refreshInteractionNotices();
   newCommentText.value = '';
   showPostCommentBox.value = false;
 }
@@ -1742,6 +2538,7 @@ async function submitReply(parent: CampusComment) {
   expandedPost.value.commentCount += 1;
   parent.replyCount += 1;
   await refreshPostFromServer(expandedPost.value.id);
+  await refreshInteractionNotices();
   expandedReplyCounts.value[parent.id] = Math.max(expandedReplyCounts.value[parent.id] || 0, Math.min(5, repliesFor(parent).length + 1));
   replyTargetId.value = null;
   replyText.value = '';
@@ -2046,10 +2843,11 @@ function openLoginDialog(message?: string) {
 function closeTransientOverlays() {
   accountDrawerOpen.value = false;
   showLevelCatalog.value = false;
-  profileDraft.value = null;
+  if (profileDraft.value) closeProfileEditor();
   editDraft.value = null;
   expandedPost.value = null;
   clearAvatarPreview();
+  clearAvatarCrop();
 }
 
 function openAccountCenter() {
@@ -2072,8 +2870,12 @@ async function logoutCurrentUser() {
   closeConversation();
   viewedProfile.value = null;
   viewedProfilePosts.value = [];
+  viewedProfileLikedPosts.value = [];
+  viewedProfileFavoritePosts.value = [];
   conversations.value = [];
   conversationMessages.value = fallbackConversationMessages();
+  readMessageNoticeIds.value = new Set();
+  resetCheckInState();
   unreadCount.value = 0;
   currentUser.value = fallbackUser();
   userStats.value = fallbackStats();
@@ -2112,25 +2914,37 @@ function showAuthNotice(message: string) {
   }, 2400);
 }
 
-function doCheckIn() {
+function applyCheckInView(checkIn: CheckInView) {
+  currentUser.value = checkIn.profile;
+  checkedInToday.value = checkIn.checkedInToday;
+  checkinStreak.value = checkIn.streak;
+  lastCheckinXp.value = checkIn.xpGained;
+}
+
+function resetCheckInState() {
+  checkedInToday.value = false;
+  checkinStreak.value = 0;
+  checkingIn.value = false;
+  checkinCelebrating.value = false;
+  lastCheckinXp.value = 0;
+}
+
+async function doCheckIn() {
+  if (!isAuthenticated.value || !localStorage.getItem('bcg_token')) {
+    openLoginDialog('请先登录后签到，经验会写入后端账号');
+    return;
+  }
   if (checkedInToday.value) return;
-  const gained = checkinReward.value;
-  checkedInToday.value = true;
-  checkinStreak.value += 1;
-  lastCheckinXp.value = gained;
-  addXp(gained);
+  checkingIn.value = true;
+  const result = await safe(() => campusApi.checkIn(), null as CheckInView | null);
+  checkingIn.value = false;
+  if (!result) return openLoginDialog('登录状态失效，签到没有写入后端');
+  applyCheckInView(result);
+  if (!result.xpGained) return;
   checkinCelebrating.value = true;
   window.setTimeout(() => {
     checkinCelebrating.value = false;
   }, 1150);
-}
-
-function addXp(amount: number) {
-  currentUser.value.xp += amount;
-  while (currentUser.value.level < maxLevel && currentUser.value.xp >= levelXpNeed(currentUser.value.level)) {
-    currentUser.value.xp -= levelXpNeed(currentUser.value.level);
-    currentUser.value.level += 1;
-  }
 }
 
 function mockImportSchedule() {
@@ -2190,6 +3004,11 @@ function normalizeCourseWeeks(course: Course) {
 
 function clampWeek(value: number) {
   return Math.min(maxTermWeek, Math.max(1, Math.round(value)));
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (min > max) return (min + max) / 2;
+  return Math.min(max, Math.max(min, value));
 }
 
 function nextCourseId() {
@@ -2269,6 +3088,75 @@ function postDateKey(post: CampusPost) {
   return dayjs(post.eventDate || post.deadlineAt || post.publishedAt).format('YYYY-MM-DD');
 }
 
+function inlineImageUrls(content: string) {
+  const markdownUrls = Array.from(content.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)).map((match) => match[1]);
+  const htmlUrls = Array.from(content.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)).map((match) => match[1]);
+  return [...markdownUrls, ...htmlUrls];
+}
+
+function plainPostContent(content: string) {
+  const htmlAsText = content
+    .replace(/<img[^>]*>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(div|p|li|ul|ol|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  const textarea = document.createElement('textarea');
+  textarea.innerHTML = htmlAsText;
+  return textarea.value
+    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\[size=(large|small)](.*?)\[\/size]/g, '$2')
+    .replace(/\[color=#[0-9a-fA-F]{3,8}](.*?)\[\/color]/g, '$1')
+    .trim();
+}
+
+function escapeHtml(content: string) {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function sanitizeRichHtml(content: string) {
+  const template = document.createElement('template');
+  template.innerHTML = content;
+  const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI', 'IMG']);
+  template.content.querySelectorAll('*').forEach((node) => {
+    if (!allowedTags.has(node.tagName)) {
+      node.replaceWith(document.createTextNode(node.textContent || ''));
+      return;
+    }
+    Array.from(node.attributes).forEach((attr) => {
+      const name = attr.name.toLowerCase();
+      if (node.tagName === 'IMG' && name === 'src') return;
+      if (node.tagName === 'IMG' && name === 'alt') return;
+      if (node.tagName === 'SPAN' && name === 'class' && ['rich-post-content__large', 'rich-post-content__small'].includes(attr.value)) return;
+      if (node.tagName === 'SPAN' && name === 'style' && /^color:\s*#[0-9a-fA-F]{3,8};?$/.test(attr.value.trim())) return;
+      node.removeAttribute(attr.name);
+    });
+  });
+  return template.innerHTML;
+}
+
+function renderInlineRichText(content: string) {
+  return escapeHtml(content)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[size=large](.*?)\[\/size]/g, '<span class="rich-post-content__large">$1</span>')
+    .replace(/\[size=small](.*?)\[\/size]/g, '<span class="rich-post-content__small">$1</span>')
+    .replace(/\[color=(#[0-9a-fA-F]{3,8})](.*?)\[\/color]/g, '<span style="color: $1">$2</span>');
+}
+
+function renderRichPostContent(content: string) {
+  if (/<[a-z][\s\S]*>/i.test(content)) return sanitizeRichHtml(content);
+  return content
+    .split(/!\[[^\]]*]\([^)]+\)/g)
+    .map((part) => renderInlineRichText(part))
+    .join('')
+    .replace(/\n/g, '<br>');
+}
+
 function recommendScore(post: CampusPost) {
   const hours = Math.max(1, dayjs().diff(dayjs(post.publishedAt), 'hour', true));
   const officialBoost = post.official ? 60 : 0;
@@ -2283,6 +3171,13 @@ function hotScore(post: CampusPost) {
 function featuredCommentFor(post: CampusPost) {
   const featured = commentsForPost(post).slice().sort((a, b) => b.likeCount - a.likeCount)[0];
   return featured ? `${featured.author.nickname}：${featured.content}` : '还没有热评，抢第一个补充信息。';
+}
+
+function interactionNoticeText(actorName: string, notice: InteractionNoticeView) {
+  if (notice.type === 'like') return `${actorName} 点赞了你的 PO`;
+  if (notice.type === 'favorite') return `${actorName} 收藏了你的 PO`;
+  if (notice.type === 'reply') return `${actorName} 给你的评论回复：${(notice.commentContent || '').trim()}`;
+  return `${actorName} 给你评论：${(notice.commentContent || '').trim()}`;
 }
 
 function commentsForPost(post: CampusPost) {

@@ -1,5 +1,6 @@
 package com.biecuoguo.dto;
 
+import java.io.InputStream;
 import java.time.LocalDateTime;
 
 public final class MediaDtos {
@@ -13,5 +14,11 @@ public final class MediaDtos {
             Long sizeBytes,
             String purpose,
             LocalDateTime createdAt
+    ) {}
+
+    public record StoredObject(
+            InputStream stream,
+            String contentType,
+            Long sizeBytes
     ) {}
 }

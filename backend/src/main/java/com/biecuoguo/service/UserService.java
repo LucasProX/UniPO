@@ -8,6 +8,7 @@ import com.biecuoguo.mapper.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
 
@@ -24,9 +25,10 @@ public class UserService {
     private final PostShareMapper postShareMapper;
     private final UserFollowMapper userFollowMapper;
     private final PostMapper postMapper;
+    private final UserCheckInMapper checkInMapper;
     private final PresenceService presenceService;
 
-    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, FavoriteMapper favoriteMapper, UserNoticeStatusMapper statusMapper, CommentMapper commentMapper, ReminderMapper reminderMapper, PostFavoriteMapper postFavoriteMapper, PostLikeMapper postLikeMapper, PostShareMapper postShareMapper, UserFollowMapper userFollowMapper, PostMapper postMapper, PresenceService presenceService) {
+    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, FavoriteMapper favoriteMapper, UserNoticeStatusMapper statusMapper, CommentMapper commentMapper, ReminderMapper reminderMapper, PostFavoriteMapper postFavoriteMapper, PostLikeMapper postLikeMapper, PostShareMapper postShareMapper, UserFollowMapper userFollowMapper, PostMapper postMapper, UserCheckInMapper checkInMapper, PresenceService presenceService) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.favoriteMapper = favoriteMapper;
@@ -38,6 +40,7 @@ public class UserService {
         this.postShareMapper = postShareMapper;
         this.userFollowMapper = userFollowMapper;
         this.postMapper = postMapper;
+        this.checkInMapper = checkInMapper;
         this.presenceService = presenceService;
     }
 
@@ -95,6 +98,44 @@ public class UserService {
         return new UserDtos.UserStats(favorites + favoritePosts, likedPosts, sharedPosts, completed, comments, upcoming, completed, following, followers, posts);
     }
 
+    public UserDtos.CheckInView checkInStatus(Long userId) {
+        User user = requireUser(userId);
+        LocalDate today = LocalDate.now();
+        UserCheckIn todayRecord = findCheckIn(userId, today);
+        if (todayRecord != null) {
+            return checkInView(user, true, safe(todayRecord.getStreak()), 0, today);
+        }
+        UserCheckIn latest = latestCheckIn(userId);
+        int currentStreak = latest != null && today.minusDays(1).equals(latest.getCheckinDate()) ? safe(latest.getStreak()) : 0;
+        return checkInView(user, false, currentStreak, 0, today);
+    }
+
+    @Transactional
+    public UserDtos.CheckInView checkIn(Long userId) {
+        User user = requireUser(userId);
+        LocalDate today = LocalDate.now();
+        UserCheckIn existing = findCheckIn(userId, today);
+        if (existing != null) {
+            return checkInView(user, true, safe(existing.getStreak()), 0, today);
+        }
+
+        UserCheckIn latest = latestCheckIn(userId);
+        int previousStreak = latest != null && today.minusDays(1).equals(latest.getCheckinDate()) ? safe(latest.getStreak()) : 0;
+        int gained = checkInReward(user, previousStreak);
+        int nextStreak = previousStreak + 1;
+        applyXp(user, gained);
+
+        UserCheckIn checkIn = new UserCheckIn();
+        checkIn.setUserId(userId);
+        checkIn.setCheckinDate(today);
+        checkIn.setStreak(nextStreak);
+        checkIn.setXpGained(gained);
+        checkIn.setCreatedAt(LocalDateTime.now());
+        checkInMapper.insert(checkIn);
+
+        return checkInView(user, true, nextStreak, gained, today);
+    }
+
     public UserDtos.PublicProfile publicProfile(String uid, Long viewerId) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, uid));
         if (user == null) {
@@ -105,6 +146,78 @@ public class UserService {
                 .eq(UserFollow::getFollowerId, viewerId)
                 .eq(UserFollow::getFollowingId, user.getId())) > 0;
         return new UserDtos.PublicProfile(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())), stats(user.getId()), following, mine);
+    }
+
+    private UserDtos.CheckInView checkInView(User user, boolean checkedInToday, int streak, int xpGained, java.time.LocalDate checkinDate) {
+        return new UserDtos.CheckInView(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())), checkedInToday, streak, xpGained, checkinDate);
+    }
+
+    private UserCheckIn findCheckIn(Long userId, java.time.LocalDate date) {
+        return checkInMapper.selectOne(new LambdaQueryWrapper<UserCheckIn>()
+                .eq(UserCheckIn::getUserId, userId)
+                .eq(UserCheckIn::getCheckinDate, date));
+    }
+
+    private UserCheckIn latestCheckIn(Long userId) {
+        return checkInMapper.selectList(new LambdaQueryWrapper<UserCheckIn>()
+                        .eq(UserCheckIn::getUserId, userId)
+                        .orderByDesc(UserCheckIn::getCheckinDate))
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private int checkInReward(User user, int currentStreak) {
+        return xpForLevel(user.getLevel() == null ? 1 : user.getLevel()) + Math.min(60, Math.max(0, currentStreak) * 3);
+    }
+
+    private void applyXp(User user, int amount) {
+        int level = user.getLevel() == null ? 1 : user.getLevel();
+        int xp = safe(user.getXp()) + amount;
+        while (level < 100 && xp >= levelXpNeed(level)) {
+            xp -= levelXpNeed(level);
+            level += 1;
+        }
+        user.setLevel(level);
+        user.setXp(xp);
+        user.setLevelTitle(levelTitle(level));
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+    }
+
+    private int xpForLevel(int level) {
+        if (level <= 30) return 45;
+        if (level <= 60) return 55;
+        if (level <= 85) return 65;
+        return 75;
+    }
+
+    private int totalXpForLevel(int level) {
+        int completed = Math.max(0, level - 1);
+        return Math.round(completed * completed * 28 + completed * 520);
+    }
+
+    private int levelXpNeed(int level) {
+        return totalXpForLevel(level + 1) - totalXpForLevel(level);
+    }
+
+    private String levelTitle(int level) {
+        return switch ((Math.max(1, Math.min(100, level)) - 1) / 10) {
+            case 0 -> "萌新探路员";
+            case 1 -> "早八幸存者";
+            case 2 -> "选课赌神";
+            case 3 -> "食堂测评官";
+            case 4 -> "图书馆钉子户";
+            case 5 -> "Deadline 驯服者";
+            case 6 -> "校园情报员";
+            case 7 -> "学分炼金术士";
+            case 8 -> "毕设渡劫人";
+            default -> "传说中的不鸽王";
+        };
+    }
+
+    private int safe(Integer value) {
+        return value == null ? 0 : value;
     }
 
     private User requireUser(Long userId) {

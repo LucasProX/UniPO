@@ -87,6 +87,17 @@ public final class PostDtos {
             AuthorView author
     ) {}
 
+    public record InteractionNoticeView(
+            Long id,
+            String type,
+            AuthorView actor,
+            PostView post,
+            String commentContent,
+            Long parentCommentId,
+            LocalDateTime createdAt,
+            Boolean unread
+    ) {}
+
     public record BoardView(String code, String name, String description, Long count) {}
 
     public record ShareResponse(String url, Integer shareCount) {}

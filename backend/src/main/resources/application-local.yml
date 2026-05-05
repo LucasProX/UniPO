@@ -4,6 +4,10 @@ spring:
     username: sa
     password:
     driver-class-name: org.h2.Driver
+  servlet:
+    multipart:
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
   flyway:
     locations: classpath:db/local
   h2:
@@ -15,8 +19,9 @@ app:
   cors:
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
   minio:
-    endpoint: http://localhost:9000
-    public-endpoint: http://localhost:9000
-    access-key: biecuoguo
-    secret-key: biecuoguo_minio_secret
-    bucket: biecuoguo-media
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:biecuoguo}
+    secret-key: ${MINIO_SECRET_KEY:biecuoguo_minio_secret}
+    bucket: ${MINIO_BUCKET:biecuoguo-media}
+    public-read: ${MINIO_PUBLIC_READ:false}

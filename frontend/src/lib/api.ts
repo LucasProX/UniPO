@@ -1,9 +1,9 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { ApiResponse, BoardView, CommentView, ConversationView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
+import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
 
 const api = axios.create({ baseURL: '/api' });
-const localApi = axios.create({ baseURL: 'http://localhost:8080/api' });
+const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api' });
 
 function attachToken(client: AxiosInstance) {
   client.interceptors.request.use((config) => {
@@ -23,6 +23,14 @@ async function unwrap<T>(request: Promise<{ data: ApiResponse<T> }>) {
   return response.data.data;
 }
 
+export function apiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试') {
+  return axios.isAxiosError(error)
+    ? error.response?.data?.message || error.message || fallback
+    : error instanceof Error
+      ? error.message
+      : fallback;
+}
+
 async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; user: UserProfile }> }>) {
   try {
     return await unwrap(request);
@@ -40,7 +48,8 @@ async function loginWithFallback(email: string, password: string) {
   try {
     return await unwrapLogin(api.post('/auth/login', { email, password }));
   } catch (primaryError) {
-    if (!import.meta.env.DEV) throw primaryError;
+    const shouldTryLocalApi = import.meta.env.DEV && axios.isAxiosError(primaryError) && !primaryError.response;
+    if (!shouldTryLocalApi) throw primaryError;
     try {
       return await unwrapLogin(localApi.post('/auth/login', { email, password }));
     } catch (fallbackError) {
@@ -54,6 +63,7 @@ export const campusApi = {
   boards: () => unwrap<BoardView[]>(api.get('/posts/boards')),
   hotToday: () => unwrap<PostView>(api.get('/posts/hot-today')),
   dontMiss: () => unwrap<PostView[]>(api.get('/posts/dont-miss')),
+  interactionNotices: () => unwrap<InteractionNoticeView[]>(api.get('/posts/interaction-notices')),
   comments: (postId: number) => unwrap<CommentView[]>(api.get(`/posts/${postId}/comments`)),
   comment: (postId: number, payload: { content: string; parentId?: number | null }) =>
     unwrap<CommentView>(api.post(`/posts/${postId}/comments`, payload)),
@@ -66,6 +76,8 @@ export const campusApi = {
   share: (postId: number) => unwrap<{ url: string; shareCount: number }>(api.post(`/posts/${postId}/share`)),
   me: () => unwrap<UserProfile>(api.get('/auth/me')),
   stats: () => unwrap<UserStats>(api.get('/users/me/stats')),
+  checkInStatus: () => unwrap<CheckInView>(api.get('/users/me/check-in')),
+  checkIn: () => unwrap<CheckInView>(api.post('/users/me/check-in')),
   myPosts: () => unwrap<PostView[]>(api.get('/users/me/posts')),
   myLikes: () => unwrap<PostView[]>(api.get('/users/me/likes')),
   myFavorites: () => unwrap<PostView[]>(api.get('/users/me/post-favorites')),
@@ -74,6 +86,8 @@ export const campusApi = {
   unreadCount: () => unwrap<number>(api.get('/messages/unread-count')),
   userProfile: (uid: string) => unwrap<PublicProfileView>(api.get(`/users/${uid}`)),
   userPosts: (uid: string) => unwrap<PostView[]>(api.get(`/users/${uid}/posts`)),
+  userLikes: (uid: string) => unwrap<PostView[]>(api.get(`/users/${uid}/likes`)),
+  userFavorites: (uid: string) => unwrap<PostView[]>(api.get(`/users/${uid}/post-favorites`)),
   follow: (uid: string) => unwrap<boolean>(api.post(`/users/${uid}/follow`)),
   unfollow: (uid: string) => unwrap<boolean>(api.delete(`/users/${uid}/follow`)),
   createConversation: (peerUid: string) => unwrap<ConversationView>(api.post('/messages/conversations', { peerUid })),

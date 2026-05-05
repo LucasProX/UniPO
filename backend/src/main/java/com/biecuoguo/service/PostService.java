@@ -118,7 +118,7 @@ public class PostService {
         post.setTitle(request.title().trim());
         post.setContent(request.content().trim());
         post.setExcerpt(excerpt(request.content()));
-        post.setCoverUrl(firstNonBlank(request.coverUrl(), request.images() == null || request.images().isEmpty() ? null : request.images().get(0)));
+        post.setCoverUrl(firstNonBlank(request.coverUrl(), null));
         post.setRiskLevel(firstNonBlank(request.riskLevel(), "normal"));
         post.setOfficial(canPostOfficial(author, request.board()) && Boolean.TRUE.equals(request.official()));
         post.setDontMiss(Boolean.TRUE.equals(request.dontMiss()) && canPostOfficial(author, request.board()));
@@ -304,10 +304,131 @@ public class PostService {
         return postsByIds(ids, currentUser);
     }
 
+    public List<PostDtos.PostView> likedPostsByUid(String uid, CurrentUser currentUser) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, uid));
+        if (user == null) {
+            throw new NoSuchElementException("用户不存在");
+        }
+        List<Long> ids = likeMapper.selectList(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, user.getId()))
+                .stream().map(PostLike::getPostId).toList();
+        return postsByIds(ids, currentUser);
+    }
+
     public List<PostDtos.PostView> favoritePosts(CurrentUser currentUser) {
         List<Long> ids = favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, currentUser.id()))
                 .stream().map(PostFavorite::getPostId).toList();
         return postsByIds(ids, currentUser);
+    }
+
+    public List<PostDtos.PostView> favoritePostsByUid(String uid, CurrentUser currentUser) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, uid));
+        if (user == null) {
+            throw new NoSuchElementException("用户不存在");
+        }
+        List<Long> ids = favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, user.getId()))
+                .stream().map(PostFavorite::getPostId).toList();
+        return postsByIds(ids, currentUser);
+    }
+
+    public List<PostDtos.InteractionNoticeView> interactionNotices(CurrentUser currentUser) {
+        Long currentUserId = currentUser.id();
+        List<Post> myPosts = postMapper.selectList(new LambdaQueryWrapper<Post>()
+                .eq(Post::getAuthorId, currentUserId)
+                .eq(Post::getStatus, "published"));
+        Map<Long, Post> postMap = myPosts.stream().collect(Collectors.toMap(Post::getId, Function.identity()));
+        List<Long> postIds = new ArrayList<>(postMap.keySet());
+
+        List<PostLike> likes = postIds.isEmpty() ? List.of() : likeMapper.selectList(new LambdaQueryWrapper<PostLike>()
+                .in(PostLike::getPostId, postIds)
+                .ne(PostLike::getUserId, currentUserId)
+                .orderByDesc(PostLike::getCreatedAt));
+        List<PostFavorite> favorites = postIds.isEmpty() ? List.of() : favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>()
+                .in(PostFavorite::getPostId, postIds)
+                .ne(PostFavorite::getUserId, currentUserId)
+                .orderByDesc(PostFavorite::getCreatedAt));
+        List<Comment> comments = postIds.isEmpty() ? List.of() : commentMapper.selectList(new LambdaQueryWrapper<Comment>()
+                .in(Comment::getPostId, postIds)
+                .ne(Comment::getUserId, currentUserId)
+                .ne(Comment::getStatus, "hidden")
+                .orderByDesc(Comment::getCreatedAt));
+
+        List<Comment> myRootComments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getUserId, currentUserId)
+                .isNotNull(Comment::getPostId)
+                .isNull(Comment::getParentId)
+                .ne(Comment::getStatus, "hidden"));
+        List<Long> myRootCommentIds = myRootComments.stream().map(Comment::getId).toList();
+        List<Comment> commentReplies = myRootCommentIds.isEmpty() ? List.of() : commentMapper.selectList(new LambdaQueryWrapper<Comment>()
+                .in(Comment::getParentId, myRootCommentIds)
+                .ne(Comment::getUserId, currentUserId)
+                .ne(Comment::getStatus, "hidden")
+                .orderByDesc(Comment::getCreatedAt));
+        Set<Long> replyCommentIds = commentReplies.stream().map(Comment::getId).collect(Collectors.toSet());
+        comments = comments.stream()
+                .filter(comment -> !replyCommentIds.contains(comment.getId()))
+                .toList();
+
+        Set<Long> replyPostIds = commentReplies.stream()
+                .map(Comment::getPostId)
+                .filter(Objects::nonNull)
+                .filter(postId -> !postMap.containsKey(postId))
+                .collect(Collectors.toSet());
+        if (!replyPostIds.isEmpty()) {
+            postMapper.selectList(new LambdaQueryWrapper<Post>()
+                            .in(Post::getId, replyPostIds)
+                            .eq(Post::getStatus, "published"))
+                    .forEach(post -> postMap.put(post.getId(), post));
+        }
+
+        Set<Long> actorIds = new HashSet<>();
+        likes.forEach(item -> actorIds.add(item.getUserId()));
+        favorites.forEach(item -> actorIds.add(item.getUserId()));
+        comments.forEach(item -> actorIds.add(item.getUserId()));
+        commentReplies.forEach(item -> actorIds.add(item.getUserId()));
+        Map<Long, User> users = actorIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, actorIds))
+                .stream().collect(Collectors.toMap(User::getId, Function.identity()));
+
+        List<PostDtos.InteractionNoticeView> notices = new ArrayList<>();
+        likes.forEach(item -> {
+            User actor = users.get(item.getUserId());
+            Post post = postMap.get(item.getPostId());
+            if (actor != null && post != null) {
+                notices.add(new PostDtos.InteractionNoticeView(
+                        item.getId(), "like", authorView(actor), toView(post, currentUser), null, null, item.getCreatedAt(), true
+                ));
+            }
+        });
+        favorites.forEach(item -> {
+            User actor = users.get(item.getUserId());
+            Post post = postMap.get(item.getPostId());
+            if (actor != null && post != null) {
+                notices.add(new PostDtos.InteractionNoticeView(
+                        item.getId(), "favorite", authorView(actor), toView(post, currentUser), null, null, item.getCreatedAt(), true
+                ));
+            }
+        });
+        comments.forEach(item -> {
+            User actor = users.get(item.getUserId());
+            Post post = postMap.get(item.getPostId());
+            if (actor != null && post != null) {
+                notices.add(new PostDtos.InteractionNoticeView(
+                        item.getId(), "comment", authorView(actor), toView(post, currentUser), item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                ));
+            }
+        });
+        commentReplies.forEach(item -> {
+            User actor = users.get(item.getUserId());
+            Post post = postMap.get(item.getPostId());
+            if (actor != null && post != null) {
+                notices.add(new PostDtos.InteractionNoticeView(
+                        item.getId(), "reply", authorView(actor), toView(post, currentUser), item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                ));
+            }
+        });
+        return notices.stream()
+                .sorted(Comparator.comparing(PostDtos.InteractionNoticeView::createdAt).reversed())
+                .limit(50)
+                .toList();
     }
 
     private List<PostDtos.PostView> postsByIds(List<Long> ids, CurrentUser currentUser) {

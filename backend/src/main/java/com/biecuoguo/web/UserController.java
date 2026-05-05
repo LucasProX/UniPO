@@ -40,6 +40,16 @@ public class UserController {
         return ApiResponse.ok(userService.stats(SecurityUtils.currentUser().id()));
     }
 
+    @GetMapping("/check-in")
+    public ApiResponse<UserDtos.CheckInView> checkInStatus() {
+        return ApiResponse.ok(userService.checkInStatus(SecurityUtils.currentUser().id()));
+    }
+
+    @PostMapping("/check-in")
+    public ApiResponse<UserDtos.CheckInView> checkIn() {
+        return ApiResponse.ok(userService.checkIn(SecurityUtils.currentUser().id()));
+    }
+
     @GetMapping("/posts")
     public ApiResponse<java.util.List<PostDtos.PostView>> posts() {
         return ApiResponse.ok(postService.userPosts(SecurityUtils.currentUser().id(), SecurityUtils.currentUser()));

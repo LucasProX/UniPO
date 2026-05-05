@@ -65,6 +65,17 @@ export interface CommentView {
   author: AuthorView;
 }
 
+export interface InteractionNoticeView {
+  id: number;
+  type: 'like' | 'favorite' | 'comment' | 'reply';
+  actor: AuthorView;
+  post: PostView;
+  commentContent?: string;
+  parentCommentId?: number;
+  createdAt: string;
+  unread: boolean;
+}
+
 export interface BoardView {
   code: BoardCode;
   name: string;
@@ -113,6 +124,14 @@ export interface PublicProfileView {
   stats: UserStats;
   following: boolean;
   mine: boolean;
+}
+
+export interface CheckInView {
+  profile: UserProfile;
+  checkedInToday: boolean;
+  streak: number;
+  xpGained: number;
+  checkinDate: string;
 }
 
 export interface ConversationView {

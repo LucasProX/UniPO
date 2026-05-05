@@ -2,6 +2,8 @@ package com.biecuoguo.dto;
 
 import jakarta.validation.constraints.Size;
 
+import java.time.LocalDate;
+
 public final class UserDtos {
     private UserDtos() {}
 
@@ -29,6 +31,8 @@ public final class UserDtos {
     ) {}
 
     public record UserStats(long favorites, long likedPosts, long sharedPosts, long completed, long comments, long upcoming, long avoidedRisks, long following, long followers, long posts) {}
+
+    public record CheckInView(UserProfile profile, boolean checkedInToday, int streak, int xpGained, LocalDate checkinDate) {}
 
     public record PublicProfile(UserProfile profile, UserStats stats, boolean following, boolean mine) {}
 }

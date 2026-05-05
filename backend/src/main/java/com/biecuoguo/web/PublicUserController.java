@@ -32,6 +32,16 @@ public class PublicUserController {
         return ApiResponse.ok(postService.userPostsByUid(uid, currentUser(authentication)));
     }
 
+    @GetMapping("/{uid}/likes")
+    public ApiResponse<List<PostDtos.PostView>> likes(@PathVariable String uid, Authentication authentication) {
+        return ApiResponse.ok(postService.likedPostsByUid(uid, currentUser(authentication)));
+    }
+
+    @GetMapping("/{uid}/post-favorites")
+    public ApiResponse<List<PostDtos.PostView>> postFavorites(@PathVariable String uid, Authentication authentication) {
+        return ApiResponse.ok(postService.favoritePostsByUid(uid, currentUser(authentication)));
+    }
+
     private CurrentUser currentUser(Authentication authentication) {
         return authentication == null || !(authentication.getPrincipal() instanceof CurrentUser user) ? null : user;
     }
