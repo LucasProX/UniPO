@@ -1,4 +1,4 @@
-# 别错过大学校园 PO
+# UniPO
 
 校园 PO 信息流应用，包含 Vue 3 前端、Spring Boot 后端和 MySQL 数据库。MinIO 作为外部已部署服务接入，不由本仓库的 Docker Compose 创建。
 

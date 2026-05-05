@@ -3,7 +3,7 @@ name: unipo
 services:
   mysql:
     image: mysql:8.4
-    container_name: biecuoguo-mysql
+    container_name: unipo-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password_change_me}
@@ -27,7 +27,7 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: biecuoguo-backend
+    container_name: unipo-backend
     restart: unless-stopped
     depends_on:
       mysql:
@@ -60,7 +60,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: biecuoguo-frontend
+    container_name: unipo-frontend
     restart: unless-stopped
     depends_on:
       backend:

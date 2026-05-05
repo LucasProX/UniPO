@@ -4,8 +4,8 @@
       <button class="flex items-center gap-3 text-left" @click="activeView = 'home'">
         <span class="grid h-12 w-12 place-items-center rounded-[16px] bg-[#19202f] text-lg font-black text-white shadow-lg">PO</span>
         <span>
-          <span class="block text-lg font-black leading-5 text-[#19202f]">别错过大学</span>
-          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[#718097]">Campus PO</span>
+          <span class="block text-lg font-black leading-5 text-[#19202f]">UniPO</span>
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-[#718097]">Campus Feed</span>
         </span>
       </button>
 
@@ -1477,7 +1477,7 @@ const levelTierDescriptions = [
 
 const dailyQuotes = [
   { text: '今天先把最小的一件事做完，心里会亮一点。', source: '校园治愈推送' },
-  { text: '不需要一直满格电量，低电量也可以慢慢往前。', source: '别错过大学' },
+  { text: '不需要一直满格电量，低电量也可以慢慢往前。', source: 'UniPO' },
   { text: '你已经在路上了，慢一点也不算掉队。', source: '后台素材 Mock' }
 ];
 
