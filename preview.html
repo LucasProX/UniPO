@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>别错过大学 MVP 预览</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f7; color: #1d1d1f; }
+    button, input, textarea, select { font: inherit; }
+    .app { display: grid; grid-template-columns: 240px minmax(520px, 1fr) 420px; min-height: 100vh; }
+    .side { background: #fff; border-right: 1px solid #e5e5ea; padding: 20px 16px; display: flex; flex-direction: column; }
+    .mark { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 8px; background: #1d1d1f; color: #fff; font-weight: 700; font-size: 18px; }
+    h1 { margin: 12px 0 2px; font-size: 18px; }
+    .muted { color: #6e6e73; }
+    .small { font-size: 12px; }
+    nav { margin-top: 28px; display: grid; gap: 4px; }
+    nav button { border: 0; background: transparent; text-align: left; border-radius: 6px; padding: 12px; color: #6e6e73; cursor: pointer; }
+    nav button.active, nav button:hover { background: #f5f5f7; color: #1d1d1f; }
+    .user { margin-top: auto; border-top: 1px solid #e5e5ea; padding-top: 16px; }
+    .main { height: 100vh; overflow: auto; padding: 24px; }
+    .wrap { max-width: 880px; margin: 0 auto; }
+    .hello { margin: 0; font-size: 14px; color: #6e6e73; }
+    h2 { margin: 6px 0 0; font-size: 32px; letter-spacing: 0; line-height: 1.2; }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 22px 0; }
+    .tile, .card, .panel { background: #fff; border: 1px solid #e5e5ea; border-radius: 8px; }
+    .tile { padding: 16px; }
+    .tile b { display: block; margin-top: 8px; font-size: 18px; line-height: 1.35; }
+    .controls { padding: 12px; margin-bottom: 18px; }
+    .search { width: 100%; height: 40px; border: 1px solid #e5e5ea; border-radius: 6px; padding: 0 12px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .filters button { border: 0; border-radius: 6px; padding: 9px 12px; background: #f5f5f7; color: #6e6e73; cursor: pointer; }
+    .filters button.active { background: #1d1d1f; color: white; }
+    .cards { display: grid; gap: 14px; }
+    .card { padding: 16px; cursor: pointer; transition: .18s cubic-bezier(.22,1,.36,1); }
+    .card:hover, .card.active { border-color: #007aff; box-shadow: 0 0 0 3px #007aff14; transform: translateY(-1px); }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .pill { border-radius: 999px; padding: 5px 8px; font-size: 12px; font-weight: 600; background: #f5f5f7; color: #6e6e73; }
+    .pill.blue { color: #007aff; background: #007aff12; }
+    .pill.warn { color: #ff9500; background: #ff950014; }
+    .pill.risk { color: #ff3b30; background: #ff3b3012; }
+    .pill.done { color: #34c759; background: #34c75912; }
+    .card h3 { margin: 0; font-size: 17px; line-height: 1.45; }
+    .card p { line-height: 1.7; }
+    .meta { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5e5ea; display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .actions { display: flex; gap: 8px; }
+    .icon { width: 34px; height: 34px; border-radius: 999px; border: 1px solid #e5e5ea; background: #fff; cursor: pointer; }
+    .detail { height: 100vh; overflow: auto; background: #fff; border-left: 1px solid #e5e5ea; padding: 22px; }
+    .detail h2 { font-size: 22px; line-height: 1.45; }
+    .info { padding: 14px; margin: 18px 0; }
+    .info dl { margin: 0; display: grid; gap: 12px; }
+    dt { color: #6e6e73; font-size: 12px; }
+    dd { margin: 4px 0 0; line-height: 1.6; }
+    .block { margin: 18px 0; }
+    .block h4 { margin: 0 0 8px; }
+    .btn { border: 0; border-radius: 6px; background: #007aff; color: white; padding: 10px 12px; cursor: pointer; }
+    .btn.secondary { background: #fff; color: #1d1d1f; border: 1px solid #e5e5ea; }
+    .comment { border: 1px solid #e5e5ea; border-radius: 8px; padding: 12px; margin: 10px 0; }
+    .comment strong { display: block; }
+    .hidden { display: none; }
+    @media (max-width: 1120px) { .app { grid-template-columns: 76px 1fr; } .detail { display: none; } .side h1, .side .small, .side span, .user { display: none; } }
+    @media (max-width: 720px) { .summary { grid-template-columns: 1fr; } h2 { font-size: 24px; } .main { padding: 16px; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="mark">别</div>
+      <h1>别错过大学</h1>
+      <p class="small muted">只看和你有关的校园信息</p>
+      <nav>
+        <button class="active" data-view="home">今日别错过</button>
+        <button data-view="reminders">我的提醒</button>
+        <button data-view="favorites">收藏事项</button>
+        <button data-view="calendar">机会日历</button>
+        <button data-view="profile">用户中心</button>
+        <button data-view="admin">后台管理</button>
+      </nav>
+      <div class="user">
+        <b>Lucas同学</b>
+        <p class="small muted">大二 / 计算机科学与技术</p>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="wrap" id="content"></div>
+    </main>
+    <aside class="detail" id="detail"></aside>
+  </div>
+
+  <script>
+    const notices = [
+      { id: 1, title: "2026 年上半年大学英语四六级报名确认", category: "考试报名", urgent: true, highRisk: true, recommended: true, deadline: "明天 17:00", summary: "四六级报名明天 17:00 截止，未确认缴费视为放弃本次考试。", miss: "错过后通常不能补报，只能等下一次考试窗口。", action: "今天先登录报名系统确认科目、考点和缴费状态。", tags: ["快截止", "高风险", "官方通知"], comments: 0 },
+      { id: 2, title: "国家奖学金与校级奖学金材料提交", category: "评奖评优", urgent: false, highRisk: true, recommended: true, deadline: "5月8日 17:00", summary: "奖学金材料本周五截止，需要提前准备综测证明和获奖佐证。", miss: "错过可能影响本学期评奖资格，部分学院不接受逾期补交。", action: "先确认综测分、排名证明和材料清单，缺证明今天就联系辅导员。", tags: ["影响综测", "适合保研", "需要材料"], comments: 1 },
+      { id: 3, title: "大学生创新创业训练计划项目申报", category: "竞赛大创", urgent: false, highRisk: false, recommended: true, deadline: "5月15日 18:00", summary: "大创项目开始申报，适合想积累科研、竞赛和保研材料的同学。", miss: "错过本轮可能要等下一学年，项目周期也会被推迟。", action: "先找指导老师确认方向，再组 2-4 人队伍打磨项目书。", tags: ["适合保研", "需要材料", "适合大三"], comments: 1 },
+      { id: 4, title: "2026 届毕业生图像采集补拍安排", category: "教务事务", urgent: true, highRisk: true, recommended: false, deadline: "5月6日 16:00", summary: "毕业图像采集补拍只开放一次，未采集会影响毕业材料归档。", miss: "错过补拍可能影响毕业相关材料办理，后续处理成本更高。", action: "今天确认自己是否在补拍名单里，并预约补拍时间。", tags: ["快截止", "高风险", "官方通知"], comments: 0 }
+    ];
+    const state = { selected: notices[0], favorites: new Set(), reminders: new Set(), completed: new Set(), view: "home" };
+    const content = document.querySelector("#content");
+    const detail = document.querySelector("#detail");
+    document.querySelectorAll("nav button").forEach(btn => btn.onclick = () => { document.querySelectorAll("nav button").forEach(b => b.classList.remove("active")); btn.classList.add("active"); state.view = btn.dataset.view; render(); });
+    function render() { if (state.view === "home") renderHome(); else if (state.view === "admin") renderAdmin(); else renderSimple(state.view); renderDetail(); }
+    function renderHome() {
+      content.innerHTML = `
+        <p class="hello">下午好，Lucas同学</p>
+        <h2>你本周有 5 件事可能会错过。</h2>
+        <section class="summary">
+          <div class="tile"><span class="small muted">最快截止</span><b style="color:#ff9500">四六级报名确认</b></div>
+          <div class="tile"><span class="small muted">高风险事项</span><b style="color:#ff3b30">3 件</b></div>
+          <div class="tile"><span class="small muted">最适合你</span><b style="color:#007aff">3 件</b></div>
+        </section>
+        <section class="panel controls">
+          <input class="search" placeholder="搜索通知、材料、截止事项" oninput="filterCards(this.value)" />
+          <div class="filters"><button class="active">全部</button><button>快截止</button><button>高风险</button><button>和我有关</button><button>考试报名</button><button>评奖评优</button></div>
+        </section>
+        <section class="cards" id="cards"></section>`;
+      renderCards(notices);
+    }
+    function renderCards(items) {
+      document.querySelector("#cards").innerHTML = items.map(n => `
+        <article class="card ${state.selected.id === n.id ? "active" : ""}" onclick="selectNotice(${n.id})">
+          <div class="pills">
+            <span class="pill ${n.urgent ? "warn" : ""}">${n.deadline}</span>
+            ${n.highRisk ? '<span class="pill risk">高风险</span>' : ''}
+            ${n.recommended ? '<span class="pill blue">和你有关</span>' : ''}
+            ${state.completed.has(n.id) ? '<span class="pill done">已完成</span>' : ''}
+          </div>
+          <h3>${n.title}</h3>
+          <p class="muted">${n.summary}</p>
+          <p><span class="muted">错过后果：</span>${n.miss}</p>
+          <p><span class="muted">下一步：</span>${n.action}</p>
+          <div class="pills">${n.tags.map(t => `<span class="pill">${t}</span>`).join("")}</div>
+          <div class="meta"><span class="small muted">${n.category} / 评论 ${n.comments}</span><div class="actions"><button class="icon" onclick="toggleFavorite(event, ${n.id})">${state.favorites.has(n.id) ? "♥" : "♡"}</button><button class="icon" onclick="toggleReminder(event, ${n.id})">🔔</button><button class="icon" onclick="complete(event, ${n.id})">✓</button></div></div>
+        </article>`).join("");
+    }
+    function renderDetail() {
+      const n = state.selected;
+      detail.innerHTML = `
+        <div class="pills"><span class="pill ${n.highRisk ? "risk" : "blue"}">${n.highRisk ? "高风险" : "普通风险"}</span><span class="pill ${n.urgent ? "warn" : ""}">${n.urgent ? "快截止" : "可规划"}</span></div>
+        <h2>${n.title}</h2><p class="muted">${n.summary}</p>
+        <div class="panel info"><dl><div><dt>截止时间</dt><dd>${n.deadline}</dd></div><div><dt>适合人群</dt><dd>准备保研、评奖、竞赛或需要处理教务事项的同学。</dd></div><div><dt>错过后果</dt><dd>${n.miss}</dd></div><div><dt>下一步行动</dt><dd>${n.action}</dd></div></dl></div>
+        <div class="block"><h4>这是什么</h4><p class="muted">这是一条被运营人员翻译成“人话”的校园通知，重点放在截止时间、适合人群和下一步行动。</p></div>
+        <div class="block"><h4>为什么重要</h4><p class="muted">它可能影响考试、评奖、保研、毕业或实习等关键节点。</p></div>
+        <div class="block"><h4>需要准备什么</h4><p class="muted">身份证、学号、申请表、证明材料、官方系统账号。</p></div>
+        <button class="btn" onclick="alert('已生成分享文案')">分享文案</button> <button class="btn secondary" onclick="alert('已反馈有用')">有用</button>
+        <hr style="border:0;border-top:1px solid #e5e5ea;margin:24px 0" />
+        <h3>同学提醒</h3>
+        <div class="comment"><strong>陈同学</strong><p class="small muted">大三 / 计算机科学与技术 / 认证学长学姐</p><p>${n.id === 3 ? "这个大创最好提前找老师，最后一周基本来不及。项目书不用写得很复杂，但研究目标要清楚。" : "材料建议按学院模板命名，证书截图也要留原件，辅导员核验会快很多。"}</p></div>`;
+    }
+    function renderSimple(view) {
+      const titles = { reminders: "我的提醒", favorites: "收藏事项", calendar: "机会日历", profile: "用户中心" };
+      const body = view === "favorites" ? notices.filter(n => state.favorites.has(n.id)).map(n => `<div class="card" onclick="selectNotice(${n.id})"><h3>${n.title}</h3><p class="muted">${n.summary}</p></div>`).join("") || '<p class="muted">还没有收藏事项。</p>' :
+        view === "reminders" ? [...state.reminders].map(id => `<div class="card"><h3>${notices.find(n => n.id === id).title}</h3><p class="muted">提醒：截止前 24 小时</p></div>`).join("") || '<p class="muted">还没有设置提醒。</p>' :
+        view === "calendar" ? notices.map(n => `<div class="card" onclick="selectNotice(${n.id})"><h3>${n.deadline}</h3><p>${n.title}</p></div>`).join("") :
+        `<div class="panel info"><h3>Lucas同学</h3><p class="muted">大二 / 计算机科学与技术</p><p>目标：保研、奖学金、竞赛</p><button class="btn">保存资料</button></div>`;
+      content.innerHTML = `<h2>${titles[view]}</h2><p class="muted">本页为本机静态预览，真实 React 版已在项目中实现。</p><section class="cards" style="margin-top:18px">${body}</section>`;
+    }
+    function renderAdmin() {
+      content.innerHTML = `<h2>后台管理</h2><p class="muted">录入、预览、发布校园通知，并审核评论。</p><section class="summary"><div class="tile"><span class="small muted">用户</span><b>2</b></div><div class="tile"><span class="small muted">通知</span><b>${notices.length}</b></div><div class="tile"><span class="small muted">评论</span><b>2</b></div></section><section class="cards">${notices.map(n => `<div class="card" onclick="selectNotice(${n.id})"><h3>${n.title}</h3><p class="muted">published / ${n.deadline}</p><button class="btn secondary" onclick="event.stopPropagation(); alert('已保存')">编辑</button> <button class="btn" onclick="event.stopPropagation(); alert('已发布')">发布</button></div>`).join("")}</section>`;
+    }
+    window.selectNotice = id => { state.selected = notices.find(n => n.id === id); render(); };
+    window.toggleFavorite = (e, id) => { e.stopPropagation(); state.favorites.has(id) ? state.favorites.delete(id) : state.favorites.add(id); render(); };
+    window.toggleReminder = (e, id) => { e.stopPropagation(); state.reminders.add(id); render(); };
+    window.complete = (e, id) => { e.stopPropagation(); state.completed.add(id); render(); };
+    window.filterCards = q => renderCards(notices.filter(n => `${n.title}${n.summary}${n.action}`.includes(q)));
+    render();
+  </script>
+</body>
+</html>

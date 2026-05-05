@@ -1,0 +1,11 @@
+.env
+node_modules/
+dist/
+target/
+.idea/
+.vscode/
+*.log
+mysql_data/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
