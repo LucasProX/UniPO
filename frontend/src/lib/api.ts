@@ -32,6 +32,10 @@ export function apiErrorMessage(error: unknown, fallback = '请求失败，请�
       : fallback;
 }
 
+export function isAuthError(error: unknown) {
+  return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
 async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; user: UserProfile }> }>) {
   try {
     return await unwrap(request);

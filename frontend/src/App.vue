@@ -1411,7 +1411,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
-import { apiErrorMessage, authApi, campusApi, mediaApi, postApi, userApi } from './lib/api';
+import { apiErrorMessage, authApi, campusApi, isAuthError, mediaApi, postApi, userApi } from './lib/api';
 import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
@@ -2054,7 +2054,7 @@ async function loadAuthenticatedData() {
   startPresenceHeartbeat();
   const [stats, messageList, unread, myPosts, myLikes, myFavorites, notices, checkIn] = await Promise.all([
     safe(() => campusApi.stats(), fallbackStats()),
-    safe(() => campusApi.conversations(), fallbackConversations()),
+    safe(() => campusApi.conversations(), [] as ConversationView[]),
     safe(() => campusApi.unreadCount(), 0),
     safe(() => campusApi.myPosts(), [] as PostView[]),
     safe(() => campusApi.myLikes(), [] as PostView[]),
@@ -2994,6 +2994,14 @@ function replaceOptimisticMessage(conversationId: number, optimisticId: number, 
   };
 }
 
+function removeOptimisticMessage(conversationId: number, optimisticId: number) {
+  const existing = conversationMessages.value[conversationId] || [];
+  conversationMessages.value = {
+    ...conversationMessages.value,
+    [conversationId]: existing.filter((item) => item.id !== optimisticId)
+  };
+}
+
 function mergeConversationMessages(conversationId: number, incoming: CampusMessage[]) {
   const existing = conversationMessages.value[conversationId] || [];
   const pendingOptimistic = existing.filter((message) => message.optimistic);
@@ -3123,7 +3131,14 @@ async function toggleViewedProfileFollow() {
 
 async function openMessageDraft(profile: UserProfile) {
   if (!requireLogin()) return;
-  const conversation = await safe(() => campusApi.createConversation(profile.publicUid), null as ConversationView | null);
+  let conversation: ConversationView | null = null;
+  try {
+    conversation = await campusApi.createConversation(profile.publicUid);
+  } catch (error) {
+    if (isAuthError(error)) return openLoginDialog('登录状态失效，请重新登录后再试');
+    showAuthNotice(apiErrorMessage(error), 'error');
+    return;
+  }
   if (!conversation) return openLoginDialog('登录状态失效，请重新登录后再试');
   conversations.value = [
     conversation,
@@ -3169,7 +3184,16 @@ async function sendConversationMessage() {
   updateConversationPreview(conversationId, content);
   await nextTick();
   scrollMessageThreadToBottom();
-  const sent = await safe(() => campusApi.sendMessage(conversationId, content), null as MessageView | null);
+  let sent: MessageView | null = null;
+  try {
+    sent = await campusApi.sendMessage(conversationId, content);
+  } catch (error) {
+    removeOptimisticMessage(conversationId, optimistic.id);
+    if (isAuthError(error)) return openLoginDialog('登录状态失效，私信没有发送成功');
+    showAuthNotice(apiErrorMessage(error), 'error');
+    await refreshActiveConversation({ scroll: true });
+    return;
+  }
   if (!sent) return openLoginDialog('登录状态失效，私信没有发送成功');
   replaceOptimisticMessage(conversationId, optimistic.id, normalizeMessage(sent));
   updateConversationPreview(conversationId, content, sent.createdAt);
@@ -4312,6 +4336,7 @@ function fallbackComments(): CampusComment[] {
 }
 
 function fallbackConversations(): ConversationView[] {
+  return [];
   const posts = fallbackPosts();
   const now = dayjs();
   return [
@@ -4335,6 +4360,7 @@ function fallbackConversations(): ConversationView[] {
 }
 
 function fallbackConversationMessages(): Record<number, CampusMessage[]> {
+  return {};
   const posts = fallbackPosts();
   const now = dayjs();
   return {
