@@ -96,7 +96,9 @@ services=(backend frontend caddy)
 if [[ "$deploy_local_mysql" == true ]]; then
   services=(mysql backend frontend caddy)
 fi
-"${COMPOSE[@]}" up -d --build "${services[@]}"
+"${COMPOSE[@]}" build backend
+"${COMPOSE[@]}" build frontend
+"${COMPOSE[@]}" up -d --no-build "${services[@]}"
 
 echo "Service status:"
 "${COMPOSE[@]}" ps
