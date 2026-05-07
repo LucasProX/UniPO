@@ -1,6 +1,7 @@
 package com.biecuoguo.web;
 
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -18,6 +19,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.badRequest().body(ErrorResponse.of(ex.getMessage()));
+    }
+
+    @ExceptionHandler(DuplicateKeyException.class)
+    ResponseEntity<ErrorResponse> handleDuplicateKey(DuplicateKeyException ex) {
+        return ResponseEntity.badRequest().body(ErrorResponse.of("名称或账号已被占用"));
     }
 
     @ExceptionHandler({NoSuchElementException.class})
