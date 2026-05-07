@@ -12,10 +12,15 @@ import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
+import io.minio.errors.ErrorResponseException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.NoSuchElementException;
@@ -23,6 +28,8 @@ import java.util.UUID;
 
 @Service
 public class MediaService {
+    private static final Logger log = LoggerFactory.getLogger(MediaService.class);
+
     private final AppProperties properties;
     private final MediaObjectMapper mediaObjectMapper;
 
@@ -70,7 +77,7 @@ public class MediaService {
             mediaObjectMapper.updateById(media);
             return new MediaDtos.UploadResponse(media.getId(), media.getUrl(), media.getObjectKey(), media.getContentType(), media.getSizeBytes(), media.getPurpose(), media.getCreatedAt());
         } catch (Exception ex) {
-            throw new IllegalArgumentException("上传失败，请确认 MinIO 已启动");
+            throw uploadFailure(ex);
         }
     }
 
@@ -102,6 +109,67 @@ public class MediaService {
                 .endpoint(minio.endpoint())
                 .credentials(minio.accessKey(), minio.secretKey())
                 .build();
+    }
+
+    private IllegalArgumentException uploadFailure(Exception ex) {
+        AppProperties.Minio minio = properties.minio();
+        log.warn("MinIO upload failed. endpoint={}, bucket={}, publicRead={}, accessKeySet={}, error={}: {}",
+                minio.endpoint(),
+                minio.bucket(),
+                minio.publicRead(),
+                minio.accessKey() != null && !minio.accessKey().isBlank(),
+                ex.getClass().getSimpleName(),
+                ex.getMessage(),
+                ex);
+        return new IllegalArgumentException("上传失败：" + uploadFailureMessage(ex, minio));
+    }
+
+    private String uploadFailureMessage(Exception ex, AppProperties.Minio minio) {
+        if (isBlank(minio.endpoint())) {
+            return "MinIO 地址没有配置";
+        }
+        if (isBlank(minio.accessKey()) || isBlank(minio.secretKey())) {
+            return "MinIO 访问密钥没有配置";
+        }
+        if (isBlank(minio.bucket())) {
+            return "MinIO bucket 没有配置";
+        }
+        if (ex instanceof ErrorResponseException error) {
+            String code = error.errorResponse().code();
+            String message = firstNonBlank(error.errorResponse().message(), error.getMessage());
+            if ("InvalidAccessKeyId".equalsIgnoreCase(code)) {
+                return "MinIO access key 不存在，请检查 MINIO_ACCESS_KEY";
+            }
+            if ("SignatureDoesNotMatch".equalsIgnoreCase(code)) {
+                return "MinIO secret key 不匹配，请检查 MINIO_SECRET_KEY";
+            }
+            if ("AccessDenied".equalsIgnoreCase(code)) {
+                return "MinIO 访问密钥没有 bucket 写入权限";
+            }
+            if ("NoSuchBucket".equalsIgnoreCase(code)) {
+                return "MinIO bucket 不存在，且当前密钥不能自动创建";
+            }
+            return "MinIO 返回 " + code + "：" + message;
+        }
+        if (hasCause(ex, ConnectException.class) || hasCause(ex, UnknownHostException.class)) {
+            return "无法连接 MinIO 服务，请检查 MINIO_ENDPOINT";
+        }
+        return firstNonBlank(ex.getMessage(), "请查看后端日志中的 MinIO 详细错误");
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private boolean hasCause(Throwable throwable, Class<? extends Throwable> causeType) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (causeType.isInstance(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private String mediaUrl(MediaObject media) {

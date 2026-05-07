@@ -33,7 +33,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verification-code", "/api/auth/verification-code/verify", "/api/auth/reset-password", "/api/auth/email-availability", "/api/auth/nickname-availability").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/notices/**", "/api/categories", "/api/tags", "/api/schools").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/options/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()

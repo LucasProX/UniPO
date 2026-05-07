@@ -33,14 +33,16 @@ public class AuthService implements CommandLineRunner {
     private final AppProperties properties;
     private final UserMapper userMapper;
     private final UserPreferenceMapper preferenceMapper;
+    private final VerificationService verificationService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final PresenceService presenceService;
 
-    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, PasswordEncoder passwordEncoder, JwtService jwtService, PresenceService presenceService) {
+    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, PresenceService presenceService) {
         this.properties = properties;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
+        this.verificationService = verificationService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.presenceService = presenceService;
@@ -48,16 +50,25 @@ public class AuthService implements CommandLineRunner {
 
     @Transactional
     public AuthDtos.AuthResponse register(AuthDtos.RegisterRequest request) {
-        if (findByEmail(request.email()) != null) {
+        String email = normalizeEmail(request.email());
+        if (!request.password().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("两次输入的密码不一致");
+        }
+        if (findByEmail(email) != null) {
             throw new IllegalArgumentException("该邮箱已注册");
         }
+        String nickname = normalizeNickname(request.nickname());
+        if (findByNickname(nickname) != null) {
+            throw new IllegalArgumentException("该用户名已被占用");
+        }
+        verificationService.verifyCode(email, "register", request.verificationCode());
         LocalDateTime now = LocalDateTime.now();
         User user = new User();
-        user.setEmail(request.email().trim().toLowerCase());
+        user.setEmail(email);
         user.setPublicUid(generatePublicUid());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
-        user.setNickname(request.nickname().trim());
-        user.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=" + request.nickname().trim());
+        user.setNickname(nickname);
+        user.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=" + nickname);
         user.setSchoolId(1L);
         user.setGrade("大二");
         user.setMajor("未设置专业");
@@ -76,6 +87,54 @@ public class AuthService implements CommandLineRunner {
         String token = jwtService.createToken(new CurrentUser(user.getId(), user.getEmail(), user.getRole()));
         presenceService.markOnline(user.getId());
         return new AuthDtos.AuthResponse(token, UserProfile.from(user, preference, true));
+    }
+
+    public void requestVerificationCode(AuthDtos.VerificationRequest request) {
+        String email = normalizeEmail(request.email());
+        User user = findByEmail(email);
+        if ("register".equals(request.purpose()) && user != null) {
+            throw new IllegalArgumentException("该邮箱已注册");
+        }
+        if ("reset-password".equals(request.purpose()) && user == null) {
+            throw new IllegalArgumentException("该邮箱尚未注册");
+        }
+        verificationService.requestCode(email, request.purpose());
+    }
+
+    public void verifyRegistrationCode(AuthDtos.VerifyCodeRequest request) {
+        verificationService.verifyCode(request.email(), request.purpose(), request.code());
+    }
+
+    public AuthDtos.AvailabilityResponse emailAvailability(String email, String purpose) {
+        String normalizedPurpose = purpose == null || purpose.isBlank() ? "register" : purpose.trim();
+        User user = findByEmail(email);
+        boolean available = "reset-password".equals(normalizedPurpose) ? user != null : user == null;
+        return new AuthDtos.AvailabilityResponse(available);
+    }
+
+    public AuthDtos.AvailabilityResponse nicknameAvailability(String nickname) {
+        String normalized = normalizeNickname(nickname);
+        if (normalized.isBlank()) {
+            return new AuthDtos.AvailabilityResponse(false);
+        }
+        User user = findByNickname(normalized);
+        return new AuthDtos.AvailabilityResponse(user == null);
+    }
+
+    @Transactional
+    public void resetPassword(AuthDtos.ResetPasswordRequest request) {
+        String email = normalizeEmail(request.email());
+        if (!request.password().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("两次输入的密码不一致");
+        }
+        User user = findByEmail(email);
+        if (user == null) {
+            throw new IllegalArgumentException("该邮箱尚未注册");
+        }
+        verificationService.verifyCode(email, "reset-password", request.verificationCode());
+        user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
     }
 
     public AuthDtos.AuthResponse login(AuthDtos.LoginRequest request) {
@@ -254,7 +313,20 @@ public class AuthService implements CommandLineRunner {
 
     private User findByEmail(String email) {
         return userMapper.selectOne(new LambdaQueryWrapper<User>()
-                .eq(User::getEmail, email.trim().toLowerCase()));
+                .eq(User::getEmail, normalizeEmail(email)));
+    }
+
+    private User findByNickname(String nickname) {
+        return userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getNickname, normalizeNickname(nickname)));
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private String normalizeNickname(String nickname) {
+        return nickname == null ? "" : nickname.trim();
     }
 
     private String generatePublicUid() {

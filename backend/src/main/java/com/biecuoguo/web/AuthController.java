@@ -28,6 +28,34 @@ public class AuthController {
         return ApiResponse.ok(authService.register(request));
     }
 
+    @PostMapping("/verification-code")
+    public ApiResponse<Boolean> requestVerificationCode(@Valid @RequestBody AuthDtos.VerificationRequest request) {
+        authService.requestVerificationCode(request);
+        return ApiResponse.ok(true);
+    }
+
+    @PostMapping("/verification-code/verify")
+    public ApiResponse<Boolean> verifyCode(@Valid @RequestBody AuthDtos.VerifyCodeRequest request) {
+        authService.verifyRegistrationCode(request);
+        return ApiResponse.ok(true);
+    }
+
+    @GetMapping("/email-availability")
+    public ApiResponse<AuthDtos.AvailabilityResponse> emailAvailability(@RequestParam String email, @RequestParam(defaultValue = "register") String purpose) {
+        return ApiResponse.ok(authService.emailAvailability(email, purpose));
+    }
+
+    @GetMapping("/nickname-availability")
+    public ApiResponse<AuthDtos.AvailabilityResponse> nicknameAvailability(@RequestParam String nickname) {
+        return ApiResponse.ok(authService.nicknameAvailability(nickname));
+    }
+
+    @PostMapping("/reset-password")
+    public ApiResponse<Boolean> resetPassword(@Valid @RequestBody AuthDtos.ResetPasswordRequest request) {
+        authService.resetPassword(request);
+        return ApiResponse.ok(true);
+    }
+
     @PostMapping("/login")
     public ApiResponse<AuthDtos.AuthResponse> login(@Valid @RequestBody AuthDtos.LoginRequest request) {
         return ApiResponse.ok(authService.login(request));

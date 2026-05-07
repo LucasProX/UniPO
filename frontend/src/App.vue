@@ -1080,7 +1080,7 @@
     </Transition>
 
     <Transition name="detail-pop">
-      <div v-if="authNotice" class="fixed left-1/2 top-6 z-[70] -translate-x-1/2 rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white shadow-[0_16px_48px_rgba(15,23,42,.22)]">
+      <div v-if="authNotice" class="auth-notice" :class="`auth-notice--${authNoticeTone}`">
         {{ authNotice }}
       </div>
     </Transition>
@@ -1163,17 +1163,232 @@
     </Transition>
 
     <Transition name="detail-pop">
-      <div v-if="showLoginDialog" class="fixed inset-0 z-[65] grid place-items-center bg-[#0f172a]/34 p-4 backdrop-blur-sm" @click.self="showLoginDialog = false">
-        <section class="w-[min(420px,calc(100vw-32px))] rounded-[30px] bg-white p-6 shadow-[0_30px_120px_rgba(15,23,42,.28)]">
-          <div class="flex items-center justify-between">
-            <h2 class="text-2xl font-black text-[#19202f]">登录后继续</h2>
-            <button class="icon-button" @click="showLoginDialog = false"><X :size="18" /></button>
-          </div>
-          <p class="mt-2 text-sm font-bold leading-6 text-[#718097]">点赞、评论和收藏会写入后端，登录成功后再操作就不会出现假数据。</p>
-          <div class="mt-5 grid gap-3">
-            <input v-model="loginDraft.email" class="field" placeholder="账号" />
-            <input v-model="loginDraft.password" class="field" placeholder="密码" type="password" @keyup.enter="loginWithDraft" />
-            <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white" @click="loginWithDraft">登录</button>
+      <div v-if="showLoginDialog" class="fixed inset-0 z-[65] grid place-items-center bg-[#0f172a]/34 p-4 backdrop-blur-sm" @click.self="closeAuthDialog">
+        <section class="auth-shell" :class="authMode !== 'login' ? 'auth-shell--subview' : ''">
+          <div class="auth-shell__grid">
+            <aside class="auth-shell__intro">
+              <img src="/auth-campus.svg" alt="" class="auth-shell__intro-media" />
+              <div class="auth-shell__intro-content">
+                <div class="auth-shell__brand flex items-center gap-3">
+                  <img src="/favicon.svg" alt="" class="h-14 w-14 rounded-[18px]" />
+                  <h2 class="text-3xl font-black tracking-normal text-white">UniPO</h2>
+                </div>
+                <p class="auth-shell__intro-copy max-w-[24rem] text-sm leading-7 text-white/86">
+                  在这里，你可以享受和同好交友的快乐，接收到所有大学期间的重要信息，打破和同龄人的信息差。
+                </p>
+              </div>
+            </aside>
+
+            <div class="auth-shell__panel" :class="authMode !== 'login' ? 'auth-shell__panel--flipped' : ''">
+              <div class="auth-shell__panel-inner">
+                <section class="auth-face auth-face--front">
+                  <button class="auth-close-button icon-button" type="button" @click="closeAuthDialog"><X :size="18" /></button>
+                  <div class="auth-face__header auth-face__header--front">
+                    <div>
+                      <h3 class="auth-face__title">登录</h3>
+                      <p class="auth-face__subtitle">欢迎回来</p>
+                    </div>
+                  </div>
+
+                  <form class="mt-6 grid gap-4" @submit.prevent="loginWithDraft">
+                    <label class="auth-field">
+                      <span>邮箱 / 账号</span>
+                      <input
+                        v-model="authForms.login.email"
+                        class="field auth-field__input"
+                        :class="authErrors.login.email ? 'field--error' : ''"
+                        placeholder="请输入邮箱或账号"
+                        type="text"
+                        autocomplete="username"
+                      />
+                    </label>
+                    <label class="auth-field">
+                      <span>密码</span>
+                      <input
+                        v-model="authForms.login.password"
+                        class="field auth-field__input"
+                        :class="authErrors.login.password ? 'field--error' : ''"
+                        placeholder="请输入密码"
+                        type="password"
+                        autocomplete="current-password"
+                      />
+                    </label>
+                    <button class="auth-primary-button" :disabled="authSubmitting" type="submit">
+                      <span v-if="!authSubmitting">登录</span>
+                      <span v-else class="auth-loading-dot" aria-label="登录中"></span>
+                    </button>
+                  </form>
+
+                  <div class="mt-5 flex items-center justify-between gap-3 text-sm">
+                    <button class="auth-link" type="button" @click="switchAuthMode('register')">注册账号</button>
+                    <button class="auth-link" type="button" @click="switchAuthMode('reset')">忘记密码</button>
+                  </div>
+                </section>
+
+                <section class="auth-face auth-face--back">
+                  <button class="auth-back-button icon-button" type="button" title="返回登录" @click="switchAuthMode('login')">
+                    <ChevronLeft :size="18" />
+                  </button>
+                  <div class="auth-face__right-actions">
+                    <div class="auth-tab-row" :class="authMode === 'reset' ? 'auth-tab-row--reset' : ''">
+                      <button class="auth-tab" :class="authMode === 'register' ? 'auth-tab--active' : ''" type="button" @click="switchAuthMode('register')">注册账号</button>
+                      <button class="auth-tab" :class="authMode === 'reset' ? 'auth-tab--active' : ''" type="button" @click="switchAuthMode('reset')">找回密码</button>
+                    </div>
+                    <button class="auth-close-button auth-close-button--inline icon-button" type="button" @click="closeAuthDialog"><X :size="18" /></button>
+                  </div>
+
+                  <div class="auth-face__header auth-face__header--back" aria-hidden="true"></div>
+
+                  <div class="auth-form-slider" :class="authMode === 'reset' ? 'auth-form-slider--reset' : ''">
+                    <div class="auth-form-track">
+                      <form
+                        class="auth-form-page grid gap-3"
+                        :class="authMode === 'register' ? 'auth-form-page--active' : ''"
+                        :aria-hidden="authMode !== 'register'"
+                        :inert="authMode !== 'register'"
+                        @submit.prevent="registerWithDraft"
+                      >
+                        <label class="auth-field">
+                          <span>用户名</span>
+                          <input
+                            v-model="authForms.register.nickname"
+                            class="field auth-field__input"
+                            :class="authErrors.register.nickname ? 'field--error' : ''"
+                            placeholder="请输入用户名"
+                            type="text"
+                            autocomplete="nickname"
+                            @blur="checkRegisterNickname"
+                          />
+                        </label>
+                        <label class="auth-field">
+                          <span>绑定邮箱</span>
+                          <div class="auth-split-row">
+                            <input
+                              v-model="authForms.register.email"
+                              class="field auth-field__input"
+                              :class="authErrors.register.email ? 'field--error' : ''"
+                              placeholder="请输入邮箱"
+                              type="email"
+                              autocomplete="email"
+                            />
+                            <button class="auth-code-button" type="button" :disabled="verificationCodeSending || registerCodeCountdown > 0" @click="sendVerificationCode('register')">
+                              <span v-if="registerCodeCountdown > 0">{{ registerCodeCountdown }}s</span>
+                              <span v-else-if="!verificationCodeSending">发送验证码</span>
+                              <span v-else class="auth-loading-dot auth-loading-dot--sm" aria-label="发送中"></span>
+                            </button>
+                          </div>
+                        </label>
+                        <label class="auth-field">
+                          <span>验证码</span>
+                          <input
+                            v-model="authForms.register.verificationCode"
+                            class="field auth-field__input"
+                            :class="authErrors.register.verificationCode ? 'field--error' : ''"
+                            placeholder="请输入 4 位验证码"
+                            inputmode="numeric"
+                            maxlength="4"
+                            type="text"
+                            autocomplete="one-time-code"
+                          />
+                        </label>
+                        <label class="auth-field">
+                          <span>密码</span>
+                          <input
+                            v-model="authForms.register.password"
+                            class="field auth-field__input"
+                            :class="authErrors.register.password ? 'field--error' : ''"
+                            placeholder="至少 6 位"
+                            type="password"
+                            autocomplete="new-password"
+                          />
+                        </label>
+                        <label class="auth-field">
+                          <span>确认密码</span>
+                          <input
+                            v-model="authForms.register.confirmPassword"
+                            class="field auth-field__input"
+                            :class="authErrors.register.confirmPassword ? 'field--error' : ''"
+                            placeholder="再次输入密码"
+                            type="password"
+                            autocomplete="new-password"
+                          />
+                        </label>
+                        <button class="auth-primary-button" :disabled="authSubmitting" type="submit">
+                          <span v-if="!authSubmitting">注册并登录</span>
+                          <span v-else class="auth-loading-dot" aria-label="提交中"></span>
+                        </button>
+                      </form>
+
+                      <form
+                        class="auth-form-page grid gap-3"
+                        :class="authMode === 'reset' ? 'auth-form-page--active' : ''"
+                        :aria-hidden="authMode !== 'reset'"
+                        :inert="authMode !== 'reset'"
+                        @submit.prevent="resetPasswordWithDraft"
+                      >
+                        <label class="auth-field">
+                          <span>绑定邮箱</span>
+                          <div class="auth-split-row">
+                            <input
+                              v-model="authForms.reset.email"
+                              class="field auth-field__input"
+                              :class="authErrors.reset.email ? 'field--error' : ''"
+                              placeholder="请输入邮箱"
+                              type="email"
+                              autocomplete="email"
+                            />
+                            <button class="auth-code-button" type="button" :disabled="verificationCodeSending || resetCodeCountdown > 0" @click="sendVerificationCode('reset')">
+                              <span v-if="resetCodeCountdown > 0">{{ resetCodeCountdown }}s</span>
+                              <span v-else-if="!verificationCodeSending">发送验证码</span>
+                              <span v-else class="auth-loading-dot auth-loading-dot--sm" aria-label="发送中"></span>
+                            </button>
+                          </div>
+                        </label>
+                        <label class="auth-field">
+                          <span>验证码</span>
+                          <input
+                            v-model="authForms.reset.verificationCode"
+                            class="field auth-field__input"
+                            :class="authErrors.reset.verificationCode ? 'field--error' : ''"
+                            placeholder="请输入 4 位验证码"
+                            inputmode="numeric"
+                            maxlength="4"
+                            type="text"
+                            autocomplete="one-time-code"
+                          />
+                        </label>
+                        <label class="auth-field">
+                          <span>新密码</span>
+                          <input
+                            v-model="authForms.reset.password"
+                            class="field auth-field__input"
+                            :class="authErrors.reset.password ? 'field--error' : ''"
+                            placeholder="至少 6 位"
+                            type="password"
+                            autocomplete="new-password"
+                          />
+                        </label>
+                        <label class="auth-field">
+                          <span>确认新密码</span>
+                          <input
+                            v-model="authForms.reset.confirmPassword"
+                            class="field auth-field__input"
+                            :class="authErrors.reset.confirmPassword ? 'field--error' : ''"
+                            placeholder="再次输入新密码"
+                            type="password"
+                            autocomplete="new-password"
+                          />
+                        </label>
+                        <button class="auth-primary-button" :disabled="authSubmitting" type="submit">
+                          <span v-if="!authSubmitting">重置密码</span>
+                          <span v-else class="auth-loading-dot" aria-label="提交中"></span>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -1333,7 +1548,13 @@ const activeConversationId = ref<number | null>(null);
 const messageInput = ref('');
 const courseIdSeed = ref(1000);
 const authNotice = ref('');
+const authNoticeTone = ref<'neutral' | 'error'>('neutral');
 const showLoginDialog = ref(false);
+const authMode = ref<'login' | 'register' | 'reset'>('login');
+const authSubmitting = ref(false);
+const verificationCodeSending = ref(false);
+const registerCodeCountdown = ref(0);
+const resetCodeCountdown = ref(0);
 const showLevelCatalog = ref(false);
 const accountDrawerOpen = ref(false);
 const profileAvatarPreviewUrl = ref('');
@@ -1354,9 +1575,43 @@ const postImagePreviewUrl = ref('');
 const postContentInput = ref<HTMLElement | null>(null);
 const composeErrors = ref({ board: '', title: '', content: '' });
 const isAuthenticated = ref(Boolean(localStorage.getItem('bcg_token')));
-const loginDraft = ref({
-  email: 'good',
-  password: 'good'
+const authForms = ref({
+  login: {
+    email: '',
+    password: ''
+  },
+  register: {
+    nickname: '',
+    email: '',
+    verificationCode: '',
+    password: '',
+    confirmPassword: ''
+  },
+  reset: {
+    email: '',
+    verificationCode: '',
+    password: '',
+    confirmPassword: ''
+  }
+});
+const authErrors = ref({
+  login: {
+    email: '',
+    password: ''
+  },
+  register: {
+    nickname: '',
+    email: '',
+    verificationCode: '',
+    password: '',
+    confirmPassword: ''
+  },
+  reset: {
+    email: '',
+    verificationCode: '',
+    password: '',
+    confirmPassword: ''
+  }
 });
 const todayKey = dayjs().format('YYYY-MM-DD');
 const readMessageNoticeStoragePrefix = 'bcg_read_message_notices';
@@ -1365,6 +1620,9 @@ let conversationListTimer: number | undefined;
 let activeConversationTimer: number | undefined;
 let presenceHeartbeatTimer: number | undefined;
 let announcementCarouselTimer: number | undefined;
+let registerCodeCountdownTimer: number | undefined;
+let resetCodeCountdownTimer: number | undefined;
+let nicknameAvailabilityToken = 0;
 let profileAvatarUploadToken = 0;
 let profileAvatarUploadPromise: Promise<string | null> | null = null;
 let avatarCropDragState: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
@@ -1705,6 +1963,8 @@ onBeforeUnmount(() => {
   if (spotlightTimer) window.clearInterval(spotlightTimer);
   if (conversationListTimer) window.clearInterval(conversationListTimer);
   if (announcementCarouselTimer) window.clearInterval(announcementCarouselTimer);
+  stopVerificationCountdown('register');
+  stopVerificationCountdown('reset');
   clearPostImagePreview();
   clearAvatarCrop();
   stopActiveConversationPolling();
@@ -2837,7 +3097,19 @@ function openLoginDialog(message?: string) {
   if (activeView.value === 'profile') {
     activeView.value = 'home';
   }
+  resetAuthForms();
+  clearAuthErrors();
+  authSubmitting.value = false;
+  verificationCodeSending.value = false;
+  authMode.value = 'login';
   showLoginDialog.value = true;
+}
+
+function closeAuthDialog() {
+  showLoginDialog.value = false;
+  authSubmitting.value = false;
+  verificationCodeSending.value = false;
+  clearAuthErrors();
 }
 
 function closeTransientOverlays() {
@@ -2886,29 +3158,275 @@ async function logoutCurrentUser() {
   showAuthNotice('已退出登录');
 }
 
+function resetAuthForms() {
+  authForms.value = {
+    login: { email: '', password: '' },
+    register: { nickname: '', email: '', verificationCode: '', password: '', confirmPassword: '' },
+    reset: { email: '', verificationCode: '', password: '', confirmPassword: '' }
+  };
+}
+
 async function loginWithDraft() {
-  const email = loginDraft.value.email.trim();
-  const password = loginDraft.value.password;
-  if (!email || !password) return showAuthNotice('请输入账号和密码');
+  if (authSubmitting.value) return;
+  clearAuthErrors();
+  const email = authForms.value.login.email.trim();
+  const password = authForms.value.login.password;
+  let hasError = false;
+  if (!email) {
+    authErrors.value.login.email = '请输入邮箱或账号';
+    hasError = true;
+  }
+  if (!password) {
+    authErrors.value.login.password = '请输入密码';
+    hasError = true;
+  }
+  if (hasError) return;
+  authSubmitting.value = true;
   let result: { token: string; user: UserProfile } | null = null;
   try {
     result = await authApi.login(email, password);
   } catch (error) {
     const message = error instanceof Error ? error.message : '登录失败';
-    return showAuthNotice(`登录失败：${message}`);
+    authSubmitting.value = false;
+    return showAuthNotice(`登录失败：${message}`, 'error');
   }
   localStorage.setItem('bcg_token', result.token);
   isAuthenticated.value = true;
   currentUser.value = result.user;
   startPresenceHeartbeat();
-  showLoginDialog.value = false;
+  authSubmitting.value = false;
+  closeAuthDialog();
   accountDrawerOpen.value = false;
   authNotice.value = '';
   await loadCampus();
 }
 
-function showAuthNotice(message: string) {
+async function sendVerificationCode(purpose: 'register' | 'reset') {
+  if (verificationCodeSending.value) return;
+  if ((purpose === 'register' ? registerCodeCountdown.value : resetCodeCountdown.value) > 0) return;
+  clearAuthFieldErrors(purpose, ['email', 'verificationCode']);
+  const form = authForms.value[purpose];
+  const email = form.email.trim();
+  if (!email) {
+    authErrors.value[purpose].email = '请输入邮箱';
+    return;
+  }
+  verificationCodeSending.value = true;
+  try {
+    const apiPurpose = purpose === 'reset' ? 'reset-password' : 'register';
+    const availability = await authApi.emailAvailability(email, apiPurpose);
+    if (purpose === 'register' && !availability.available) {
+      authErrors.value.register.email = '该邮箱已注册';
+      showAuthNotice('该邮箱已注册，请直接登录或找回密码', 'error');
+      return;
+    }
+    if (purpose === 'reset' && !availability.available) {
+      authErrors.value.reset.email = '该邮箱尚未注册';
+      showAuthNotice('该邮箱尚未注册，请先注册账号', 'error');
+      return;
+    }
+    await authApi.requestVerificationCode({ email, purpose: apiPurpose });
+    form.verificationCode = '';
+    startVerificationCountdown(purpose);
+  } catch (error) {
+    const message = apiErrorMessage(error, '验证码发送失败');
+    showAuthNotice(`验证码发送失败：${message}`, 'error');
+  } finally {
+    verificationCodeSending.value = false;
+  }
+}
+
+async function checkRegisterNickname() {
+  const nickname = authForms.value.register.nickname.trim();
+  clearAuthFieldErrors('register', ['nickname']);
+  if (!nickname) return false;
+  const token = ++nicknameAvailabilityToken;
+  try {
+    const result = await authApi.nicknameAvailability(nickname);
+    if (token !== nicknameAvailabilityToken) return false;
+    if (!result.available) {
+      authErrors.value.register.nickname = '该用户名已被占用';
+      showAuthNotice('该用户名已被占用，请换一个', 'error');
+      return false;
+    }
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+async function registerWithDraft() {
+  if (authSubmitting.value) return;
+  clearAuthErrors();
+  const payload = {
+    email: authForms.value.register.email.trim(),
+    nickname: authForms.value.register.nickname.trim(),
+    verificationCode: authForms.value.register.verificationCode.trim(),
+    password: authForms.value.register.password,
+    confirmPassword: authForms.value.register.confirmPassword
+  };
+  const missing = validateRegisterForm(payload);
+  if (missing) return;
+  const nicknameAvailable = await checkRegisterNickname();
+  if (!nicknameAvailable) return;
+  authSubmitting.value = true;
+  try {
+    const result = await authApi.register(payload);
+    localStorage.setItem('bcg_token', result.token);
+    isAuthenticated.value = true;
+    currentUser.value = result.user;
+    startPresenceHeartbeat();
+    authSubmitting.value = false;
+    closeAuthDialog();
+    accountDrawerOpen.value = false;
+    authNotice.value = '';
+    await loadCampus();
+  } catch (error) {
+    authSubmitting.value = false;
+    const message = apiErrorMessage(error, '注册失败');
+    showAuthNotice(`注册失败：${message}`, 'error');
+  }
+}
+
+async function resetPasswordWithDraft() {
+  if (authSubmitting.value) return;
+  clearAuthErrors();
+  const payload = {
+    email: authForms.value.reset.email.trim(),
+    verificationCode: authForms.value.reset.verificationCode.trim(),
+    password: authForms.value.reset.password,
+    confirmPassword: authForms.value.reset.confirmPassword
+  };
+  const missing = validateResetForm(payload);
+  if (missing) return;
+  authSubmitting.value = true;
+  try {
+    await authApi.resetPassword(payload);
+    authSubmitting.value = false;
+    showAuthNotice('密码已重置，请返回登录');
+    switchAuthMode('login');
+    authForms.value.login.email = payload.email;
+    authForms.value.login.password = '';
+  } catch (error) {
+    authSubmitting.value = false;
+    const message = apiErrorMessage(error, '重置密码失败');
+    showAuthNotice(`重置密码失败：${message}`, 'error');
+  }
+}
+
+function switchAuthMode(mode: 'login' | 'register' | 'reset') {
+  authMode.value = mode;
+  clearAuthErrors();
+}
+
+function startVerificationCountdown(purpose: 'register' | 'reset') {
+  stopVerificationCountdown(purpose);
+  const countdown = purpose === 'register' ? registerCodeCountdown : resetCodeCountdown;
+  countdown.value = 60;
+  const timer = window.setInterval(() => {
+    countdown.value = Math.max(0, countdown.value - 1);
+    if (countdown.value <= 0) {
+      stopVerificationCountdown(purpose);
+    }
+  }, 1000);
+  if (purpose === 'register') {
+    registerCodeCountdownTimer = timer;
+  } else {
+    resetCodeCountdownTimer = timer;
+  }
+}
+
+function stopVerificationCountdown(purpose: 'register' | 'reset') {
+  if (purpose === 'register') {
+    if (registerCodeCountdownTimer) window.clearInterval(registerCodeCountdownTimer);
+    registerCodeCountdownTimer = undefined;
+    registerCodeCountdown.value = 0;
+  } else {
+    if (resetCodeCountdownTimer) window.clearInterval(resetCodeCountdownTimer);
+    resetCodeCountdownTimer = undefined;
+    resetCodeCountdown.value = 0;
+  }
+}
+
+function clearAuthErrors() {
+  authErrors.value = {
+    login: { email: '', password: '' },
+    register: { nickname: '', email: '', verificationCode: '', password: '', confirmPassword: '' },
+    reset: { email: '', verificationCode: '', password: '', confirmPassword: '' }
+  };
+}
+
+type AuthModeKey = 'login' | 'register' | 'reset';
+type AuthFieldKey = 'email' | 'password' | 'nickname' | 'verificationCode' | 'confirmPassword';
+
+function clearAuthFieldErrors(mode: AuthModeKey, fields: AuthFieldKey[]) {
+  const bucket = authErrors.value[mode] as Record<AuthFieldKey, string>;
+  for (const field of fields) {
+    bucket[field] = '';
+  }
+}
+
+function validateRegisterForm(payload: { email: string; nickname: string; verificationCode: string; password: string; confirmPassword: string }) {
+  let hasError = false;
+  if (!payload.nickname) {
+    authErrors.value.register.nickname = '请输入用户名';
+    hasError = true;
+  }
+  if (!payload.email) {
+    authErrors.value.register.email = '请输入邮箱';
+    hasError = true;
+  }
+  if (!payload.verificationCode) {
+    authErrors.value.register.verificationCode = '请输入验证码';
+    hasError = true;
+  } else if (!/^\d{4}$/.test(payload.verificationCode)) {
+    authErrors.value.register.verificationCode = '验证码必须是 4 位数字';
+    hasError = true;
+  }
+  if (!payload.password) {
+    authErrors.value.register.password = '请输入密码';
+    hasError = true;
+  }
+  if (!payload.confirmPassword) {
+    authErrors.value.register.confirmPassword = '请再次输入密码';
+    hasError = true;
+  } else if (payload.password !== payload.confirmPassword) {
+    authErrors.value.register.confirmPassword = '两次密码不一致';
+    hasError = true;
+  }
+  return hasError;
+}
+
+function validateResetForm(payload: { email: string; verificationCode: string; password: string; confirmPassword: string }) {
+  let hasError = false;
+  if (!payload.email) {
+    authErrors.value.reset.email = '请输入邮箱';
+    hasError = true;
+  }
+  if (!payload.verificationCode) {
+    authErrors.value.reset.verificationCode = '请输入验证码';
+    hasError = true;
+  } else if (!/^\d{4}$/.test(payload.verificationCode)) {
+    authErrors.value.reset.verificationCode = '验证码必须是 4 位数字';
+    hasError = true;
+  }
+  if (!payload.password) {
+    authErrors.value.reset.password = '请输入新密码';
+    hasError = true;
+  }
+  if (!payload.confirmPassword) {
+    authErrors.value.reset.confirmPassword = '请再次输入新密码';
+    hasError = true;
+  } else if (payload.password !== payload.confirmPassword) {
+    authErrors.value.reset.confirmPassword = '两次密码不一致';
+    hasError = true;
+  }
+  return hasError;
+}
+
+function showAuthNotice(message: string, tone: 'neutral' | 'error' = 'neutral') {
   authNotice.value = message;
+  authNoticeTone.value = tone;
   window.setTimeout(() => {
     if (authNotice.value === message) authNotice.value = '';
   }, 2400);

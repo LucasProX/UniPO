@@ -3,6 +3,7 @@ import type { AxiosInstance } from 'axios';
 import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
 
 const api = axios.create({ baseURL: '/api' });
+const publicApi = axios.create({ baseURL: '/api' });
 const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api' });
 
 function attachToken(client: AxiosInstance) {
@@ -99,8 +100,18 @@ export const authApi = {
   login: loginWithFallback,
   logout: () => unwrap<boolean>(api.post('/auth/logout')),
   heartbeat: () => unwrap<boolean>(api.post('/auth/heartbeat')),
-  register: (email: string, password: string, nickname: string) =>
-    unwrap<{ token: string; user: UserProfile }>(api.post('/auth/register', { email, password, nickname }))
+  register: (payload: { email: string; password: string; confirmPassword: string; nickname: string; verificationCode: string }) =>
+    unwrap<{ token: string; user: UserProfile }>(publicApi.post('/auth/register', payload)),
+  requestVerificationCode: (payload: { email: string; purpose: 'register' | 'reset-password' }) =>
+    unwrap<boolean>(publicApi.post('/auth/verification-code', payload)),
+  emailAvailability: (email: string, purpose: 'register' | 'reset-password' = 'register') =>
+    unwrap<{ available: boolean }>(publicApi.get('/auth/email-availability', { params: { email, purpose } })),
+  nicknameAvailability: (nickname: string) =>
+    unwrap<{ available: boolean }>(publicApi.get('/auth/nickname-availability', { params: { nickname } })),
+  verifyVerificationCode: (payload: { email: string; purpose: 'register' | 'reset-password'; code: string }) =>
+    unwrap<boolean>(publicApi.post('/auth/verification-code/verify', payload)),
+  resetPassword: (payload: { email: string; verificationCode: string; password: string; confirmPassword: string }) =>
+    unwrap<boolean>(publicApi.post('/auth/reset-password', payload))
 };
 
 export const postApi = {

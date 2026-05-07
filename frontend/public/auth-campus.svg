@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 1040" role="img" aria-label="UniPO campus scene">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#9ed9ff"/>
+      <stop offset=".42" stop-color="#f4e6c7"/>
+      <stop offset="1" stop-color="#1d3150"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity=".08"/>
+      <stop offset=".48" stop-color="#17233b" stop-opacity=".08"/>
+      <stop offset="1" stop-color="#111827" stop-opacity=".86"/>
+    </linearGradient>
+    <linearGradient id="building" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff4da"/>
+      <stop offset="1" stop-color="#cf925e"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#dff6ff"/>
+      <stop offset="1" stop-color="#5ca8dc"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect width="720" height="1040" fill="url(#sky)"/>
+  <circle cx="120" cy="170" r="92" fill="#fff6d9" opacity=".78" filter="url(#soft)"/>
+  <circle cx="584" cy="150" r="170" fill="#f46d55" opacity=".22" filter="url(#soft)"/>
+  <circle cx="640" cy="462" r="220" fill="#0b7cff" opacity=".14" filter="url(#soft)"/>
+
+  <path d="M0 468 C106 410 194 410 278 468 C362 526 470 520 720 424 L720 1040 L0 1040 Z" fill="#27486a" opacity=".38"/>
+  <path d="M0 556 C134 510 240 510 360 566 C488 626 590 614 720 548 L720 1040 L0 1040 Z" fill="#12304f" opacity=".42"/>
+
+  <g transform="translate(68 278)">
+    <path d="M54 186 L292 30 L532 186 Z" fill="#e4a66c"/>
+    <path d="M88 186 L292 55 L496 186 Z" fill="#ffddb2"/>
+    <rect x="104" y="186" width="376" height="328" rx="22" fill="url(#building)"/>
+    <rect x="140" y="226" width="70" height="102" rx="12" fill="url(#glass)" opacity=".9"/>
+    <rect x="256" y="226" width="70" height="102" rx="12" fill="url(#glass)" opacity=".9"/>
+    <rect x="374" y="226" width="70" height="102" rx="12" fill="url(#glass)" opacity=".9"/>
+    <rect x="146" y="360" width="300" height="154" rx="16" fill="#263653" opacity=".92"/>
+    <rect x="252" y="370" width="86" height="144" rx="12" fill="#101827"/>
+    <rect x="274" y="64" width="38" height="122" rx="19" fill="#fbf2d8"/>
+    <circle cx="293" cy="58" r="32" fill="#fff7dc"/>
+    <path d="M66 514 H522 C542 514 560 532 560 554 V588 H28 V554 C28 532 46 514 66 514 Z" fill="#17233b"/>
+  </g>
+
+  <g opacity=".9">
+    <path d="M82 757 C158 720 248 718 326 754 C426 800 542 800 650 744 L650 1040 L82 1040 Z" fill="#0f172a"/>
+    <path d="M154 768 C218 748 286 758 344 790 C408 824 486 828 568 796" fill="none" stroke="#e7f2ff" stroke-opacity=".24" stroke-width="12" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(102 704)">
+    <ellipse cx="74" cy="192" rx="72" ry="18" fill="#06101f" opacity=".32"/>
+    <circle cx="78" cy="48" r="36" fill="#f4b58a"/>
+    <path d="M44 104 C54 74 101 72 116 104 L142 184 H18 Z" fill="#0b7cff"/>
+    <path d="M110 122 L176 90" stroke="#f7c28d" stroke-width="18" stroke-linecap="round"/>
+    <path d="M40 122 L4 178" stroke="#f7c28d" stroke-width="18" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(416 694)">
+    <ellipse cx="76" cy="202" rx="78" ry="19" fill="#06101f" opacity=".34"/>
+    <circle cx="80" cy="48" r="35" fill="#ddb18f"/>
+    <path d="M44 106 C58 74 104 74 120 106 L148 194 H18 Z" fill="#f44336"/>
+    <path d="M48 126 L12 178" stroke="#ddb18f" stroke-width="18" stroke-linecap="round"/>
+    <path d="M116 126 L178 162" stroke="#ddb18f" stroke-width="18" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(262 676)">
+    <rect x="0" y="0" width="172" height="118" rx="24" fill="#ffffff" opacity=".88"/>
+    <rect x="22" y="24" width="128" height="11" rx="6" fill="#0b7cff" opacity=".7"/>
+    <rect x="22" y="52" width="96" height="10" rx="5" fill="#6b7a91" opacity=".45"/>
+    <rect x="22" y="78" width="112" height="10" rx="5" fill="#6b7a91" opacity=".36"/>
+  </g>
+
+  <rect width="720" height="1040" fill="url(#shade)"/>
+</svg>
