@@ -1,11 +1,12 @@
 ARG DOCKER_REGISTRY=
 FROM ${DOCKER_REGISTRY}maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
+ENV MAVEN_OPTS="-Xmx768m -XX:MaxRAMPercentage=75 -Djava.awt.headless=true"
 COPY .mvn ./.mvn
 COPY pom.xml .
-RUN mvn -B dependency:go-offline
+RUN mvn -B -ntp dependency:go-offline
 COPY src ./src
-RUN mvn -B package -DskipTests
+RUN mvn -B -ntp -e package -DskipTests
 
 FROM ${DOCKER_REGISTRY}eclipse-temurin:21-jre
 WORKDIR /app
