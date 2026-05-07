@@ -7,6 +7,7 @@ import com.biecuoguo.dto.CommentDtos;
 import com.biecuoguo.mapper.CommentMapper;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.security.CurrentUser;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +50,7 @@ public class CommentService {
 
     @Transactional
     public CommentDtos.CommentView create(Long noticeId, CommentDtos.CommentRequest request, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         LocalDateTime now = LocalDateTime.now();
         Comment comment = new Comment();
         comment.setNoticeId(noticeId);
@@ -67,7 +69,8 @@ public class CommentService {
     }
 
     @Transactional
-    public CommentDtos.CommentView like(Long id) {
+    public CommentDtos.CommentView like(Long id, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Comment comment = requireComment(id);
         comment.setLikeCount(comment.getLikeCount() + 1);
         comment.setUpdatedAt(LocalDateTime.now());
@@ -76,7 +79,8 @@ public class CommentService {
     }
 
     @Transactional
-    public CommentDtos.CommentView unlike(Long id) {
+    public CommentDtos.CommentView unlike(Long id, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Comment comment = requireComment(id);
         comment.setLikeCount(Math.max(0, comment.getLikeCount() - 1));
         comment.setUpdatedAt(LocalDateTime.now());
@@ -128,5 +132,11 @@ public class CommentService {
             throw new NoSuchElementException("评论不存在");
         }
         return comment;
+    }
+
+    private void requireAuthenticated(CurrentUser currentUser) {
+        if (currentUser == null || currentUser.id() == null) {
+            throw new AuthenticationCredentialsNotFoundException("请先登录");
+        }
     }
 }

@@ -60,11 +60,11 @@ git pull
 ./deploy.sh
 ```
 
-脚本会重新构建并启动 `mysql`、`backend`、`frontend`。MySQL 数据保存在 Docker volume `unipo_unipo_mysql_data` 中，不会因为重新构建镜像丢失。
+脚本会重新构建并启动 `mysql`、`backend`、`frontend`。测试环境 MySQL 对公网开放在 `115.190.3.204:12306`，本地后端和云端后端默认都连接这同一个测试库。
 
 ## 本机开发
 
-后端本地开发默认使用 H2：
+后端本地开发默认连接测试环境 MySQL（`115.190.3.204:12306`，JDBC 地址不要带 `http://`）：
 
 ```bash
 cd backend
@@ -83,9 +83,8 @@ npm run dev -- --host 127.0.0.1 --port 5173
 
 - Web: `http://127.0.0.1:5173/`
 - API health: `http://127.0.0.1:8080/actuator/health`
-- H2 console: `http://127.0.0.1:8080/h2-console`
 
-本机开发如需上传图片，也需要通过环境变量提供 MinIO 配置。
+本机开发会读取仓库根目录 `.env` 中的数据库密码和 MinIO 配置；本地写入的数据会保留在测试环境数据库里。
 
 ## 主要 API
 

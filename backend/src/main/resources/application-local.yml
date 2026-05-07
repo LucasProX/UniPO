@@ -1,19 +1,15 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:biecuoguo;MODE=MySQL;DATABASE_TO_LOWER=TRUE;CASE_INSENSITIVE_IDENTIFIERS=TRUE;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:biecuoguo}
+    password: ${SPRING_DATASOURCE_PASSWORD:${MYSQL_PASSWORD:biecuoguo_password}}
+    driver-class-name: com.mysql.cj.jdbc.Driver
   servlet:
     multipart:
       max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
       max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
   flyway:
-    locations: classpath:db/local
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+    locations: classpath:db/migration
 
 app:
   cors:

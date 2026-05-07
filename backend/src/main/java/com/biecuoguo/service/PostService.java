@@ -5,6 +5,7 @@ import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.PostDtos;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.security.CurrentUser;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -102,6 +103,7 @@ public class PostService {
 
     @Transactional
     public PostDtos.PostView create(PostDtos.CreatePostRequest request, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         User author = requireUser(currentUser.id());
         validateBoard(request.board());
         if (author.getSchoolId() == null) {
@@ -153,6 +155,7 @@ public class PostService {
 
     @Transactional
     public PostDtos.CommentView comment(Long postId, PostDtos.CreateCommentRequest request, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         User author = requireUser(currentUser.id());
         LocalDateTime now = LocalDateTime.now();
@@ -178,6 +181,7 @@ public class PostService {
 
     @Transactional
     public boolean likeComment(Long commentId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Comment comment = requirePostComment(commentId);
         CommentLike existing = commentLikeMapper.selectOne(new LambdaQueryWrapper<CommentLike>()
                 .eq(CommentLike::getCommentId, commentId)
@@ -198,6 +202,7 @@ public class PostService {
 
     @Transactional
     public boolean unlikeComment(Long commentId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Comment comment = requirePostComment(commentId);
         int deleted = commentLikeMapper.delete(new LambdaQueryWrapper<CommentLike>()
                 .eq(CommentLike::getCommentId, commentId)
@@ -212,6 +217,7 @@ public class PostService {
 
     @Transactional
     public boolean like(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         Long userId = currentUser.id();
         PostLike existing = likeMapper.selectOne(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId).eq(PostLike::getUserId, userId));
@@ -231,6 +237,7 @@ public class PostService {
 
     @Transactional
     public boolean unlike(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         int deleted = likeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId).eq(PostLike::getUserId, currentUser.id()));
         if (deleted > 0) {
@@ -242,6 +249,7 @@ public class PostService {
 
     @Transactional
     public boolean favorite(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         PostFavorite existing = favoriteMapper.selectOne(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId).eq(PostFavorite::getUserId, currentUser.id()));
         if (existing != null) {
@@ -259,6 +267,7 @@ public class PostService {
 
     @Transactional
     public boolean unfavorite(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         int deleted = favoriteMapper.delete(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId).eq(PostFavorite::getUserId, currentUser.id()));
         if (deleted > 0) {
@@ -270,6 +279,7 @@ public class PostService {
 
     @Transactional
     public PostDtos.ShareResponse share(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Post post = requirePost(postId);
         PostShare share = new PostShare();
         share.setPostId(postId);
@@ -299,6 +309,7 @@ public class PostService {
     }
 
     public List<PostDtos.PostView> likedPosts(CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         List<Long> ids = likeMapper.selectList(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, currentUser.id()))
                 .stream().map(PostLike::getPostId).toList();
         return postsByIds(ids, currentUser);
@@ -315,6 +326,7 @@ public class PostService {
     }
 
     public List<PostDtos.PostView> favoritePosts(CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         List<Long> ids = favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, currentUser.id()))
                 .stream().map(PostFavorite::getPostId).toList();
         return postsByIds(ids, currentUser);
@@ -331,6 +343,7 @@ public class PostService {
     }
 
     public List<PostDtos.InteractionNoticeView> interactionNotices(CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
         Long currentUserId = currentUser.id();
         List<Post> myPosts = postMapper.selectList(new LambdaQueryWrapper<Post>()
                 .eq(Post::getAuthorId, currentUserId)
@@ -588,6 +601,12 @@ public class PostService {
             throw new NoSuchElementException("用户不存在");
         }
         return user;
+    }
+
+    private void requireAuthenticated(CurrentUser currentUser) {
+        if (currentUser == null || currentUser.id() == null) {
+            throw new AuthenticationCredentialsNotFoundException("请先登录");
+        }
     }
 
     private Post requirePost(Long postId) {

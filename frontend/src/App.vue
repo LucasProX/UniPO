@@ -205,7 +205,7 @@
 
           <template v-else-if="activeView === 'compose'">
             <section class="glass-panel rounded-[34px] p-6">
-              <p class="text-sm font-black text-[#718097]">所有同学都能发 PO</p>
+              <p class="text-sm font-black text-[#718097]">登录后发布校园 PO</p>
               <h1 class="mt-2 text-4xl font-black tracking-normal text-[#19202f]">发一条校园 PO</h1>
               <div class="mt-6 grid gap-4">
                 <div
@@ -1510,8 +1510,8 @@ const posts = ref<CampusPost[]>(fallbackPosts());
 const boards = ref<BoardView[]>(fallbackBoards());
 const comments = ref<CampusComment[]>(fallbackComments());
 const interactionNotices = ref<InteractionNoticeView[]>([]);
-const conversations = ref<ConversationView[]>(fallbackConversations());
-const conversationMessages = ref<Record<number, CampusMessage[]>>(fallbackConversationMessages());
+const conversations = ref<ConversationView[]>([]);
+const conversationMessages = ref<Record<number, CampusMessage[]>>({});
 const profilePosts = ref<CampusPost[]>([]);
 const profileLikedPosts = ref<CampusPost[]>([]);
 const profileFavoritePosts = ref<CampusPost[]>([]);
@@ -1519,7 +1519,7 @@ const viewedProfile = ref<PublicProfileView | null>(null);
 const viewedProfilePosts = ref<CampusPost[]>([]);
 const viewedProfileLikedPosts = ref<CampusPost[]>([]);
 const viewedProfileFavoritePosts = ref<CampusPost[]>([]);
-const unreadCount = ref(1);
+const unreadCount = ref(0);
 const profileTab = ref<ProfileTabKey>('posts');
 const viewedProfileTab = ref<ProfileTabKey>('posts');
 const currentUser = ref<UserProfile>(fallbackUser());
@@ -1997,7 +1997,7 @@ async function loadAuthenticatedData() {
     currentUser.value = fallbackUser();
     userStats.value = fallbackStats();
     conversations.value = [];
-    conversationMessages.value = fallbackConversationMessages();
+    conversationMessages.value = {};
     profilePosts.value = [];
     profileLikedPosts.value = [];
     profileFavoritePosts.value = [];
@@ -2021,7 +2021,7 @@ async function loadAuthenticatedData() {
     currentUser.value = fallbackUser();
     userStats.value = fallbackStats();
     conversations.value = [];
-    conversationMessages.value = fallbackConversationMessages();
+    conversationMessages.value = {};
     profilePosts.value = [];
     profileLikedPosts.value = [];
     profileFavoritePosts.value = [];
@@ -2161,7 +2161,7 @@ async function sendPresenceHeartbeat() {
 }
 
 function openProfileView() {
-  if (!isAuthenticated.value) {
+  if (!hasValidSession()) {
     openLoginDialog('请先登录后查看个人中心');
     return;
   }
@@ -2169,6 +2169,10 @@ function openProfileView() {
 }
 
 async function openAuthorProfile(author: AuthorView) {
+  if (!hasValidSession()) {
+    openLoginDialog('请先登录后查看个人主页');
+    return;
+  }
   const uid = author.uid;
   if (!uid || uid === '00000000') {
     showAuthNotice('这个作者没有可访问的主页');
@@ -2197,17 +2201,22 @@ async function openAuthorProfile(author: AuthorView) {
 }
 
 function navigateTo(view: ViewKey) {
-  if (view === 'profile') {
-    openProfileView();
+  if (view !== 'home' && !hasValidSession()) {
+    openLoginDialog(protectedViewMessage(view));
     return;
   }
-  if (view === 'messages' && !isAuthenticated.value) {
-    openLoginDialog('请先登录后查看消息');
-    return;
-  }
+  if (view === 'profile') return openProfileView();
   activeView.value = view;
   if (view === 'messages') markMessageTabRead(activeMessageTab.value);
   if (view !== 'messages') closeConversation();
+}
+
+function protectedViewMessage(view: ViewKey) {
+  if (view === 'schedule') return '请先登录后使用课程表';
+  if (view === 'compose') return '请先登录后发布 PO';
+  if (view === 'messages') return '请先登录后查看消息';
+  if (view === 'profile' || view === 'user-profile') return '请先登录后查看个人主页';
+  return '请先登录后继续操作';
 }
 
 function selectMessageTab(tab: MessageTabKey) {
@@ -2291,6 +2300,7 @@ async function refreshPostFromServer(postId: number) {
 }
 
 function openProfileEditor() {
+  if (!requireLogin('请先登录后编辑资料')) return;
   syncProfileDraft();
 }
 
@@ -2676,11 +2686,11 @@ async function saveProfile() {
 }
 
 async function publishLocalPost() {
+  if (!requireLogin('请先登录后发布 PO')) return;
   if (!validateDraft()) return;
   const contentHtml = sanitizeRichHtml(draft.value.content.trim());
   const coverUrl = draft.value.coverUrl.trim();
   const imageUrls = Array.from(new Set([...draft.value.images, ...inlineImageUrls(contentHtml)].filter(Boolean)));
-  const cleanContent = plainPostContent(contentHtml);
   const payload = {
     board: draft.value.board,
     title: draft.value.title.trim(),
@@ -2689,39 +2699,12 @@ async function publishLocalPost() {
     images: imageUrls,
     tags: ['新PO', boardName(draft.value.board)]
   };
-  const apiPost = localStorage.getItem('bcg_token') ? await safe(() => postApi.create(payload), null) : null;
-  const post: CampusPost = apiPost ? enrichApiPosts([apiPost])[0] : {
-    id: Date.now(),
-    board: payload.board,
-    sourceType: 'student',
-    title: payload.title,
-    content: payload.content,
-    excerpt: cleanContent.slice(0, 120),
-    coverUrl: payload.coverUrl || fallbackCover(Date.now()),
-    images: payload.images,
-    riskLevel: 'normal',
-    official: false,
-    dontMiss: false,
-    pinned: false,
-    tags: payload.tags,
-    likeCount: 0,
-    commentCount: 0,
-    favoriteCount: 0,
-    shareCount: 0,
-    liked: false,
-    favorited: false,
-    status: 'published',
-    publishedAt: new Date().toISOString(),
-    createdAt: new Date().toISOString(),
-    author: authorFromUser(currentUser.value),
-    last2hLikes: 0,
-    last2hComments: 0
-  };
+  const apiPost = await safe(() => postApi.create(payload), null as PostView | null);
+  if (!apiPost) return openLoginDialog('登录状态失效，PO 没有写入后端');
+  const post: CampusPost = enrichApiPosts([apiPost])[0];
   posts.value = [post, ...posts.value];
-  if (isAuthenticated.value) {
-    profilePosts.value = [post, ...profilePosts.value];
-    userStats.value.posts += 1;
-  }
+  profilePosts.value = [post, ...profilePosts.value];
+  userStats.value.posts += 1;
   selectedPost.value = post;
   activeView.value = 'home';
   clearPostImagePreview();
@@ -2763,6 +2746,7 @@ async function togglePostFavorite(post: CampusPost) {
 }
 
 function togglePostCommentBox() {
+  if (!requireLogin('请先登录后评论 PO')) return;
   showPostCommentBox.value = !showPostCommentBox.value;
 }
 
@@ -2783,6 +2767,7 @@ async function submitPostComment() {
 }
 
 function startReply(comment: CampusComment) {
+  if (!requireLogin('请先登录后回复评论')) return;
   replyTargetId.value = comment.id;
   replyText.value = '';
 }
@@ -2862,9 +2847,13 @@ function expandReplies(comment: CampusComment) {
   expandedReplyCounts.value[comment.id] = Math.min(total, current + 5 || 5);
 }
 
-function requireLogin() {
-  if (isAuthenticated.value && localStorage.getItem('bcg_token')) return true;
-  openLoginDialog('请先登录，点赞、评论和收藏才会写入后端');
+function hasValidSession() {
+  return isAuthenticated.value && Boolean(localStorage.getItem('bcg_token'));
+}
+
+function requireLogin(message = '请先登录，点赞、评论和收藏才会写入后端') {
+  if (hasValidSession()) return true;
+  openLoginDialog(message);
   return false;
 }
 
@@ -3093,8 +3082,20 @@ function openLoginDialog(message?: string) {
   if (message) showAuthNotice(message);
   localStorage.removeItem('bcg_token');
   isAuthenticated.value = false;
+  stopPresenceHeartbeat();
+  currentUser.value = fallbackUser();
+  userStats.value = fallbackStats();
+  profilePosts.value = [];
+  profileLikedPosts.value = [];
+  profileFavoritePosts.value = [];
+  interactionNotices.value = [];
+  conversations.value = [];
+  conversationMessages.value = {};
+  readMessageNoticeIds.value = new Set();
+  unreadCount.value = 0;
   closeTransientOverlays();
-  if (activeView.value === 'profile') {
+  closeConversation();
+  if (activeView.value !== 'home') {
     activeView.value = 'home';
   }
   resetAuthForms();
@@ -3145,7 +3146,7 @@ async function logoutCurrentUser() {
   viewedProfileLikedPosts.value = [];
   viewedProfileFavoritePosts.value = [];
   conversations.value = [];
-  conversationMessages.value = fallbackConversationMessages();
+  conversationMessages.value = {};
   readMessageNoticeIds.value = new Set();
   resetCheckInState();
   unreadCount.value = 0;
@@ -3466,6 +3467,7 @@ async function doCheckIn() {
 }
 
 function mockImportSchedule() {
+  if (!requireLogin('请先登录后使用课程表')) return;
   importNotice.value = true;
   window.setTimeout(() => {
     importNotice.value = false;
@@ -3473,10 +3475,12 @@ function mockImportSchedule() {
 }
 
 function editCourse(course: Course) {
+  if (!requireLogin('请先登录后编辑课程表')) return;
   editDraft.value = { ...course };
 }
 
 function saveCourse() {
+  if (!requireLogin('请先登录后保存课程表')) return;
   if (!editDraft.value) return;
   const sourceCourse = courses.value.find((course) => course.id === editDraft.value?.id);
   const draftCourse = normalizeCourseWeeks(editDraft.value);
@@ -3813,29 +3817,24 @@ function publicProfileFromAuthor(author: AuthorView): PublicProfileView {
 
 function fallbackUser(): UserProfile {
   return {
-    id: 1,
-    publicUid: '10000001',
-    email: 'student@example.com',
-    nickname: 'Lucas同学',
-    avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=Lucas',
-    schoolId: 1,
-    collegeId: 1,
-    majorId: 1,
-    college: '计算机学院',
-    major: '计算机科学与技术',
-    grade: '大二',
-    verifiedStatus: 'verified',
+    id: 0,
+    publicUid: '00000000',
+    email: '',
+    nickname: '未登录',
+    avatarUrl: '',
+    verifiedStatus: 'guest',
     role: 'USER',
     operatorScope: 'student',
-    level: 37,
-    xp: 1460,
-    levelTitle: '食堂测评家',
-    status: 'active'
+    level: 1,
+    xp: 0,
+    levelTitle: '萌新探路员',
+    status: 'guest',
+    online: false
   };
 }
 
 function fallbackStats(): UserStats {
-  return { favorites: 12, likedPosts: 48, sharedPosts: 9, completed: 3, comments: 21, upcoming: 2, avoidedRisks: 3, following: 28, followers: 166, posts: 14 };
+  return { favorites: 0, likedPosts: 0, sharedPosts: 0, completed: 0, comments: 0, upcoming: 0, avoidedRisks: 0, following: 0, followers: 0, posts: 0 };
 }
 
 function fallbackBoards(): BoardView[] {

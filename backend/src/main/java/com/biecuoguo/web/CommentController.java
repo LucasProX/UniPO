@@ -28,12 +28,12 @@ public class CommentController {
 
     @PostMapping("/api/comments/{id}/like")
     public ApiResponse<CommentDtos.CommentView> like(@PathVariable Long id) {
-        return ApiResponse.ok(commentService.like(id));
+        return ApiResponse.ok(commentService.like(id, SecurityUtils.currentUser()));
     }
 
     @DeleteMapping("/api/comments/{id}/like")
     public ApiResponse<CommentDtos.CommentView> unlike(@PathVariable Long id) {
-        return ApiResponse.ok(commentService.unlike(id));
+        return ApiResponse.ok(commentService.unlike(id, SecurityUtils.currentUser()));
     }
 
     @PostMapping("/api/comments/{id}/report")

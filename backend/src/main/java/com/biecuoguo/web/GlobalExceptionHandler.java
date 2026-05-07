@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -27,6 +28,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({BadCredentialsException.class})
     ResponseEntity<ErrorResponse> handleBadCredentials(RuntimeException ex) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse.of("邮箱或密码不正确"));
+    }
+
+    @ExceptionHandler({AuthenticationException.class})
+    ResponseEntity<ErrorResponse> handleAuthentication(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(ErrorResponse.of("请先登录"));
     }
 
     @ExceptionHandler({AccessDeniedException.class})

@@ -2,6 +2,8 @@ server:
   port: ${SERVER_PORT:8080}
 
 spring:
+  config:
+    import: optional:file:../.env[.properties]
   application:
     name: biecuoguo-backend
   servlet:
@@ -9,9 +11,9 @@ spring:
       max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
       max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
-    username: ${SPRING_DATASOURCE_USERNAME:biecuoguo}
-    password: ${SPRING_DATASOURCE_PASSWORD:biecuoguo_password}
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${SPRING_DATASOURCE_USERNAME:${MYSQL_USER:biecuoguo}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${MYSQL_PASSWORD:biecuoguo_password}}
     driver-class-name: com.mysql.cj.jdbc.Driver
   flyway:
     enabled: true

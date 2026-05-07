@@ -22,7 +22,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "${MYSQL_PUBLIC_BIND:-127.0.0.1}:${MYSQL_PUBLIC_PORT:-3306}:3306"
+      - "0.0.0.0:12306:3306"
 
   backend:
     build:
@@ -34,7 +34,7 @@ services:
         condition: service_healthy
     environment:
       SERVER_PORT: 8080
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-biecuoguo}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+      SPRING_DATASOURCE_URL: jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
       SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-biecuoguo}
       SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:-biecuoguo_password_change_me}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-to-a-very-long-random-secret-32}
