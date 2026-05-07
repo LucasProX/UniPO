@@ -22,7 +22,7 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
   cat >&2 <<'MSG'
 Created .env from .env.example.
-This deploys only frontend/backend by default and connects to your existing remote MySQL and MinIO.
+This deploys Caddy, frontend, and backend by default and connects to your existing remote MySQL and MinIO.
 Edit .env and fill SPRING_DATASOURCE_*, JWT_SECRET, BOOTSTRAP_ADMIN_PASSWORD, APP_CORS_ALLOWED_ORIGINS,
 and existing MinIO settings, then rerun ./deploy.sh.
 MSG
@@ -92,9 +92,9 @@ if (( ${#placeholders[@]} )); then
 fi
 
 echo "Building and starting UniPO services..."
-services=(backend frontend)
+services=(backend frontend caddy)
 if [[ "$deploy_local_mysql" == true ]]; then
-  services=(mysql backend frontend)
+  services=(mysql backend frontend caddy)
 fi
 "${COMPOSE[@]}" up -d --build "${services[@]}"
 
@@ -102,8 +102,9 @@ echo "Service status:"
 "${COMPOSE[@]}" ps
 
 echo
-app_port="$(grep -E '^APP_PORT=' .env | tail -n 1 | cut -d= -f2-)"
-echo "Deployment finished. Web port: ${app_port:-80} (override APP_PORT in .env)."
+echo "Deployment finished. Caddy publishes ports 80 and 443."
+caddy_site_address="$(env_value CADDY_SITE_ADDRESS)"
+echo "Caddy site address: ${caddy_site_address:-:80}"
 echo "Database: $(env_value SPRING_DATASOURCE_URL)"
 if [[ "$deploy_local_mysql" == true ]]; then
   echo "Local MySQL service is enabled by DEPLOY_LOCAL_MYSQL=true."
