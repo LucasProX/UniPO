@@ -53,7 +53,17 @@ public class UserService {
     @Transactional
     public UserProfile updateProfile(Long userId, UserDtos.UpdateProfileRequest request) {
         User user = requireUser(userId);
-        if (request.nickname() != null && !request.nickname().isBlank()) user.setNickname(request.nickname());
+        if (request.nickname() != null) {
+            String nickname = request.nickname().trim();
+            if (nickname.isBlank()) {
+                throw new IllegalArgumentException("名称不能为空");
+            }
+            User existing = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getNickname, nickname));
+            if (existing != null && !existing.getId().equals(userId)) {
+                throw new IllegalArgumentException("这个名称已经有人用了");
+            }
+            user.setNickname(nickname);
+        }
         if (request.avatarUrl() != null) user.setAvatarUrl(request.avatarUrl());
         if (request.schoolId() != null) user.setSchoolId(request.schoolId());
         if (request.collegeId() != null) user.setCollegeId(request.collegeId());

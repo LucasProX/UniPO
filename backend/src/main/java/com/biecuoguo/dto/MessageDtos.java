@@ -27,7 +27,7 @@ public final class MessageDtos {
             LocalDateTime createdAt
     ) {}
 
-    public record CreateConversationRequest(String peerUid, Long peerId) {}
+    public record CreateConversationRequest(@Size(max = 32) String peerUid, Long peerId) {}
 
     public record SendMessageRequest(@NotBlank @Size(max = 1000) String content) {}
 }

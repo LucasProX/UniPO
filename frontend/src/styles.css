@@ -1274,6 +1274,39 @@ select:focus-visible {
   box-shadow: none;
 }
 
+.feed-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 22px 0 4px;
+}
+
+.feed-pagination__button {
+  display: inline-grid;
+  height: 44px;
+  width: 44px;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(225, 231, 239, 0.95);
+  background: rgba(255, 255, 255, 0.78);
+  color: #19202f;
+  transition: 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.feed-pagination__button:hover {
+  transform: translateY(-1px);
+  background: #fff;
+}
+
+.feed-pagination__count {
+  min-width: 58px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 950;
+  color: #718097;
+}
+
 .po-card__body {
   display: grid;
   min-height: 194px;

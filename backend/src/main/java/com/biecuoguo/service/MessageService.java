@@ -42,12 +42,18 @@ public class MessageService {
 
     @Transactional
     public MessageDtos.ConversationView create(MessageDtos.CreateConversationRequest request, CurrentUser currentUser) {
+        if (request.peerId() == null && (request.peerUid() == null || request.peerUid().isBlank())) {
+            throw new IllegalArgumentException("私信对象不能为空");
+        }
         User peer = request.peerId() != null ? userMapper.selectById(request.peerId()) : null;
         if (peer == null && request.peerUid() != null) {
-            peer = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, request.peerUid()));
+            peer = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, request.peerUid().trim()));
         }
         if (peer == null) {
             throw new NoSuchElementException("message peer not found");
+        }
+        if (peer.getId().equals(currentUser.id())) {
+            throw new IllegalArgumentException("不能给自己发私信");
         }
         Conversation conversation = findOrCreate(currentUser.id(), peer.getId());
         return toView(conversation, currentUser.id());

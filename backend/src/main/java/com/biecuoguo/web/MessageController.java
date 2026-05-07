@@ -23,7 +23,7 @@ public class MessageController {
     }
 
     @PostMapping("/conversations")
-    public ApiResponse<MessageDtos.ConversationView> create(@RequestBody MessageDtos.CreateConversationRequest request) {
+    public ApiResponse<MessageDtos.ConversationView> create(@Valid @RequestBody MessageDtos.CreateConversationRequest request) {
         return ApiResponse.ok(messageService.create(request, SecurityUtils.currentUser()));
     }
 

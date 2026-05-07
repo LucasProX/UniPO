@@ -146,7 +146,7 @@
 
             <div class="grid gap-5 xl:grid-cols-2">
               <article
-                v-for="post in filteredPosts"
+                v-for="post in pagedPosts"
                 :key="post.id"
                 :data-post-id="post.id"
                 class="po-card group"
@@ -200,6 +200,25 @@
 
                 </div>
               </article>
+            </div>
+            <div v-if="feedPageCount > 1" class="feed-pagination">
+              <button
+                v-if="canGoPrevFeedPage"
+                class="feed-pagination__button"
+                title="上一页"
+                @click="goFeedPage(-1)"
+              >
+                <ChevronLeft :size="20" />
+              </button>
+              <span class="feed-pagination__count">{{ feedPage }} / {{ feedPageCount }}</span>
+              <button
+                v-if="canGoNextFeedPage"
+                class="feed-pagination__button"
+                title="下一页"
+                @click="goFeedPage(1)"
+              >
+                <ChevronRight :size="20" />
+              </button>
             </div>
           </template>
 
@@ -1027,7 +1046,8 @@
           <div class="mt-5 grid gap-3">
             <label class="grid gap-2">
               <span class="text-xs font-black text-[#718097]">名称</span>
-              <input v-model="profileDraft.nickname" class="field" maxlength="24" placeholder="输入你的名称" />
+              <input v-model="profileDraft.nickname" class="field" :class="{ 'field--error': Boolean(profileNicknameError) }" maxlength="24" placeholder="输入你的名称" />
+              <span v-if="profileNicknameError" class="text-xs font-black text-[#ff3b30]">{{ profileNicknameError }}</span>
             </label>
             <label class="grid gap-2">
               <span class="text-xs font-black text-[#718097]">简介</span>
@@ -1037,8 +1057,8 @@
               <span class="text-xs font-black text-[#718097]">座右铭</span>
               <input v-model="profileDraft.motto" class="field" maxlength="30" placeholder="30 字以内的座右铭" />
             </label>
-            <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="profileAvatarUploading" @click="saveProfile">
-              {{ profileAvatarUploading ? '头像上传中...' : '保存资料' }}
+            <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-60" :disabled="profileAvatarUploading || profileNicknameChecking" @click="saveProfile">
+              {{ profileAvatarUploading ? '头像上传中...' : profileNicknameChecking ? '校验中...' : '保存资料' }}
             </button>
           </div>
         </section>
@@ -1408,7 +1428,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
 import { apiErrorMessage, authApi, campusApi, isAuthError, mediaApi, postApi, userApi } from './lib/api';
@@ -1517,6 +1537,7 @@ const Metric = defineComponent({
 const activeView = ref<ViewKey>('home');
 const activeBoard = ref<BoardCode>('recommend');
 const selectedDate = ref<string | null>(null);
+const feedPage = ref(1);
 const posts = ref<CampusPost[]>(fallbackPosts());
 const boards = ref<BoardView[]>(fallbackBoards());
 const comments = ref<CampusComment[]>(fallbackComments());
@@ -1571,6 +1592,8 @@ const accountDrawerOpen = ref(false);
 const profileAvatarPreviewUrl = ref('');
 const profileAvatarUploading = ref(false);
 const profileAvatarUploadError = ref('');
+const profileNicknameChecking = ref(false);
+const profileNicknameError = ref('');
 const deletingPostIds = ref<Set<number>>(new Set());
 const avatarCropOpen = ref(false);
 const avatarCropImageUrl = ref('');
@@ -1636,6 +1659,7 @@ let announcementCarouselTimer: number | undefined;
 let registerCodeCountdownTimer: number | undefined;
 let resetCodeCountdownTimer: number | undefined;
 let nicknameAvailabilityToken = 0;
+let profileNicknameAvailabilityToken = 0;
 let profileAvatarUploadToken = 0;
 let profileAvatarUploadPromise: Promise<string | null> | null = null;
 let avatarCropDragState: { pointerId: number; startX: number; startY: number; originX: number; originY: number } | null = null;
@@ -1789,6 +1813,7 @@ const activeMessageTabIndex = computed(() => Math.max(0, messageTabs.findIndex((
 const activeSpotlight = computed(() => spotlightItems.value[spotlightIndex.value % spotlightItems.value.length]);
 const showSpotlight = computed(() => activeBoard.value === 'recommend' && !selectedDate.value);
 const dailyQuote = computed(() => dailyQuotes[dayjs().date() % dailyQuotes.length]);
+const feedPageSize = 10;
 
 const filteredPosts = computed(() => posts.value
   .filter((post) => {
@@ -1796,6 +1821,18 @@ const filteredPosts = computed(() => posts.value
     return dateMatches && boardMatches(post);
   })
   .sort((a, b) => recommendScore(b) - recommendScore(a)));
+const feedPageCount = computed(() => Math.max(1, Math.ceil(filteredPosts.value.length / feedPageSize)));
+const pagedPosts = computed(() => filteredPosts.value.slice((feedPage.value - 1) * feedPageSize, feedPage.value * feedPageSize));
+const canGoPrevFeedPage = computed(() => feedPage.value > 1);
+const canGoNextFeedPage = computed(() => feedPage.value < feedPageCount.value);
+
+watch([filteredPosts, activeBoard, selectedDate], () => {
+  feedPage.value = 1;
+});
+
+watch(feedPageCount, (count) => {
+  if (feedPage.value > count) feedPage.value = count;
+});
 
 const hotRankings = computed(() => posts.value
   .slice()
@@ -2170,6 +2207,27 @@ async function sendPresenceHeartbeat() {
   await safe(() => authApi.heartbeat(), false);
 }
 
+async function sessionStillValid() {
+  if (!localStorage.getItem('bcg_token')) return false;
+  try {
+    const me = await campusApi.me();
+    currentUser.value = me;
+    isAuthenticated.value = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function handleAuthSensitiveError(error: unknown, loginMessage: string, fallbackMessage?: string) {
+  if (isAuthError(error) && !(await sessionStillValid())) {
+    openLoginDialog(loginMessage);
+    return true;
+  }
+  showAuthNotice(apiErrorMessage(error, fallbackMessage || loginMessage), 'error');
+  return false;
+}
+
 function openProfileView() {
   if (!hasValidSession()) {
     openLoginDialog('请先登录后查看个人中心');
@@ -2240,6 +2298,9 @@ function syncProfileDraft() {
   profileAvatarUploadToken += 1;
   profileAvatarUploading.value = false;
   profileAvatarUploadError.value = '';
+  profileNicknameError.value = '';
+  profileNicknameChecking.value = false;
+  profileNicknameAvailabilityToken += 1;
   profileAvatarUploadPromise = null;
   profileDraft.value = {
     id: currentUser.value.id,
@@ -2255,14 +2316,23 @@ function syncProfileDraft() {
 
 function selectBoard(board: BoardCode) {
   activeBoard.value = board;
+  feedPage.value = 1;
 }
 
 function selectCalendarDate(dateKey: string) {
   activeView.value = 'home';
   selectedDate.value = selectedDate.value === dateKey ? null : dateKey;
+  feedPage.value = 1;
   nextTick(() => {
     const feed = document.querySelector('.home-feed');
     feed?.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+function goFeedPage(delta: number) {
+  feedPage.value = Math.min(feedPageCount.value, Math.max(1, feedPage.value + delta));
+  nextTick(() => {
+    document.querySelector('.home-feed')?.scrollTo({ top: showSpotlight.value ? 360 : 0, behavior: 'smooth' });
   });
 }
 
@@ -2650,6 +2720,34 @@ function avatarCropFilename(file: File | null) {
   return `${stem || 'avatar'}-square.png`;
 }
 
+async function checkProfileNickname() {
+  if (!profileDraft.value) return false;
+  const nickname = profileDraft.value.nickname.trim();
+  profileNicknameError.value = '';
+  if (!nickname) {
+    profileNicknameError.value = '名称不能为空';
+    return false;
+  }
+  if (nickname === currentUser.value.nickname) return true;
+  const token = ++profileNicknameAvailabilityToken;
+  profileNicknameChecking.value = true;
+  try {
+    const result = await authApi.nicknameAvailability(nickname);
+    if (token !== profileNicknameAvailabilityToken) return false;
+    if (!result.available) {
+      profileNicknameError.value = '这个名称已经有人用了';
+      showAuthNotice('这个名称已经有人用了，请换一个', 'error');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    showAuthNotice(apiErrorMessage(error, '名称校验失败，请稍后再试'), 'error');
+    return false;
+  } finally {
+    if (token === profileNicknameAvailabilityToken) profileNicknameChecking.value = false;
+  }
+}
+
 async function handlePostImageFile(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -2705,11 +2803,25 @@ async function saveProfile() {
     const uploadedUrl = await profileAvatarUploadPromise;
     if (!uploadedUrl || !profileDraft.value) return;
   }
-  const updated = await safe(() => userApi.updateProfile({
-    nickname: profileDraft.value?.nickname?.trim(),
-    avatarUrl: profileDraft.value?.avatarUrl?.trim(),
-    bio: composeProfileBio(profileDraft.value?.bio, profileDraft.value?.motto)
-  }), null as UserProfile | null);
+  const nicknameAvailable = await checkProfileNickname();
+  if (!nicknameAvailable || !profileDraft.value) return;
+  let updated: UserProfile | null = null;
+  try {
+    updated = await userApi.updateProfile({
+      nickname: profileDraft.value.nickname.trim(),
+      avatarUrl: profileDraft.value.avatarUrl?.trim(),
+      bio: composeProfileBio(profileDraft.value.bio, profileDraft.value.motto)
+    });
+  } catch (error) {
+    if (isAuthError(error)) {
+      await handleAuthSensitiveError(error, '登录状态失效，请重新登录后再试', '资料保存失败，请稍后再试');
+      return;
+    }
+    const message = apiErrorMessage(error, '资料保存失败，请稍后再试');
+    profileNicknameError.value = message.includes('名称') || message.includes('用户名') ? message : profileNicknameError.value;
+    showAuthNotice(message, 'error');
+    return;
+  }
   if (updated) {
     currentUser.value = updated;
     const updatedAuthor = authorFromUser(updated);
@@ -3135,11 +3247,13 @@ async function openMessageDraft(profile: UserProfile) {
   try {
     conversation = await campusApi.createConversation(profile.publicUid);
   } catch (error) {
-    if (isAuthError(error)) return openLoginDialog('登录状态失效，请重新登录后再试');
-    showAuthNotice(apiErrorMessage(error), 'error');
+    await handleAuthSensitiveError(error, '登录状态失效，请重新登录后再试', '私信会话创建失败，请稍后再试');
     return;
   }
-  if (!conversation) return openLoginDialog('登录状态失效，请重新登录后再试');
+  if (!conversation) {
+    showAuthNotice('私信会话创建失败，请稍后再试', 'error');
+    return;
+  }
   conversations.value = [
     conversation,
     ...conversations.value.filter((item) => item.id !== conversation.id)
@@ -3189,12 +3303,14 @@ async function sendConversationMessage() {
     sent = await campusApi.sendMessage(conversationId, content);
   } catch (error) {
     removeOptimisticMessage(conversationId, optimistic.id);
-    if (isAuthError(error)) return openLoginDialog('登录状态失效，私信没有发送成功');
-    showAuthNotice(apiErrorMessage(error), 'error');
+    await handleAuthSensitiveError(error, '登录状态失效，私信没有发送成功', '私信发送失败，请稍后再试');
     await refreshActiveConversation({ scroll: true });
     return;
   }
-  if (!sent) return openLoginDialog('登录状态失效，私信没有发送成功');
+  if (!sent) {
+    showAuthNotice('私信发送失败，请稍后再试', 'error');
+    return;
+  }
   replaceOptimisticMessage(conversationId, optimistic.id, normalizeMessage(sent));
   updateConversationPreview(conversationId, content, sent.createdAt);
   await refreshActiveConversation({ scroll: true });
