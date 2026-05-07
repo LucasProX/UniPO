@@ -22,14 +22,31 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
   cat >&2 <<'MSG'
 Created .env from .env.example.
-Edit .env and fill MYSQL_*, JWT_SECRET, BOOTSTRAP_ADMIN_PASSWORD, and existing MinIO settings, then rerun ./deploy.sh.
+This deploys only frontend/backend by default and connects to your existing remote MySQL and MinIO.
+Edit .env and fill SPRING_DATASOURCE_*, JWT_SECRET, BOOTSTRAP_ADMIN_PASSWORD, APP_CORS_ALLOWED_ORIGINS,
+and existing MinIO settings, then rerun ./deploy.sh.
 MSG
   exit 1
 fi
 
+env_value() {
+  local key="$1"
+  local line
+  line="$(grep -E "^${key}=" .env | tail -n 1 || true)"
+  if [[ -z "$line" ]]; then
+    printf ''
+  else
+    printf '%s' "${line#*=}"
+  fi
+}
+
+deploy_local_mysql="$(env_value DEPLOY_LOCAL_MYSQL)"
+deploy_local_mysql="${deploy_local_mysql:-false}"
+
 required_vars=(
-  MYSQL_PASSWORD
-  MYSQL_ROOT_PASSWORD
+  SPRING_DATASOURCE_URL
+  SPRING_DATASOURCE_USERNAME
+  SPRING_DATASOURCE_PASSWORD
   JWT_SECRET
   BOOTSTRAP_ADMIN_PASSWORD
   APP_CORS_ALLOWED_ORIGINS
@@ -40,14 +57,26 @@ required_vars=(
   MINIO_BUCKET
 )
 
+case "${deploy_local_mysql,,}" in
+  1|true|yes|y|on)
+    deploy_local_mysql=true
+    required_vars+=(
+      MYSQL_PASSWORD
+      MYSQL_ROOT_PASSWORD
+    )
+    ;;
+  *)
+    deploy_local_mysql=false
+    ;;
+esac
+
 missing=()
 placeholders=()
 for key in "${required_vars[@]}"; do
-  line="$(grep -E "^${key}=" .env | tail -n 1 || true)"
-  value="${line#*=}"
-  if [[ -z "$line" || -z "$value" ]]; then
+  value="$(env_value "$key")"
+  if [[ -z "$value" ]]; then
     missing+=("$key")
-  elif [[ "$value" == change_me* || "$value" == *"your-"* || "$value" == *"your_"* ]]; then
+  elif [[ "$value" == change_me* || "$value" == please-change* || "$value" == *"your-"* || "$value" == *"your_"* ]]; then
     placeholders+=("$key")
   fi
 done
@@ -63,7 +92,11 @@ if (( ${#placeholders[@]} )); then
 fi
 
 echo "Building and starting UniPO services..."
-"${COMPOSE[@]}" up -d --build mysql backend frontend
+services=(backend frontend)
+if [[ "$deploy_local_mysql" == true ]]; then
+  services=(mysql backend frontend)
+fi
+"${COMPOSE[@]}" up -d --build "${services[@]}"
 
 echo "Service status:"
 "${COMPOSE[@]}" ps
@@ -71,3 +104,9 @@ echo "Service status:"
 echo
 app_port="$(grep -E '^APP_PORT=' .env | tail -n 1 | cut -d= -f2-)"
 echo "Deployment finished. Web port: ${app_port:-80} (override APP_PORT in .env)."
+echo "Database: $(env_value SPRING_DATASOURCE_URL)"
+if [[ "$deploy_local_mysql" == true ]]; then
+  echo "Local MySQL service is enabled by DEPLOY_LOCAL_MYSQL=true."
+else
+  echo "Local MySQL service is not started. Backend uses the remote datasource above."
+fi

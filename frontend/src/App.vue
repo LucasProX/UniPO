@@ -283,9 +283,9 @@
                       ></button>
                     </div>
 
-                    <label class="compose-editor__tool" title="插入图片">
+                    <label class="compose-editor__tool" title="插入图片" @pointerdown.capture="saveDraftSelection">
                       <ImagePlus :size="17" />
-                      <input class="sr-only" type="file" accept="image/*" @change="handleInlinePostImageFile" />
+                      <input class="sr-only" type="file" accept="image/*" @click="saveDraftSelection" @change="handleInlinePostImageFile" />
                     </label>
                   </div>
                   <div
@@ -296,7 +296,10 @@
                     aria-multiline="true"
                     data-placeholder="写清楚发生了什么、适合谁、下一步怎么做"
                     @input="syncDraftContentFromEditor"
+                    @keyup="saveDraftSelection"
+                    @mouseup="saveDraftSelection"
                     @blur="syncDraftContentFromEditor"
+                    @focus="saveDraftSelection"
                     @paste="handleDraftPaste"
                   ></div>
                   <div class="compose-editor__footer">
@@ -685,7 +688,19 @@
                               <p class="mt-1 truncate text-xs font-semibold text-[#718097]">Lv.{{ post.author.level }} {{ levelTitleFor(post.author.level) }} · {{ roleLabel(post) }}</p>
                             </div>
                           </div>
-                          <span class="mini-chip" :class="post.official ? 'border-[#007aff]/20 bg-[#007aff]/10 text-[#007aff]' : ''">{{ boardName(post.board) }}</span>
+                          <div class="flex shrink-0 items-center gap-2">
+                            <button
+                              v-if="canDeletePost(post)"
+                              class="po-card-delete"
+                              :disabled="isDeletingPost(post.id)"
+                              title="删除这条 PO"
+                              @click.stop="deleteMyPost(post)"
+                            >
+                              <Trash2 :size="15" />
+                              <span>{{ isDeletingPost(post.id) ? '删除中' : '删除' }}</span>
+                            </button>
+                            <span class="mini-chip" :class="post.official ? 'border-[#007aff]/20 bg-[#007aff]/10 text-[#007aff]' : ''">{{ boardName(post.board) }}</span>
+                          </div>
                         </div>
 
                         <div class="po-card__middle">
@@ -849,10 +864,6 @@
 
             <h1 class="mt-6 text-[clamp(30px,5vw,48px)] font-black leading-tight tracking-normal text-[#19202f]">{{ expandedPost.title }}</h1>
             <div class="rich-post-content mt-4" v-html="renderRichPostContent(expandedPost.content)"></div>
-            <img :src="expandedPost.coverUrl || fallbackCover(expandedPost.id)" alt="" class="mt-5 max-h-[440px] w-full rounded-[28px] object-cover" />
-            <div v-if="expandedPostExtraImages.length" class="detail-image-grid">
-              <img v-for="url in expandedPostExtraImages" :key="url" :src="url" alt="" />
-            </div>
 
             <div class="mt-5 flex flex-wrap gap-2">
               <span v-for="tag in expandedPost.tags" :key="tag" class="mini-chip">{{ tag }}</span>
@@ -1399,7 +1410,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
 import dayjs from 'dayjs';
-import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
+import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
 import { apiErrorMessage, authApi, campusApi, mediaApi, postApi, userApi } from './lib/api';
 import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
 
@@ -1560,6 +1571,7 @@ const accountDrawerOpen = ref(false);
 const profileAvatarPreviewUrl = ref('');
 const profileAvatarUploading = ref(false);
 const profileAvatarUploadError = ref('');
+const deletingPostIds = ref<Set<number>>(new Set());
 const avatarCropOpen = ref(false);
 const avatarCropImageUrl = ref('');
 const avatarCropSourceFile = ref<File | null>(null);
@@ -1594,6 +1606,7 @@ const authForms = ref({
     confirmPassword: ''
   }
 });
+let draftSavedRange: Range | null = null;
 const authErrors = ref({
   login: {
     email: '',
@@ -1646,6 +1659,7 @@ const composeBoardOptions = [
 
 const editorEmojis = ['👍', '😭', '🔥', '✨', '🙏', '👀', '✅', '💡'];
 const editorColors = [
+  { label: '黑色正文', value: '#19202f' },
   { label: '蓝色重点', value: '#007aff' },
   { label: '红色提醒', value: '#ff3b30' },
   { label: '绿色通过', value: '#22c55e' },
@@ -1876,10 +1890,6 @@ const avatarCropImageStyle = computed(() => ({
   height: `${avatarCropNaturalHeight.value * avatarCropScale.value}px`,
   transform: `translate(calc(-50% + ${avatarCropOffsetX.value}px), calc(-50% + ${avatarCropOffsetY.value}px))`
 }));
-const expandedPostExtraImages = computed(() => {
-  const post = expandedPost.value;
-  return post ? Array.from(new Set([...post.images, ...inlineImageUrls(post.content)])).filter((url) => url !== post.coverUrl) : [];
-});
 const levelCatalog = computed(() => Array.from({ length: Math.ceil(maxLevel / 10) }, (_, index) => {
   const from = index * 10 + 1;
   const to = Math.min(maxLevel, from + 9);
@@ -2353,10 +2363,51 @@ function selectDraftBoard(board: ComposeDraft['board']) {
 function syncDraftContentFromEditor() {
   draft.value.content = postContentInput.value?.innerHTML || '';
   if (plainPostContent(draft.value.content).trim()) composeErrors.value.content = '';
+  saveDraftSelection();
 }
 
 function focusDraftEditor() {
-  postContentInput.value?.focus();
+  const editor = postContentInput.value;
+  editor?.focus();
+  if (editor) {
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    if (draftSavedRange) {
+      selection?.addRange(draftSavedRange);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection?.addRange(range);
+      draftSavedRange = range.cloneRange();
+    }
+  }
+}
+
+function saveDraftSelection() {
+  const editor = postContentInput.value;
+  const selection = window.getSelection();
+  if (!editor || !selection || selection.rangeCount === 0) return;
+  const range = selection.getRangeAt(0);
+  if (editor.contains(range.commonAncestorContainer)) {
+    draftSavedRange = range.cloneRange();
+  }
+}
+
+function normalizeRichEditorMarkup(root: HTMLElement | DocumentFragment) {
+  root.querySelectorAll('font').forEach((node) => {
+    const span = document.createElement('span');
+    const size = node.getAttribute('size');
+    const color = node.getAttribute('color');
+    if (size) {
+      span.classList.add(Number(size) >= 4 ? 'rich-post-content__large' : 'rich-post-content__small');
+    }
+    if (color && /^(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/.test(color.trim())) {
+      span.style.color = color.trim();
+    }
+    span.innerHTML = node.innerHTML;
+    node.replaceWith(span);
+  });
 }
 
 function insertDraftHtml(html: string) {
@@ -2380,19 +2431,14 @@ function formatDraftContent(command: 'bold' | 'insertUnorderedList') {
 function applyDraftColor(color: string) {
   focusDraftEditor();
   document.execCommand('foreColor', false, color);
+  if (postContentInput.value) normalizeRichEditorMarkup(postContentInput.value);
   syncDraftContentFromEditor();
 }
 
 function applyDraftFont(size: 'large' | 'small') {
-  const className = size === 'large' ? 'rich-post-content__large' : 'rich-post-content__small';
   focusDraftEditor();
   document.execCommand('fontSize', false, size === 'large' ? '5' : '2');
-  postContentInput.value?.querySelectorAll('font[size]').forEach((node) => {
-    const span = document.createElement('span');
-    span.className = className;
-    span.innerHTML = node.innerHTML;
-    node.replaceWith(span);
-  });
+  if (postContentInput.value) normalizeRichEditorMarkup(postContentInput.value);
   syncDraftContentFromEditor();
 }
 
@@ -2640,6 +2686,7 @@ async function handleInlinePostImageFile(event: Event) {
   }
   try {
     const uploaded = await mediaApi.upload(file, 'post');
+    focusDraftEditor();
     insertDraftHtml(`<div><img src="${uploaded.url}" alt="插入图片" /></div><div><br></div>`);
   } catch (error) {
     showAuthNotice(apiErrorMessage(error, '图片上传失败，请确认图片大小和对象存储配置'));
@@ -2690,13 +2737,12 @@ async function publishLocalPost() {
   if (!validateDraft()) return;
   const contentHtml = sanitizeRichHtml(draft.value.content.trim());
   const coverUrl = draft.value.coverUrl.trim();
-  const imageUrls = Array.from(new Set([...draft.value.images, ...inlineImageUrls(contentHtml)].filter(Boolean)));
   const payload = {
     board: draft.value.board,
     title: draft.value.title.trim(),
     content: contentHtml,
     coverUrl: coverUrl || undefined,
-    images: imageUrls,
+    images: draft.value.images,
     tags: ['新PO', boardName(draft.value.board)]
   };
   const apiPost = await safe(() => postApi.create(payload), null as PostView | null);
@@ -2743,6 +2789,60 @@ async function togglePostFavorite(post: CampusPost) {
     : profileFavoritePosts.value.filter((item) => item.id !== post.id);
   await refreshPostFromServer(post.id);
   await refreshInteractionNotices();
+}
+
+function canDeletePost(post: CampusPost) {
+  return profileTab.value === 'posts' && hasValidSession() && post.author.id === currentUser.value.id;
+}
+
+function isDeletingPost(postId: number) {
+  return deletingPostIds.value.has(postId);
+}
+
+function setPostDeleting(postId: number, deleting: boolean) {
+  const next = new Set(deletingPostIds.value);
+  if (deleting) {
+    next.add(postId);
+  } else {
+    next.delete(postId);
+  }
+  deletingPostIds.value = next;
+}
+
+async function deleteMyPost(post: CampusPost) {
+  if (!requireLogin('请先登录后删除自己的 PO')) return;
+  if (!canDeletePost(post) || isDeletingPost(post.id)) return;
+  const confirmed = window.confirm('确定删除这条 PO 吗？删除后不会在首页和我的作品里展示。');
+  if (!confirmed) return;
+  setPostDeleting(post.id, true);
+  const ok = await safe(() => postApi.remove(post.id), false);
+  setPostDeleting(post.id, false);
+  if (!ok) {
+    showAuthNotice('删除失败，请确认这是你自己的 PO 后再试', 'error');
+    return;
+  }
+  removePostFromLocalState(post.id);
+  userStats.value.posts = Math.max(0, userStats.value.posts - 1);
+  showAuthNotice('已删除这条 PO');
+  await refreshInteractionNotices();
+}
+
+function removePostFromLocalState(postId: number) {
+  posts.value = posts.value.filter((item) => item.id !== postId);
+  profilePosts.value = profilePosts.value.filter((item) => item.id !== postId);
+  profileLikedPosts.value = profileLikedPosts.value.filter((item) => item.id !== postId);
+  profileFavoritePosts.value = profileFavoritePosts.value.filter((item) => item.id !== postId);
+  viewedProfilePosts.value = viewedProfilePosts.value.filter((item) => item.id !== postId);
+  viewedProfileLikedPosts.value = viewedProfileLikedPosts.value.filter((item) => item.id !== postId);
+  viewedProfileFavoritePosts.value = viewedProfileFavoritePosts.value.filter((item) => item.id !== postId);
+  comments.value = comments.value.filter((comment) => comment.postId !== postId);
+  interactionNotices.value = interactionNotices.value.filter((notice) => notice.post?.id !== postId);
+  if (selectedPost.value?.id === postId) {
+    selectedPost.value = posts.value[0] || null;
+  }
+  if (expandedPost.value?.id === postId) {
+    expandedPost.value = null;
+  }
 }
 
 function togglePostCommentBox() {
@@ -3644,6 +3744,7 @@ function escapeHtml(content: string) {
 function sanitizeRichHtml(content: string) {
   const template = document.createElement('template');
   template.innerHTML = content;
+  normalizeRichEditorMarkup(template.content);
   const allowedTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'BR', 'DIV', 'P', 'SPAN', 'UL', 'OL', 'LI', 'IMG']);
   template.content.querySelectorAll('*').forEach((node) => {
     if (!allowedTags.has(node.tagName)) {
@@ -3655,7 +3756,13 @@ function sanitizeRichHtml(content: string) {
       if (node.tagName === 'IMG' && name === 'src') return;
       if (node.tagName === 'IMG' && name === 'alt') return;
       if (node.tagName === 'SPAN' && name === 'class' && ['rich-post-content__large', 'rich-post-content__small'].includes(attr.value)) return;
-      if (node.tagName === 'SPAN' && name === 'style' && /^color:\s*#[0-9a-fA-F]{3,8};?$/.test(attr.value.trim())) return;
+      if (node.tagName === 'SPAN' && name === 'style') {
+        const color = attr.value.match(/(?:^|;)\s*color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))/i)?.[1];
+        if (color) {
+          node.setAttribute('style', `color: ${color}`);
+          return;
+        }
+      }
       node.removeAttribute(attr.name);
     });
   });

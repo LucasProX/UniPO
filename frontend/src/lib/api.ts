@@ -124,7 +124,8 @@ export const postApi = {
     tags?: string[];
     official?: boolean;
     dontMiss?: boolean;
-  }) => unwrap<PostView>(api.post('/posts', payload))
+  }) => unwrap<PostView>(api.post('/posts', payload)),
+  remove: (postId: number) => unwrap<boolean>(api.delete(`/posts/${postId}`))
 };
 
 export const userApi = {

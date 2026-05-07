@@ -176,14 +176,24 @@ public class AuthService implements CommandLineRunner {
         ensureGoodUser();
         ensureMockOperator(XIAOBA_EMAIL, XIAOBA_PASSWORD, "24052002", "校霸情报台", "https://api.dicebear.com/8.x/initials/svg?seed=XB", "SCHOOL_OPERATOR", "school", 88, 3560);
         ensureMockOperator(YUANHUA_EMAIL, YUANHUA_PASSWORD, "24052003", "计院院花", "https://api.dicebear.com/8.x/initials/svg?seed=YH", "COLLEGE_OPERATOR", "college", 72, 2880);
-        String adminEmail = properties.bootstrap().adminEmail().trim().toLowerCase();
-        if (findByEmail(adminEmail) != null) {
-            return;
-        }
+        String adminEmail = normalizeEmail(properties.bootstrap().adminEmail());
         LocalDateTime now = LocalDateTime.now();
-        User admin = new User();
+        User admin = findByEmail(adminEmail);
+        if (admin == null) {
+            admin = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                    .eq(User::getRole, "ADMIN")
+                    .or()
+                    .eq(User::getOperatorScope, "admin")
+                    .last("LIMIT 1"));
+        }
+        boolean isNewAdmin = admin == null;
+        if (isNewAdmin) {
+            admin = new User();
+        }
         admin.setEmail(adminEmail);
-        admin.setPublicUid(generatePublicUid());
+        if (admin.getPublicUid() == null || admin.getPublicUid().isBlank()) {
+            admin.setPublicUid(generatePublicUid());
+        }
         admin.setPasswordHash(passwordEncoder.encode(properties.bootstrap().adminPassword()));
         admin.setNickname("运营管理员");
         admin.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=Admin");
@@ -198,11 +208,19 @@ public class AuthService implements CommandLineRunner {
         admin.setXp(99999);
         admin.setLevelTitle("传说中的不鸽王");
         admin.setStatus("active");
-        admin.setCreatedAt(now);
+        if (admin.getCreatedAt() == null) {
+            admin.setCreatedAt(now);
+        }
         admin.setUpdatedAt(now);
-        admin.setLastLoginAt(now);
-        userMapper.insert(admin);
-        createDefaultPreference(admin.getId(), now);
+        if (admin.getLastLoginAt() == null) {
+            admin.setLastLoginAt(now);
+        }
+        if (isNewAdmin) {
+            userMapper.insert(admin);
+        } else {
+            userMapper.updateById(admin);
+        }
+        preferenceFor(admin.getId());
     }
 
     private void ensureGoodUser() {

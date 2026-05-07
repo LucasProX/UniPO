@@ -5,6 +5,7 @@ import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.PostDtos;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.security.CurrentUser;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -74,16 +75,15 @@ public class PostService {
 
     public PostDtos.PostView hotToday(CurrentUser currentUser) {
         LocalDate today = LocalDate.now();
-        PostDailyStat stat = dailyStatMapper.selectList(new LambdaQueryWrapper<PostDailyStat>()
+        List<PostDailyStat> stats = dailyStatMapper.selectList(new LambdaQueryWrapper<PostDailyStat>()
                         .eq(PostDailyStat::getStatDate, today)
                         .orderByDesc(PostDailyStat::getLikeCount)
-                        .orderByDesc(PostDailyStat::getCommentCount))
-                .stream()
-                .max(Comparator.comparingInt(item -> safe(item.getLikeCount()) + safe(item.getCommentCount())))
-                .orElse(null);
-        if (stat != null) {
+                        .orderByDesc(PostDailyStat::getCommentCount));
+        for (PostDailyStat stat : stats.stream()
+                .sorted(Comparator.comparingInt((PostDailyStat item) -> safe(item.getLikeCount()) + safe(item.getCommentCount())).reversed())
+                .toList()) {
             Post post = postMapper.selectById(stat.getPostId());
-            if (post != null) {
+            if (post != null && "published".equals(post.getStatus())) {
                 return toView(post, currentUser);
             }
         }
@@ -141,6 +141,19 @@ public class PostService {
         saveImages(post.getId(), request.images(), now);
         grantXp(author, 12);
         return toView(postMapper.selectById(post.getId()), currentUser);
+    }
+
+    @Transactional
+    public boolean deleteOwnPost(Long postId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
+        Post post = requirePost(postId);
+        if (!Objects.equals(post.getAuthorId(), currentUser.id())) {
+            throw new AccessDeniedException("只能删除自己的 PO");
+        }
+        post.setStatus("deleted");
+        post.setUpdatedAt(LocalDateTime.now());
+        postMapper.updateById(post);
+        return true;
     }
 
     public List<PostDtos.CommentView> comments(Long postId, CurrentUser currentUser) {
@@ -448,7 +461,10 @@ public class PostService {
         if (ids.isEmpty()) {
             return List.of();
         }
-        return toViews(postMapper.selectList(new LambdaQueryWrapper<Post>().in(Post::getId, ids).orderByDesc(Post::getPublishedAt)), currentUser);
+        return toViews(postMapper.selectList(new LambdaQueryWrapper<Post>()
+                .in(Post::getId, ids)
+                .eq(Post::getStatus, "published")
+                .orderByDesc(Post::getPublishedAt)), currentUser);
     }
 
     private LambdaQueryWrapper<Post> baseVisibleWrapper(User viewer) {

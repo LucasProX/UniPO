@@ -1,6 +1,6 @@
 # UniPO
 
-校园 PO 信息流应用，包含 Vue 3 前端、Spring Boot 后端和 MySQL 数据库。MinIO 作为外部已部署服务接入，不由本仓库的 Docker Compose 创建。
+校园 PO 信息流应用，包含 Vue 3 前端、Spring Boot 后端和 MySQL 数据库。默认部署只启动前后端，MySQL 和 MinIO 作为外部已部署服务接入。
 
 ## 技术栈
 
@@ -28,8 +28,9 @@ nano .env
 
 至少填写这些值：
 
-- `MYSQL_PASSWORD`
-- `MYSQL_ROOT_PASSWORD`
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
 - `JWT_SECRET`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `APP_CORS_ALLOWED_ORIGINS`
@@ -52,6 +53,15 @@ nano .env
 
 如果服务器 80 端口已被占用，把 `.env` 中的 `APP_PORT` 改成其他端口，例如 `8088`。
 
+默认情况下，`./deploy.sh` 只启动 `backend` 和 `frontend`，后端会连接 `.env` 里配置的远程 MySQL 和 MinIO。测试环境数据库示例：
+
+```env
+DEPLOY_LOCAL_MYSQL=false
+SPRING_DATASOURCE_URL=jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+```
+
+注意 JDBC 地址不要带 `http://`。只有当你明确要在当前服务器也启动一套 MySQL 时，才把 `.env` 里的 `DEPLOY_LOCAL_MYSQL=true`。
+
 ## 更新部署
 
 ```bash
@@ -60,7 +70,7 @@ git pull
 ./deploy.sh
 ```
 
-脚本会重新构建并启动 `mysql`、`backend`、`frontend`。测试环境 MySQL 对公网开放在 `115.190.3.204:12306`，本地后端和云端后端默认都连接这同一个测试库。
+脚本会重新构建并启动 `backend`、`frontend`。测试环境 MySQL 对公网开放在 `115.190.3.204:12306`，本地后端和云端后端默认都连接这同一个测试库。只有 `.env` 设置 `DEPLOY_LOCAL_MYSQL=true` 时才会额外启动 Compose 里的 `mysql` 服务。
 
 ## 本机开发
 

@@ -1,4 +1,5 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+ARG DOCKER_REGISTRY=
+FROM ${DOCKER_REGISTRY}maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 COPY .mvn ./.mvn
 COPY pom.xml .
@@ -6,7 +7,7 @@ RUN mvn -B dependency:go-offline
 COPY src ./src
 RUN mvn -B package -DskipTests
 
-FROM eclipse-temurin:21-jre
+FROM ${DOCKER_REGISTRY}eclipse-temurin:21-jre
 WORKDIR /app
 ENV JAVA_OPTS=""
 RUN apt-get update \

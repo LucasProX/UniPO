@@ -49,6 +49,11 @@ public class PostController {
         return ApiResponse.ok(postService.create(request, SecurityUtils.currentUser()));
     }
 
+    @DeleteMapping("/{id}")
+    public ApiResponse<Boolean> delete(@PathVariable Long id) {
+        return ApiResponse.ok(postService.deleteOwnPost(id, SecurityUtils.currentUser()));
+    }
+
     @GetMapping("/{id}/comments")
     public ApiResponse<List<PostDtos.CommentView>> comments(@PathVariable Long id, Authentication authentication) {
         return ApiResponse.ok(postService.comments(id, currentUser(authentication)));
