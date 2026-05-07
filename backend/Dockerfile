@@ -4,7 +4,6 @@ WORKDIR /workspace
 ENV MAVEN_OPTS="-Xmx768m -XX:MaxRAMPercentage=75 -Djava.awt.headless=true"
 COPY .mvn ./.mvn
 COPY pom.xml .
-RUN mvn -B -ntp dependency:go-offline
 COPY src ./src
 RUN mvn -B -ntp -e package -DskipTests
 

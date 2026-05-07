@@ -2,15 +2,6 @@
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
-  <mirrors>
-    <mirror>
-      <id>aliyun-public</id>
-      <mirrorOf>*</mirrorOf>
-      <name>Aliyun Maven Public Mirror</name>
-      <url>https://maven.aliyun.com/repository/public</url>
-    </mirror>
-  </mirrors>
-
   <profiles>
     <profile>
       <id>aliyun-repositories</id>
@@ -40,8 +31,4 @@
       </pluginRepositories>
     </profile>
   </profiles>
-
-  <activeProfiles>
-    <activeProfile>aliyun-repositories</activeProfile>
-  </activeProfiles>
 </settings>
