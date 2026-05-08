@@ -2061,27 +2061,33 @@ async function loadAuthenticatedData() {
     return;
   }
 
-  const me = await safe(() => campusApi.me(), null as UserProfile | null);
-  if (!me) {
-    localStorage.removeItem('bcg_token');
-    isAuthenticated.value = false;
-    currentUser.value = fallbackUser();
-    userStats.value = fallbackStats();
-    conversations.value = [];
-    conversationMessages.value = {};
-    profilePosts.value = [];
-    profileLikedPosts.value = [];
-    profileFavoritePosts.value = [];
-    interactionNotices.value = [];
-    readMessageNoticeIds.value = new Set();
-    resetCheckInState();
-    viewedProfile.value = null;
-    viewedProfilePosts.value = [];
-    viewedProfileLikedPosts.value = [];
-    viewedProfileFavoritePosts.value = [];
-    unreadCount.value = 0;
-    activeConversationId.value = null;
-    stopPresenceHeartbeat();
+  let me: UserProfile | null = null;
+  try {
+    me = await campusApi.me();
+  } catch (error) {
+    if (isAuthError(error)) {
+      localStorage.removeItem('bcg_token');
+      isAuthenticated.value = false;
+      currentUser.value = fallbackUser();
+      userStats.value = fallbackStats();
+      conversations.value = [];
+      conversationMessages.value = {};
+      profilePosts.value = [];
+      profileLikedPosts.value = [];
+      profileFavoritePosts.value = [];
+      interactionNotices.value = [];
+      readMessageNoticeIds.value = new Set();
+      resetCheckInState();
+      viewedProfile.value = null;
+      viewedProfilePosts.value = [];
+      viewedProfileLikedPosts.value = [];
+      viewedProfileFavoritePosts.value = [];
+      unreadCount.value = 0;
+      activeConversationId.value = null;
+      stopPresenceHeartbeat();
+    } else {
+      isAuthenticated.value = true;
+    }
     return;
   }
 
@@ -3227,8 +3233,12 @@ async function toggleViewedProfileFollow() {
   const uid = viewedProfile.value.profile.publicUid;
   const following = viewedProfile.value.following;
   const nextFollowing = !following;
-  const ok = await safe(() => nextFollowing ? campusApi.follow(uid) : campusApi.unfollow(uid), false);
-  if (!ok) return openLoginDialog('登录状态失效，请重新登录后再试');
+  try {
+    await (nextFollowing ? campusApi.follow(uid) : campusApi.unfollow(uid));
+  } catch (error) {
+    await handleAuthSensitiveError(error, '登录状态失效，请重新登录后再试', nextFollowing ? '关注失败，请稍后再试' : '取消关注失败，请稍后再试');
+    return;
+  }
   viewedProfile.value = {
     ...viewedProfile.value,
     following: nextFollowing,
@@ -3238,7 +3248,7 @@ async function toggleViewedProfileFollow() {
     }
   };
   userStats.value.following = Math.max(0, userStats.value.following + (nextFollowing ? 1 : -1));
-  await loadAuthenticatedData();
+  await refreshConversations();
 }
 
 async function openMessageDraft(profile: UserProfile) {
