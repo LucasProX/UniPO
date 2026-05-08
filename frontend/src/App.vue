@@ -2117,7 +2117,7 @@ async function loadAuthenticatedData() {
 }
 
 async function refreshConversations() {
-  if (!isAuthenticated.value || !localStorage.getItem('bcg_token') || refreshingConversations) return;
+  if (!localStorage.getItem('bcg_token') || refreshingConversations) return;
   refreshingConversations = true;
   try {
     const [messageList, unread, notices] = await Promise.all([
@@ -2209,7 +2209,7 @@ function stopPresenceHeartbeat() {
 }
 
 async function sendPresenceHeartbeat() {
-  if (!isAuthenticated.value || !localStorage.getItem('bcg_token')) return;
+  if (!localStorage.getItem('bcg_token')) return;
   await safe(() => authApi.heartbeat(), false);
 }
 
@@ -3253,6 +3253,10 @@ async function toggleViewedProfileFollow() {
 
 async function openMessageDraft(profile: UserProfile) {
   if (!requireLogin()) return;
+  if (!isAuthenticated.value && !(await sessionStillValid())) {
+    openLoginDialog('登录状态失效，请重新登录后再试');
+    return;
+  }
   let conversation: ConversationView | null = null;
   try {
     conversation = await campusApi.createConversation(profile.publicUid);

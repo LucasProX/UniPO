@@ -1,5 +1,7 @@
 {$CADDY_SITE_ADDRESS} {
   encode gzip zstd
 
-  reverse_proxy frontend:80
+  reverse_proxy frontend:80 {
+    header_up Authorization {header.Authorization}
+  }
 }
