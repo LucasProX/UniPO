@@ -24,7 +24,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "0.0.0.0:12306:3306"
+      - "${MYSQL_PUBLIC_BIND:-0.0.0.0}:${MYSQL_PUBLIC_PORT:-12306}:3306"
 
   backend:
     build:
