@@ -1893,18 +1893,16 @@ const activeConversation = computed(() => activeConversationId.value == null
 const activeConversationMessages = computed(() => activeConversationId.value == null
   ? []
   : [...(conversationMessages.value[activeConversationId.value] || [])].sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf()));
-const privateConversations = computed(() => conversations.value.filter((conversation) => !isFollowOnlyConversation(conversation)));
+const privateConversations = computed(() => conversations.value);
 const privateUnreadCount = computed(() => privateConversations.value.reduce((sum, conversation) => sum + Math.max(0, conversation.unreadCount || 0), 0));
-const latestFollowNotices = computed(() => conversations.value
-  .filter((conversation) => isFollowNoticeText(conversation.lastMessage))
-  .map((conversation) => ({
-    id: `follow-${conversation.id}`,
-    type: 'followers' as MessageTabKey,
-    actor: conversation.peer,
-    text: `${conversation.peer.nickname} 关注了你`,
-    createdAt: conversation.lastMessageAt || conversation.updatedAt,
-    unread: conversation.unreadCount > 0 && !readMessageNoticeIds.value.has(`follow-${conversation.id}`)
-  })));
+const latestFollowNotices = computed(() => [] as Array<{
+  id: string;
+  type: MessageTabKey;
+  actor: AuthorView;
+  text: string;
+  createdAt: string;
+  unread: boolean;
+}>);
 const messageTabUnreadCounts = computed<Record<MessageTabKey, number>>(() => {
   const counts = { likes: 0, favorites: 0, comments: 0, followers: 0 };
   noticeItems.value.forEach((notice) => {
@@ -3221,14 +3219,6 @@ function scrollMessageThreadToBottom() {
   body?.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
 }
 
-function isFollowNoticeText(text?: string) {
-  return Boolean(text?.trim().endsWith('关注了你'));
-}
-
-function isFollowOnlyConversation(conversation: ConversationView) {
-  return isFollowNoticeText(conversation.lastMessage);
-}
-
 function authorTitle(author: AuthorView) {
   if (author.role === 'SCHOOL_OPERATOR') return '校霸情报台';
   if (author.role === 'COLLEGE_OPERATOR') return '院花情报台';
@@ -4490,83 +4480,10 @@ function fallbackComments(): CampusComment[] {
 
 function fallbackConversations(): ConversationView[] {
   return [];
-  const posts = fallbackPosts();
-  const now = dayjs();
-  return [
-    {
-      id: 1,
-      peer: posts[3].author,
-      lastMessage: '校霸情报台 关注了你',
-      unreadCount: 1,
-      lastMessageAt: now.subtract(12, 'minute').toISOString(),
-      updatedAt: now.subtract(12, 'minute').toISOString()
-    },
-    {
-      id: 2,
-      peer: posts[1].author,
-      lastMessage: '66666',
-      unreadCount: 2,
-      lastMessageAt: now.subtract(18, 'minute').toISOString(),
-      updatedAt: now.subtract(18, 'minute').toISOString()
-    }
-  ];
 }
 
 function fallbackConversationMessages(): Record<number, CampusMessage[]> {
   return {};
-  const posts = fallbackPosts();
-  const now = dayjs();
-  return {
-    1: [
-      {
-        id: 1,
-        conversationId: 1,
-        senderId: posts[3].author.id,
-        receiverId: fallbackUser().id,
-        content: '校霸情报台 关注了你',
-        read: false,
-        createdAt: now.subtract(12, 'minute').toISOString()
-      }
-    ],
-    2: [
-      {
-        id: 2,
-        conversationId: 2,
-        senderId: posts[1].author.id,
-        receiverId: fallbackUser().id,
-        content: '项目实训组队墙今晚会再整理一版。',
-        read: true,
-        createdAt: now.subtract(28, 'minute').toISOString()
-      },
-      {
-        id: 3,
-        conversationId: 2,
-        senderId: fallbackUser().id,
-        receiverId: posts[1].author.id,
-        content: '我想报名前端可视化方向，还缺队友吗？',
-        read: true,
-        createdAt: now.subtract(24, 'minute').toISOString()
-      },
-      {
-        id: 4,
-        conversationId: 2,
-        senderId: posts[1].author.id,
-        receiverId: fallbackUser().id,
-        content: 'good',
-        read: false,
-        createdAt: now.subtract(18, 'minute').toISOString()
-      },
-      {
-        id: 5,
-        conversationId: 2,
-        senderId: posts[1].author.id,
-        receiverId: fallbackUser().id,
-        content: '66666',
-        read: false,
-        createdAt: now.subtract(17, 'minute').toISOString()
-      }
-    ]
-  };
 }
 
 function fallbackCourses(): Course[] {

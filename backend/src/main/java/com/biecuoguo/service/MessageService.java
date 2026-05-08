@@ -65,9 +65,9 @@ public class MessageService {
                 .eq(Message::getConversationId, conversation.getId())
                 .orderByAsc(Message::getCreatedAt));
         messages.stream()
-                .filter(message -> message.getReceiverId().equals(currentUser.id()) && !Boolean.TRUE.equals(message.getRead()))
+                .filter(message -> message.getReceiverId().equals(currentUser.id()) && !Boolean.TRUE.equals(message.getReadFlag()))
                 .forEach(message -> {
-                    message.setRead(true);
+                    message.setReadFlag(true);
                     messageMapper.updateById(message);
                 });
         return messages.stream().map(this::messageView).toList();
@@ -83,7 +83,7 @@ public class MessageService {
         message.setSenderId(currentUser.id());
         message.setReceiverId(receiverId);
         message.setContent(request.content().trim());
-        message.setRead(false);
+        message.setReadFlag(false);
         message.setCreatedAt(now);
         messageMapper.insert(message);
         conversation.setLastMessageAt(now);
@@ -95,7 +95,7 @@ public class MessageService {
     public long unreadCount(CurrentUser currentUser) {
         return messageMapper.selectCount(new LambdaQueryWrapper<Message>()
                 .eq(Message::getReceiverId, currentUser.id())
-                .eq(Message::getRead, false));
+                .eq(Message::getReadFlag, false));
     }
 
     private Conversation findOrCreate(Long userId, Long peerId) {
@@ -136,7 +136,7 @@ public class MessageService {
         long unread = messageMapper.selectCount(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, conversation.getId())
                 .eq(Message::getReceiverId, currentUserId)
-                .eq(Message::getRead, false));
+                .eq(Message::getReadFlag, false));
         return new MessageDtos.ConversationView(
                 conversation.getId(),
                 authorView(peer),
@@ -148,7 +148,7 @@ public class MessageService {
     }
 
     private MessageDtos.MessageView messageView(Message message) {
-        return new MessageDtos.MessageView(message.getId(), message.getConversationId(), message.getSenderId(), message.getReceiverId(), message.getContent(), message.getRead(), message.getCreatedAt());
+        return new MessageDtos.MessageView(message.getId(), message.getConversationId(), message.getSenderId(), message.getReceiverId(), message.getContent(), message.getReadFlag(), message.getCreatedAt());
     }
 
     private PostDtos.AuthorView authorView(User user) {

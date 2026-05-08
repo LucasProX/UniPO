@@ -18,6 +18,6 @@ public class Message {
     private Long receiverId;
     private String content;
     @TableField("is_read")
-    private Boolean read;
+    private Boolean readFlag;
     private LocalDateTime createdAt;
 }
