@@ -3066,7 +3066,7 @@ function expandReplies(comment: CampusComment) {
 }
 
 function hasValidSession() {
-  return isAuthenticated.value && Boolean(localStorage.getItem('bcg_token'));
+  return Boolean(localStorage.getItem('bcg_token'));
 }
 
 function requireLogin(message = '请先登录，点赞、评论和收藏才会写入后端') {
