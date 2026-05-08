@@ -46,6 +46,15 @@ function attachToken(client: AxiosInstance) {
     }
     return config;
   });
+  client.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        clearAuthToken();
+      }
+      return Promise.reject(error);
+    }
+  );
 }
 
 attachToken(api);

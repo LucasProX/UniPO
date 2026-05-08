@@ -1431,7 +1431,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
-import { apiErrorMessage, authApi, campusApi, hasAuthToken, isAuthError, mediaApi, postApi, userApi } from './lib/api';
+import { apiErrorMessage, authApi, campusApi, clearAuthToken, hasAuthToken, isAuthError, mediaApi, postApi, saveAuthToken, userApi } from './lib/api';
 import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
@@ -2039,7 +2039,7 @@ async function loadCampus() {
 }
 
 async function loadAuthenticatedData() {
-  if (!localStorage.getItem('bcg_token')) {
+  if (!hasAuthToken()) {
     isAuthenticated.value = false;
     currentUser.value = fallbackUser();
     userStats.value = fallbackStats();
@@ -2066,7 +2066,7 @@ async function loadAuthenticatedData() {
     me = await campusApi.me();
   } catch (error) {
     if (isAuthError(error)) {
-      localStorage.removeItem('bcg_token');
+      clearAuthToken();
       isAuthenticated.value = false;
       currentUser.value = fallbackUser();
       userStats.value = fallbackStats();
@@ -2117,7 +2117,7 @@ async function loadAuthenticatedData() {
 }
 
 async function refreshConversations() {
-  if (!localStorage.getItem('bcg_token') || refreshingConversations) return;
+  if (!hasAuthToken() || refreshingConversations) return;
   refreshingConversations = true;
   try {
     const [messageList, unread, notices] = await Promise.all([
@@ -2132,15 +2132,26 @@ async function refreshConversations() {
     unreadCount.value = activeId == null
       ? unread
       : Math.max(0, unread - (messageList.find((conversation) => conversation.id === activeId)?.unreadCount || 0));
-  } catch {
-    // Keep the current local state when a poll races with logout or a dev-server hiccup.
+  } catch (error) {
+    if (isAuthError(error)) {
+      clearAuthToken();
+      isAuthenticated.value = false;
+      conversations.value = [];
+      conversationMessages.value = {};
+      interactionNotices.value = [];
+      unreadCount.value = 0;
+      activeConversationId.value = null;
+      stopPresenceHeartbeat();
+      return;
+    }
+    // Keep the current local state when a poll races with a dev-server hiccup.
   } finally {
     refreshingConversations = false;
   }
 }
 
 async function refreshInteractionNotices() {
-  if (!isAuthenticated.value || !localStorage.getItem('bcg_token')) return;
+  if (!isAuthenticated.value || !hasAuthToken()) return;
   interactionNotices.value = await safe(() => campusApi.interactionNotices(), interactionNotices.value);
   markOpenMessageTabRead();
 }
@@ -2194,7 +2205,7 @@ function markOpenMessageTabRead() {
 
 function startPresenceHeartbeat() {
   stopPresenceHeartbeat();
-  if (!localStorage.getItem('bcg_token')) return;
+  if (!hasAuthToken()) return;
   sendPresenceHeartbeat();
   presenceHeartbeatTimer = window.setInterval(() => {
     sendPresenceHeartbeat();
@@ -2209,18 +2220,23 @@ function stopPresenceHeartbeat() {
 }
 
 async function sendPresenceHeartbeat() {
-  if (!localStorage.getItem('bcg_token')) return;
+  if (!hasAuthToken()) return;
   await safe(() => authApi.heartbeat(), false);
 }
 
 async function sessionStillValid() {
-  if (!localStorage.getItem('bcg_token')) return false;
+  if (!hasAuthToken()) return false;
   try {
     const me = await campusApi.me();
     currentUser.value = me;
     isAuthenticated.value = true;
     return true;
-  } catch {
+  } catch (error) {
+    if (isAuthError(error)) {
+      clearAuthToken();
+      isAuthenticated.value = false;
+      stopPresenceHeartbeat();
+    }
     return false;
   }
 }
@@ -3066,7 +3082,7 @@ function expandReplies(comment: CampusComment) {
 }
 
 function hasValidSession() {
-  return Boolean(localStorage.getItem('bcg_token'));
+  return hasAuthToken();
 }
 
 function requireLogin(message = '请先登录，点赞、评论和收藏才会写入后端') {
@@ -3159,7 +3175,7 @@ function markConversationRead(conversationId: number) {
 
 async function refreshActiveConversation(options: { scroll?: boolean } = {}) {
   const conversationId = activeConversationId.value;
-  if (conversationId == null || !isAuthenticated.value || !localStorage.getItem('bcg_token') || refreshingActiveConversation) return;
+  if (conversationId == null || !isAuthenticated.value || !hasAuthToken() || refreshingActiveConversation) return;
   refreshingActiveConversation = true;
   const currentLength = conversationMessages.value[conversationId]?.length || 0;
   try {
@@ -3172,7 +3188,14 @@ async function refreshActiveConversation(options: { scroll?: boolean } = {}) {
       await nextTick();
       scrollMessageThreadToBottom();
     }
-  } catch {
+  } catch (error) {
+    if (isAuthError(error)) {
+      clearAuthToken();
+      isAuthenticated.value = false;
+      stopActiveConversationPolling();
+      stopPresenceHeartbeat();
+      closeConversation();
+    }
     // Polling should stay quiet; manual reopen still retries through openConversation.
   } finally {
     refreshingActiveConversation = false;
@@ -3334,7 +3357,7 @@ async function sendConversationMessage() {
 
 function openLoginDialog(message?: string) {
   if (message) showAuthNotice(message);
-  localStorage.removeItem('bcg_token');
+  clearAuthToken();
   isAuthenticated.value = false;
   stopPresenceHeartbeat();
   currentUser.value = fallbackUser();
@@ -3390,7 +3413,7 @@ function openDrawerLogin() {
 async function logoutCurrentUser() {
   stopPresenceHeartbeat();
   await safe(() => authApi.logout(), false);
-  localStorage.removeItem('bcg_token');
+  clearAuthToken();
   isAuthenticated.value = false;
   showLoginDialog.value = false;
   closeTransientOverlays();
@@ -3445,7 +3468,7 @@ async function loginWithDraft() {
     authSubmitting.value = false;
     return showAuthNotice(`登录失败：${message}`, 'error');
   }
-  localStorage.setItem('bcg_token', result.token);
+  saveAuthToken(result.token);
   isAuthenticated.value = true;
   currentUser.value = result.user;
   startPresenceHeartbeat();
@@ -3527,7 +3550,7 @@ async function registerWithDraft() {
   authSubmitting.value = true;
   try {
     const result = await authApi.register(payload);
-    localStorage.setItem('bcg_token', result.token);
+    saveAuthToken(result.token);
     isAuthenticated.value = true;
     currentUser.value = result.user;
     startPresenceHeartbeat();
@@ -3703,7 +3726,7 @@ function resetCheckInState() {
 }
 
 async function doCheckIn() {
-  if (!isAuthenticated.value || !localStorage.getItem('bcg_token')) {
+  if (!isAuthenticated.value || !hasAuthToken()) {
     openLoginDialog('请先登录后签到，经验会写入后端账号');
     return;
   }
