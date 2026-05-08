@@ -59,6 +59,20 @@ MYSQL_USER=biecuoguo
 
 这个脚本只会启动 `mysql` 容器，不会部署后端、前端、Caddy，也不会动 MinIO。
 
+如果服务器 B 连不上数据库，在服务器 A 上先确认：
+
+```bash
+docker ps | grep unipo-mysql
+docker compose --profile local-db ps mysql
+ss -lntp | grep 12306
+```
+
+还要确认云服务器安全组和系统防火墙都放行 TCP `12306`。例如使用 `ufw` 时：
+
+```bash
+ufw allow 12306/tcp
+```
+
 ### 服务器 B：部署前后端和 Caddy
 
 在服务器 B 上执行：
@@ -117,6 +131,8 @@ MYSQL_PASSWORD=服务器A的MYSQL_PASSWORD
 ```
 
 这个脚本只会构建并启动 `backend`、`frontend`、`caddy`，不会启动 MySQL，也不会动 MinIO。
+
+`deploy-app.sh` 会先检查能不能连上数据库。如果这里报 `Cannot connect to MySQL at 115.190.3.204:12306`，先处理服务器 A 的 MySQL、云安全组或防火墙；后端启动时 Flyway 必须先连上数据库，否则就会出现 `Communications link failure`。
 
 如果用域名，把 `.env` 里改成：
 

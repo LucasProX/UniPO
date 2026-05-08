@@ -73,6 +73,19 @@ fi
 echo "Starting UniPO MySQL only..."
 "${COMPOSE[@]}" --env-file .env --profile local-db up -d mysql
 
+echo "Waiting for MySQL to become healthy..."
+for i in {1..40}; do
+  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' unipo-mysql 2>/dev/null || true)"
+  if [[ "$health" == "healthy" ]]; then
+    break
+  fi
+  if (( i == 40 )); then
+    echo "MySQL did not become healthy in time. Check logs with: docker logs unipo-mysql" >&2
+    exit 1
+  fi
+  sleep 3
+done
+
 echo "MySQL status:"
 "${COMPOSE[@]}" --env-file .env ps mysql
 
