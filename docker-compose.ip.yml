@@ -1,0 +1,4 @@
+services:
+  frontend:
+    ports:
+      - "${IP_HTTP_PORT:-80}:80"

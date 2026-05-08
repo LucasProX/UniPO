@@ -146,6 +146,32 @@ MYSQL_PASSWORD=服务器A的MYSQL_PASSWORD
 
 `deploy-app.sh` 会先检查能不能连上数据库。如果这里报 `Cannot connect to MySQL at 115.190.3.204:12306`，先处理服务器 A 的 MySQL、云安全组或防火墙；后端启动时 Flyway 必须先连上数据库，否则就会出现 `Communications link failure`。
 
+### 无域名服务器：IP 直连部署
+
+如果服务器没有绑定域名，也不需要 Caddy，可以直接让前端容器占用宿主机 80 端口：
+
+```bash
+cd /home/UniPO
+git pull
+chmod +x deploy-ip.sh
+./deploy-ip.sh
+```
+
+访问：
+
+```bash
+http://服务器IP/
+```
+
+这个脚本只启动 `backend` 和 `frontend`，会停掉同一 Compose 项目里的 `caddy`，避免 80 端口冲突。数据库和 MinIO 连接仍然读取同一个 `.env`，不会启动或重置 MySQL/MinIO。
+
+无域名 IP 部署时，`.env` 至少保持：
+
+```env
+CADDY_SITE_ADDRESS=:80
+APP_CORS_ALLOWED_ORIGINS=http://服务器IP
+```
+
 如果用域名，把 `.env` 里改成：
 
 ```env
@@ -179,6 +205,14 @@ git pull
 ```
 
 服务器 B 每次部署都会重新构建并重启 `backend`、`frontend`、`caddy`。数据库数据在服务器 A 的 Docker volume 里，不会因为服务器 B 执行部署脚本被清空。MinIO 不在这些脚本里，也不会被重启。
+
+无域名服务器更新应用：
+
+```bash
+cd UniPO
+git pull
+./deploy-ip.sh
+```
 
 ## 本机开发
 
