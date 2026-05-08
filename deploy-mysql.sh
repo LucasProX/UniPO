@@ -70,6 +70,19 @@ if (( ${#placeholders[@]} )); then
   exit 1
 fi
 
+mysql_bind="$(env_value MYSQL_PUBLIC_BIND)"
+mysql_bind="${mysql_bind:-0.0.0.0}"
+if [[ "$mysql_bind" == "127.0.0.1" || "$mysql_bind" == "localhost" ]]; then
+  cat >&2 <<MSG
+MYSQL_PUBLIC_BIND is ${mysql_bind}, so MySQL will only listen on this server.
+Server B needs remote access. Change .env to:
+  MYSQL_PUBLIC_BIND=0.0.0.0
+
+Then rerun ./deploy-mysql.sh. Existing MySQL data volume will be kept.
+MSG
+  exit 1
+fi
+
 echo "Starting UniPO MySQL only..."
 "${COMPOSE[@]}" --env-file .env --profile local-db up -d mysql
 
@@ -90,6 +103,6 @@ echo "MySQL status:"
 "${COMPOSE[@]}" --env-file .env ps mysql
 
 echo
-echo "MySQL is published on $(env_value MYSQL_PUBLIC_BIND || true):$(env_value MYSQL_PUBLIC_PORT || true), default 0.0.0.0:12306."
+echo "MySQL is published on ${mysql_bind}:$(env_value MYSQL_PUBLIC_PORT || true), default 0.0.0.0:12306."
 echo "Database: $(env_value MYSQL_DATABASE || true)"
 echo "User: $(env_value MYSQL_USER || true)"

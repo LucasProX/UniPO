@@ -67,6 +67,18 @@ docker compose --profile local-db ps mysql
 ss -lntp | grep 12306
 ```
 
+正常应该看到 `0.0.0.0:12306` 或 `*:12306`。如果看到 `127.0.0.1:12306`，说明 MySQL 只对服务器 A 本机开放，服务器 B 连不上。把服务器 A 的 `.env` 改成：
+
+```env
+MYSQL_PUBLIC_BIND=0.0.0.0
+```
+
+然后重新执行：
+
+```bash
+./deploy-mysql.sh
+```
+
 还要确认云服务器安全组和系统防火墙都放行 TCP `12306`。例如使用 `ufw` 时：
 
 ```bash
