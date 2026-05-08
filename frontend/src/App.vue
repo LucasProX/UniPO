@@ -1431,7 +1431,7 @@
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
-import { apiErrorMessage, authApi, campusApi, isAuthError, mediaApi, postApi, userApi } from './lib/api';
+import { apiErrorMessage, authApi, campusApi, hasAuthToken, isAuthError, mediaApi, postApi, userApi } from './lib/api';
 import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
@@ -1609,7 +1609,7 @@ const avatarCropOffsetY = ref(0);
 const postImagePreviewUrl = ref('');
 const postContentInput = ref<HTMLElement | null>(null);
 const composeErrors = ref({ board: '', title: '', content: '' });
-const isAuthenticated = ref(Boolean(localStorage.getItem('bcg_token')));
+const isAuthenticated = ref(hasAuthToken());
 const authForms = ref({
   login: {
     email: '',

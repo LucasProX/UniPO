@@ -5,10 +5,42 @@ import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView
 const api = axios.create({ baseURL: '/api' });
 const publicApi = axios.create({ baseURL: '/api' });
 const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api' });
+const TOKEN_KEY = 'bcg_token';
+
+function isUsableToken(token: string | null | undefined) {
+  if (!token) return false;
+  const value = token.trim();
+  return value !== 'undefined' && value !== 'null' && value.split('.').length === 3;
+}
+
+export function authToken() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!isUsableToken(token)) {
+    localStorage.removeItem(TOKEN_KEY);
+    return '';
+  }
+  return token!.trim();
+}
+
+export function hasAuthToken() {
+  return Boolean(authToken());
+}
+
+export function saveAuthToken(token: string) {
+  if (!isUsableToken(token)) {
+    localStorage.removeItem(TOKEN_KEY);
+    throw new Error('登录返回的 token 无效，请重新登录');
+  }
+  localStorage.setItem(TOKEN_KEY, token.trim());
+}
+
+export function clearAuthToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
 
 function attachToken(client: AxiosInstance) {
   client.interceptors.request.use((config) => {
-    const token = localStorage.getItem('bcg_token');
+    const token = authToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
