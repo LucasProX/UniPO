@@ -57,7 +57,7 @@ extract_mysql_host_port() {
   if [[ "$authority" == "$host" ]]; then
     port="3306"
   fi
-  printf '%s %s' "$host" "$port"
+  printf '%s %s\n' "$host" "$port"
 }
 
 check_tcp() {
