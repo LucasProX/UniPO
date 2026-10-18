@@ -53,15 +53,19 @@
 
 修复：仅在用户不存在时创建；增加管理员自助改密接口；compose 去掉默认值改为必填（`deploy-app.sh` 的 `required_vars` 里已有，但 compose 默认值让缺失时不报错）。
 
-### P0-4 默认配置直连生产库，本地启动会改生产数据
+### P0-4 默认配置指向远端数据库（**已更正：该库当前对公网不可达，风险降为 P1**）
 证据：
 - `backend/src/main/resources/application.yml:14` 与 `application-local.yml:3` 的默认 `spring.datasource.url` 都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`
-- 本机实测 **该端口可连通**
+- README 第 219 行称它为"测试环境 MySQL"，但它就是线上部署唯一在用的库
 - README 的本地开发命令就是 `spring-boot:run -Dspring-boot.run.profiles=local`
 
-影响链：照文档启动本地后端 -> 连上生产库 -> Flyway 对生产执行迁移 -> `AuthService.run()` 把生产管理员密码重置成 `BOOTSTRAP_ADMIN_PASSWORD`、重建三个演示账号 -> 本地测试的发帖/改资料直接写进生产数据。
+**更正（2026-10-19）**：先前"本机可连通该端口"的结论是错的。本机开着 Clash/Mihomo TUN 代理（fake-ip 段 198.18.0.0/15，网关 198.18.0.2），所有 TCP 被本地接管，连 `192.0.2.1` / `203.0.113.1` 这类保留地址都"连得上"。改用 6 个外部节点（check-host.net）实测：**ping 全部通（215-304ms）；TCP 12306 全部超时；TCP 22 全部超时；TCP 80 开放但返回 404**。结论：服务器在线，但数据库端口未对公网开放。
 
-修复：把默认值改成 `jdbc:mysql://127.0.0.1:3307/biecuoguo`（或直接不给默认值，缺失即启动失败）；本地库单独用 `.env` / IDE 配置提供。
+影响：
+- 现在：照 README 在本地启动后端会**连接超时失败**（不会写坏远端数据）。
+- 一旦该端口被放开（安全组放行，或从服务器 B 的内网访问）：本地启动就会对远端库跑 Flyway 迁移，并触发 `AuthService.run()` 重置管理员密码、重建三个演示账号。
+
+修复：默认值改成 `jdbc:mysql://127.0.0.1:3307/biecuoguo`，或干脆不给默认值（缺失即启动失败），远端地址只从 `.env` 提供。
 
 ## 2. P1 — 应尽快修
 

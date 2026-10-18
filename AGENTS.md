@@ -83,7 +83,8 @@ docker compose up -d --build
 - `PostService.baseVisibleWrapper`（`PostService.java:470-478`）在用户没选学校或未登录时**硬编码 `school_id = 1`**；`defaultViewer()`（`PostService.java:646`）还会随便挑一个 active 用户当"匿名视角"。这是 bug，不是设计。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - 前端轮询：会话列表 3s（`App.vue:1987`）、当前会话 1.8s（`App.vue:3205`）、在线心跳 10s（`App.vue:2208`）。实时化之前别再加轮询。
-- **默认 datasource 直连生产库**：`application.yml:14` 与 `application-local.yml:3` 都默认 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，且本机能连通该端口。照 README 跑 `spring-boot:run` = 连生产库 + 执行 Flyway 迁移 + 触发 `AuthService` 启动逻辑（会把生产管理员密码重置）。**启动前必须显式设置 `SPRING_DATASOURCE_URL` 指向本地库。**
+- **默认 datasource 指向远端库**：`application.yml:14` 与 `application-local.yml:3` 都默认 `jdbc:mysql://115.190.3.204:12306/biecuoguo`。实测该端口**对公网不可达**（外部节点 TCP 全部超时；本机探测会被 Clash TUN 代理伪造成"可连接"，不可信），所以现在照 README 启动只会连接超时。一旦端口被放开，`spring-boot:run` 就会对远端库跑 Flyway + 触发 `AuthService` 启动逻辑（重置管理员密码、重建演示账号）。**启动前必须显式设置 `SPRING_DATASOURCE_URL` 指向本地库。**
+- **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。要判断真实可达性，用 check-host.net 这类外部节点，或先关代理。
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
 - 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
 
