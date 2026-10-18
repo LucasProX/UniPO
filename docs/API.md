@@ -1,0 +1,155 @@
+# API 参考（现状快照）
+
+> 快照日期 2026-10-19，commit `05a265d`。当前接口**未版本化**，base path 固定 `/api`。
+
+## 1. 通用约定
+
+| 项 | 现状 |
+|---|---|
+| 认证 | `Authorization: Bearer <jwt>`；无状态、无刷新令牌、有效期 10080 分钟 |
+| 成功响应 | HTTP 200，body `{"data": <T>}` |
+| 错误响应 | 4xx，body `{"message": "中文提示", "timestamp": "ISO-8601 Instant"}` |
+| 分页 | **没有**。列表接口全量返回，前端自己 slice |
+| 时间 | `LocalDateTime` 序列化为 `"2026-05-08T22:23:35"`，**无时区偏移** |
+| 未登录访问受保护接口 | 401 `{"message":"请先登录"}` |
+| 富文本 | 帖子 `content` 直接是 HTML 片段，前端用 `sanitizeRichHtml` 清洗后 `v-html` |
+| Swagger | `/swagger-ui.html`、`/v3/api-docs` 已放行（springdoc） |
+
+枚举值：
+- `board`：`recommend` / `school` / `college` / `major`
+- `role`：`USER` / `OPERATOR` / `SCHOOL_OPERATOR` / `COLLEGE_OPERATOR` / `MAJOR_OPERATOR` / `ADMIN`
+- `status`(post)：`published` / `deleted`
+
+## 2. 认证 `/api/auth`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| POST | `/register` | 公开 | 注册，需学校等资料 |
+| POST | `/login` | 公开 | 邮箱或用户名（`good` / `xiaoba` / `yuanhua` 被特判） |
+| POST | `/logout` | 登录 | 把 jti 加入内存黑名单 |
+| POST | `/heartbeat` | 登录 | 在线心跳（内存 Map） |
+| GET | `/me` | 登录 | 当前用户 |
+| POST | `/verification-code` | 公开 | 发邮箱验证码（当前 mock 模式不真发，只打日志） |
+| POST | `/verification-code/verify` | 公开 | 校验验证码 |
+| POST | `/reset-password` | 公开 | 重置密码；**mock 模式下任意 4 位数字通过** |
+| GET | `/email-availability?email=&purpose=` | 公开 | 邮箱是否可用；`purpose=reset-password` 时等价于"该邮箱是否已注册" |
+| GET | `/nickname-availability?nickname=` | 公开 | 昵称是否可用 |
+
+## 3. PO 信息流 `/api/posts`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/?tab=recommend\|school\|college\|major` | 公开 | 主 feed，**全量返回**，按 pinned/official/dontMiss/热度/时间排序 |
+| GET | `/boards` | 公开 | 四个板块 + 各自总数 |
+| GET | `/hot-today` | 公开 | 今日热帖；无数据时回落到全量 recommend |
+| GET | `/dont-miss` | 公开 | 别错过（带 deadline） |
+| GET | `/interaction-notices` | 登录 | 互动通知；**路径命中 GET 白名单，未登录实际 401** |
+| POST | `/` | 登录 | 发帖；需先选学校；官方/置顶有角色限制 |
+| DELETE | `/{id}` | 登录 | 软删除（`status=deleted`），仅作者 |
+| GET | `/{id}/comments` | 公开 | 全部评论 + 楼中楼 |
+| POST | `/{id}/comments` | 登录 | 评论（`parentId` 支持回复） |
+| POST/DELETE | `/comments/{id}/like` | 登录 | 评论点赞（注意：路径在 `/api/posts` 下） |
+| POST/DELETE | `/{id}/like` | 登录 | 帖子点赞 |
+| POST/DELETE | `/{id}/favorite` | 登录 | 收藏 |
+| POST | `/{id}/share` | 登录 | 分享计数 +1 |
+
+## 4. 用户 `/api/users`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/me` | 登录 | 我的资料 |
+| PUT | `/me` | 登录 | 改资料（昵称/头像/学校/学院/专业/年级/简介） |
+| PUT | `/me/preferences` | 登录 | 兴趣与偏好 |
+| GET | `/me/stats` | 登录 | 发帖/获赞/关注统计 |
+| GET | `/me/check-in` | 登录 | 今日是否已签到 |
+| POST | `/me/check-in` | 登录 | 签到 |
+| GET | `/me/posts` | 登录 | 我的 PO |
+| GET | `/me/likes` | 登录 | 我赞过的 |
+| GET | `/me/post-favorites` | 登录 | 我收藏的 |
+| GET | `/{uid}` | 公开 | 他人主页（`uid` = `public_uid`） |
+| GET | `/{uid}/posts` | 公开 | 他人 PO |
+| GET | `/{uid}/likes` | 公开 | 他人赞过的 |
+| GET | `/{uid}/post-favorites` | 公开 | 他人收藏 |
+| POST/DELETE | `/{uid}/follow` | 登录 | 关注 / 取关 |
+
+## 5. 私信 `/api/messages`（全部登录）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/conversations` | 会话列表（每个会话 3 次额外 SQL） |
+| POST | `/conversations` | 按 `peerId` 或 `peerUid` 创建/复用会话 |
+| GET | `/conversations/{id}/messages` | **全量**消息 + 标记已读 |
+| POST | `/conversations/{id}/messages` | 发消息 |
+| GET | `/unread-count` | 未读数 |
+
+## 6. 媒体 `/api/media`
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| POST | `/upload` (multipart: `file`, `purpose`) | 登录 | 只校验 Content-Type 前缀 `image/`；上限 20MB |
+| GET | `/{id}/content? v=` | 公开 | 经后端流式转发 MinIO；带 `v` 时 30 天强缓存 |
+
+## 7. 选项与分类（全部公开）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/categories` `/api/tags` | 遗留域的分类 / 标签 |
+| GET | `/api/schools` | 学校列表 |
+| GET | `/api/options/schools` | 下拉选项 |
+| GET | `/api/options/colleges?schoolId=` | 学院选项 |
+| GET | `/api/options/majors?schoolId=&collegeId=` | 专业选项 |
+| GET | `/api/options/grades` | 年级选项 |
+
+## 8. 遗留域（前端零调用）
+
+| 组 | 端点 | 鉴权 |
+|---|---|---|
+| notices | `GET /api/notices`、`/recommended`、`/calendar`、`/{id}` | 公开 |
+| notices | `POST /api/notices/{id}/feedback` | 登录 |
+| comments | `GET\|POST /api/notices/{id}/comments` | GET 公开 / POST 登录 |
+| comments | `POST\|DELETE /api/comments/{id}/like`、`POST /api/comments/{id}/report` | 登录 |
+| interactions | `GET /api/favorites`、`POST\|DELETE /api/notices/{id}/favorite` | 登录 |
+| interactions | `GET /api/reminders`、`POST /api/notices/{id}/reminders`、`PUT\|DELETE /api/reminders/{id}` | 登录 |
+| interactions | `POST /api/notices/{id}/complete`、`/ignore` | 登录 |
+| admin | `/api/admin/notices` CRUD、`/publish`、`/unpublish`、`/comments`、`/hide`、`/feature`、`/users`、`/status`、`/role`、`/analytics/overview` | 角色 |
+
+> `/api/comments/{id}/like`（遗留）与 `/api/posts/comments/{id}/like`（新）是两套路径、同一张 `comments` 表。
+
+## 9. 鉴权白名单（`SecurityConfig.java:51-58`）
+
+公开：
+- `/actuator/health`、`/swagger-ui/**`、`/v3/api-docs/**`
+- `/api/auth/register`、`/login`、`/verification-code`、`/verification-code/verify`、`/reset-password`、`/email-availability`、`/nickname-availability`
+- `GET /api/notices/**`、`GET /api/categories`、`/api/tags`、`/api/schools`
+- `GET /api/posts/**`、`GET /api/options/**`
+- `GET /api/media/*/content`
+- `GET /api/users/*`、`/api/users/*/posts`、`/likes`、`/post-favorites`
+- `GET /api/notices/*/comments`
+
+其余需登录；` /api/admin/**` 需要 `OPERATOR / SCHOOL_OPERATOR / COLLEGE_OPERATOR / MAJOR_OPERATOR / ADMIN` 之一。
+
+> 隐患：公开的 `GET /api/users/{uid}` 系列可被用于批量枚举用户；`email-availability?purpose=reset-password` 可直接判定邮箱是否注册。
+
+## 10. 前端调用映射（`frontend/src/lib/api.ts`）
+
+| 前端方法 | 实际请求 |
+|---|---|
+| `campusApi.listPosts(tab)` | `GET /api/posts?tab=` |
+| `campusApi.boards()` | `GET /api/posts/boards` |
+| `campusApi.hotToday()` / `dontMiss()` | 同名接口 |
+| `postApi.create / like / favorite / comments` | `/api/posts/**` |
+| `authApi.login / me / heartbeat` | `/api/auth/**` |
+| `userApi.profile / stats / checkIn` | `/api/users/me/**` |
+| `mediaApi.upload` | `POST /api/media/upload` |
+| 会话轮询 | `GET /api/messages/conversations`（3s） |
+| 当前会话轮询 | `GET /api/messages/conversations/{id}/messages`（1.8s） |
+
+> `api.ts` 里的 `localApi` 在 DEV 且同源请求失败时直连 `http://127.0.0.1:8080/api`，仅用于本地调试。
+
+## 11. 已知不一致
+
+1. `GET /api/posts/interaction-notices` 在公开白名单里但方法要求登录 -> 401 而非 403。
+2. 评论点赞有两套路径（见 §8）。
+3. 全部列表无分页；App 端无法做游标滚动，必须后端补。
+4. 没有接口版本号，App 发布后无法安全演进。
+5. 错误体没有业务错误码，App 只能靠中文 message 判断类型。
