@@ -21,7 +21,9 @@
 
 ## 2. 环境
 - 本机：Windows 11，Git 2.55，Node 24.18，npm 11.16。
-- **未安装 JDK / Maven / Docker** → 后端目前**无法本地编译和运行**。任何后端改动只能静态审查，无法验证。这是当前最大的协作成本（见 `docs/ISSUES.md` §0）。
+- 已装 **Temurin JDK 21.0.12.1**（`D:\Environments\Java\jdk-21`）+ **Maven 3.9.16**（`D:\Environments\Maven\apache-maven-3.9.16`）；`JAVA_HOME` 与 PATH 已写入用户环境变量，**新开的终端直接可用**。
+- 已配置阿里云 Maven 镜像（`C:\Users\36840\.m2\settings.xml`），后端首次构建约 2.5 分钟。
+- **仍无 Docker、无本地 MySQL**。不要用默认配置启动后端——默认 datasource 直连**生产库**，见 §8。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
 - 全局 git 身份已配好：`LucasProX <LucasProX@users.noreply.github.com>`，凭据管理器里有 GitHub token，可直接 push。
 
@@ -33,10 +35,13 @@ npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1 --port 5173   # vite 代理 /api -> localhost:8080
 npm.cmd run build                                   # vue-tsc -b && vite build，提交前必须绿
 ```
-后端（需要 JDK 21 + Maven）：
+后端（已可编译，但**启动还需要一个数据库**）：
 ```bash
 cd backend
+mvn -DskipTests package                            # 只编译打包，安全，已实测通过
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
+# 上一行会连生产库！启动前必须先导出本地库地址：
+#   SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3307/biecuoguo
 ```
 全栈（需要 Docker）：
 ```bash
@@ -78,13 +83,15 @@ docker compose up -d --build
 - `PostService.baseVisibleWrapper`（`PostService.java:470-478`）在用户没选学校或未登录时**硬编码 `school_id = 1`**；`defaultViewer()`（`PostService.java:646`）还会随便挑一个 active 用户当"匿名视角"。这是 bug，不是设计。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - 前端轮询：会话列表 3s（`App.vue:1987`）、当前会话 1.8s（`App.vue:3205`）、在线心跳 10s（`App.vue:2208`）。实时化之前别再加轮询。
-- 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿。
+- **默认 datasource 直连生产库**：`application.yml:14` 与 `application-local.yml:3` 都默认 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，且本机能连通该端口。照 README 跑 `spring-boot:run` = 连生产库 + 执行 Flyway 迁移 + 触发 `AuthService` 启动逻辑（会把生产管理员密码重置）。**启动前必须显式设置 `SPRING_DATASOURCE_URL` 指向本地库。**
+- `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
+- 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
 
 ## 9. 当前优先级（2026-10）
 1. 安全止血：验证码放行、后门账号、管理员密码重置（P0，见 `docs/ISSUES.md`）。
 2. 契约冻结：读完 `docs/API.md`，确认现状。
 3. `/api/v1` 版本化 + 统一响应包 / 游标分页 / 时区（App 开发前必须完成）。
-4. 让后端本地可运行（装 JDK 21 + Maven，或 Docker Desktop）。
+4. 给后端一个**本地数据库**（便携版 MySQL 8 或 Docker Desktop），并把默认 datasource 从生产库改掉。
 5. 清理 notices 遗留域与前端假数据。
 
 ## 10. 文档索引

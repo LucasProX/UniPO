@@ -6,7 +6,8 @@
 
 | 问题 | 影响 |
 |---|---|
-| 本机**没有 JDK / Maven / Docker** | 后端不可编译、不可启动、不可验证；所有后端改动都是"盲改" |
+| ~~本机没有 JDK / Maven~~ **已解决**：装了 Temurin 21.0.12.1 + Maven 3.9.16，`mvn -DskipTests package` 已实测 **BUILD SUCCESS**（63MB fat jar）；前端 `npm run build` 也已通过 | 编译能力已具备 |
+| **仍无本地数据库 / Docker** | 后端能编译但**不能启动**；唯一的默认库是生产库 |
 | 仓库**0 个测试**（无 `src/test`） | 重构与安全修复没有回归保护 |
 | **无 lint、无 CI**（无 `.github/workflows`、无 eslint/prettier） | 质量全靠人肉 |
 
@@ -51,6 +52,16 @@
 影响：管理员改密无效；密码恒等于 `.env` 值；`.env` 一旦泄漏即永久失守。
 
 修复：仅在用户不存在时创建；增加管理员自助改密接口；compose 去掉默认值改为必填（`deploy-app.sh` 的 `required_vars` 里已有，但 compose 默认值让缺失时不报错）。
+
+### P0-4 默认配置直连生产库，本地启动会改生产数据
+证据：
+- `backend/src/main/resources/application.yml:14` 与 `application-local.yml:3` 的默认 `spring.datasource.url` 都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`
+- 本机实测 **该端口可连通**
+- README 的本地开发命令就是 `spring-boot:run -Dspring-boot.run.profiles=local`
+
+影响链：照文档启动本地后端 -> 连上生产库 -> Flyway 对生产执行迁移 -> `AuthService.run()` 把生产管理员密码重置成 `BOOTSTRAP_ADMIN_PASSWORD`、重建三个演示账号 -> 本地测试的发帖/改资料直接写进生产数据。
+
+修复：把默认值改成 `jdbc:mysql://127.0.0.1:3307/biecuoguo`（或直接不给默认值，缺失即启动失败）；本地库单独用 `.env` / IDE 配置提供。
 
 ## 2. P1 — 应尽快修
 
