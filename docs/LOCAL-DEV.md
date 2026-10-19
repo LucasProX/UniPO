@@ -120,3 +120,14 @@ MINIO_PUBLIC_READ=false
 | 上传报 `无法连接 MinIO 服务` | `unipo-minio` 没起：`docker compose --profile local-db up -d minio`；或 `.env` 的 `MINIO_ENDPOINT` 不是 `http://127.0.0.1:9000` |
 | 图片 403 | 把 `MINIO_PUBLIC_READ` 改成了 `true` 但没给桶配匿名读策略，见 §2 MinIO 说明 |
 | 上传成功但前端不显示 | 检查返回的 `url` 是否以 `/api/` 开头；`MINIO_PUBLIC_READ=true` 时是 `http://127.0.0.1:9000/...`，需要桶策略 |
+
+## 7. 冒烟测试（一条命令验全链路）
+
+```powershell
+# 后端和 MySQL/MinIO 都在跑的前提下
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
+```
+
+覆盖 17 项：验证码 → 注册 → me → 发帖 → 评论 → 点赞 → 收藏 → 签到 → 统计 → 热榜 → 必看 → 关注 → 建会话 → 发私信 → 会话列表 → 未读数 → **图片上传**。
+
+全 PASS（`failed checks: 0`）说明 **后端 + MySQL + MinIO** 三条链路都健康；改完后端先跑这个再提交。

@@ -48,6 +48,10 @@ mvn -DskipTests package                  # 只编译打包，安全
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 # 自动读仓库根的 .env（application.yml:6 的 spring.config.import）
 ```
+冒烟（后端/MySQL/MinIO 都在跑时）：
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 17 项全链路检查
+```
 全栈（需要 Docker）：
 ```bash
 cp .env.example .env
