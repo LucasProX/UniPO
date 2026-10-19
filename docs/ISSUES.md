@@ -62,7 +62,7 @@
 | D-2 | **列表无分页** | `PostService.java:53-64` `selectList` 无 limit；`MessageService.messages()` 全量加载 | 数据一多前端直接卡死 |
 | D-3 | 匿名视角取随机用户 | `PostService.java:470-478` 未登录硬编码 `school_id = 1`；`:646` `defaultViewer()` 随机取 active 用户 | 未登录看到的 feed 不可控 |
 | D-4 | 前端 4207 行单文件 | `frontend/src/App.vue`，6 个 `ViewKey` 手写状态机，无 vue-router | 无法多人协作，也无法复用到 App |
-| D-5 | 前端假数据兜底 | `fallbackPosts` / `fallbackComments` / `fallbackConversations` / `fallbackCourses` | 接口挂了也"看起来正常"，掩盖 bug |
+| D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
 | D-6 | 轮询过密 | `App.vue:1987` 3s、`:3205` 1.8s、`:2208` 10s | 放大 D-1/D-2 |
 | D-7 | notices 遗留域 | `NoticeController` / `CommentController` / `InteractionController` / `AdminController` + 12 张表，前端零调用 | 阅读与维护成本翻倍 |
 | D-8 | db/local 与 H2 是死代码 | 无任何 profile 引用 `db/local`，H2 未被使用 | 误导后来者 |

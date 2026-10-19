@@ -144,7 +144,18 @@
               </div>
             </section>
 
-            <div class="grid gap-5 xl:grid-cols-2">
+            <div v-if="feedLoading && !pagedPosts.length" class="po-card p-8 text-center text-sm font-bold text-[#718097]">
+              正在加载校园动态…
+            </div>
+            <div v-else-if="feedError && !pagedPosts.length" class="po-card p-8 text-center">
+              <p class="text-base font-black text-[#c0392b]">加载失败</p>
+              <p class="mt-2 text-xs font-semibold text-[#718097]">{{ feedError }}</p>
+              <button class="mt-4 rounded-full bg-[#19202f] px-5 py-2 text-xs font-black text-white" @click="reloadFeed">重试</button>
+            </div>
+            <div v-else-if="!pagedPosts.length" class="po-card p-8 text-center text-sm font-bold text-[#718097]">
+              这个版块还没有内容
+            </div>
+            <div v-else class="grid gap-5 xl:grid-cols-2">
               <article
                 v-for="post in pagedPosts"
                 :key="post.id"
@@ -1538,9 +1549,11 @@ const activeView = ref<ViewKey>('home');
 const activeBoard = ref<BoardCode>('recommend');
 const selectedDate = ref<string | null>(null);
 const feedPage = ref(1);
-const posts = ref<CampusPost[]>(fallbackPosts());
-const boards = ref<BoardView[]>(fallbackBoards());
-const comments = ref<CampusComment[]>(fallbackComments());
+const posts = ref<CampusPost[]>([]);
+const feedLoading = ref(false);
+const feedError = ref('');
+const boards = ref<BoardView[]>(defaultBoards());
+const comments = ref<CampusComment[]>([]);
 const interactionNotices = ref<InteractionNoticeView[]>([]);
 const conversations = ref<ConversationView[]>([]);
 const conversationMessages = ref<Record<number, CampusMessage[]>>({});
@@ -1554,8 +1567,8 @@ const viewedProfileFavoritePosts = ref<CampusPost[]>([]);
 const unreadCount = ref(0);
 const profileTab = ref<ProfileTabKey>('posts');
 const viewedProfileTab = ref<ProfileTabKey>('posts');
-const currentUser = ref<UserProfile>(fallbackUser());
-const userStats = ref<UserStats>(fallbackStats());
+const currentUser = ref<UserProfile>(guestUser());
+const userStats = ref<UserStats>(emptyStats());
 const selectedPost = ref<CampusPost | null>(posts.value[0] || null);
 const expandedPost = ref<CampusPost | null>(null);
 const spotlightIndex = ref(0);
@@ -1565,7 +1578,7 @@ const checkingIn = ref(false);
 const checkinCelebrating = ref(false);
 const lastCheckinXp = ref(0);
 const importNotice = ref(false);
-const courses = ref<Course[]>(fallbackCourses());
+const courses = ref<Course[]>([]);
 const editDraft = ref<Course | null>(null);
 const profileDraft = ref<ProfileDraft | null>(null);
 const selectedWeek = ref(12);
@@ -1869,7 +1882,7 @@ const profileGridPosts = computed(() => {
   return profilePosts.value;
 });
 const viewedProfileTabs = computed(() => {
-  const stats = viewedProfile.value?.stats || fallbackStats();
+  const stats = viewedProfile.value?.stats || emptyStats();
   return [
     { key: 'posts' as ProfileTabKey, label: '作品', count: stats.posts },
     { key: 'likes' as ProfileTabKey, label: '喜欢', count: stats.likedPosts },
@@ -2016,31 +2029,50 @@ onBeforeUnmount(() => {
   stopPresenceHeartbeat();
 });
 
+function describeError(error: unknown, fallback: string) {
+  const detail = error as { response?: { data?: { message?: string }; status?: number }; message?: string } | null;
+  const serverMessage = detail?.response?.data?.message;
+  if (serverMessage) return serverMessage;
+  const status = detail?.response?.status;
+  // 没有状态码（网络错误）或网关 5xx（vite 代理连不上后端）时，用中文兜底文案
+  if (!status || status >= 500) return fallback;
+  return detail?.message || fallback;
+}
+
 async function loadCampus() {
+  feedLoading.value = true;
+  feedError.value = '';
   try {
     const [postList, boardList] = await Promise.all([
       campusApi.posts('recommend'),
       campusApi.boards()
     ]);
-    posts.value = postList.length ? enrichApiPosts(postList) : fallbackPosts();
-    boards.value = boardList.length ? normalizeBoards(boardList) : fallbackBoards();
+    posts.value = enrichApiPosts(postList);
+    boards.value = boardList.length ? normalizeBoards(boardList) : defaultBoards();
+    comments.value = [];
     await loadAuthenticatedData();
     selectedPost.value = posts.value[0] || null;
-    comments.value = fallbackComments();
-  } catch {
-    posts.value = fallbackPosts();
-    boards.value = fallbackBoards();
+  } catch (error) {
+    posts.value = [];
+    boards.value = defaultBoards();
+    comments.value = [];
+    selectedPost.value = null;
+    feedError.value = describeError(error, '无法连接后端，请确认服务已启动');
     await loadAuthenticatedData();
-    comments.value = fallbackComments();
-    selectedPost.value = posts.value[0] || null;
+  } finally {
+    feedLoading.value = false;
   }
+}
+
+async function reloadFeed() {
+  await loadCampus();
 }
 
 async function loadAuthenticatedData() {
   if (!hasAuthToken()) {
     isAuthenticated.value = false;
-    currentUser.value = fallbackUser();
-    userStats.value = fallbackStats();
+    currentUser.value = guestUser();
+    userStats.value = emptyStats();
     conversations.value = [];
     conversationMessages.value = {};
     profilePosts.value = [];
@@ -2066,8 +2098,8 @@ async function loadAuthenticatedData() {
     if (isAuthError(error)) {
       clearAuthToken();
       isAuthenticated.value = false;
-      currentUser.value = fallbackUser();
-      userStats.value = fallbackStats();
+      currentUser.value = guestUser();
+      userStats.value = emptyStats();
       conversations.value = [];
       conversationMessages.value = {};
       profilePosts.value = [];
@@ -2094,7 +2126,7 @@ async function loadAuthenticatedData() {
   readMessageNoticeIds.value = loadReadMessageNoticeIds(me.id);
   startPresenceHeartbeat();
   const [stats, messageList, unread, myPosts, myLikes, myFavorites, notices, checkIn] = await Promise.all([
-    safe(() => campusApi.stats(), fallbackStats()),
+    safe(() => campusApi.stats(), emptyStats()),
     safe(() => campusApi.conversations(), [] as ConversationView[]),
     safe(() => campusApi.unreadCount(), 0),
     safe(() => campusApi.myPosts(), [] as PostView[]),
@@ -3350,8 +3382,8 @@ function openLoginDialog(message?: string) {
   clearAuthToken();
   isAuthenticated.value = false;
   stopPresenceHeartbeat();
-  currentUser.value = fallbackUser();
-  userStats.value = fallbackStats();
+  currentUser.value = guestUser();
+  userStats.value = emptyStats();
   profilePosts.value = [];
   profileLikedPosts.value = [];
   profileFavoritePosts.value = [];
@@ -3417,8 +3449,8 @@ async function logoutCurrentUser() {
   readMessageNoticeIds.value = new Set();
   resetCheckInState();
   unreadCount.value = 0;
-  currentUser.value = fallbackUser();
-  userStats.value = fallbackStats();
+  currentUser.value = guestUser();
+  userStats.value = emptyStats();
   profilePosts.value = [];
   profileLikedPosts.value = [];
   profileFavoritePosts.value = [];
@@ -4029,7 +4061,7 @@ function enrichApiPosts(list: PostView[]): CampusPost[] {
 }
 
 function normalizeBoards(list: BoardView[]) {
-  const fallback = fallbackBoards();
+  const fallback = defaultBoards();
   return fallback.map((board) => list.find((item) => item.code === board.code) || board);
 }
 
@@ -4089,7 +4121,7 @@ function publicProfileFromAuthor(author: AuthorView): PublicProfileView {
   };
 }
 
-function fallbackUser(): UserProfile {
+function guestUser(): UserProfile {
   return {
     id: 0,
     publicUid: '00000000',
@@ -4107,397 +4139,16 @@ function fallbackUser(): UserProfile {
   };
 }
 
-function fallbackStats(): UserStats {
+function emptyStats(): UserStats {
   return { favorites: 0, likedPosts: 0, sharedPosts: 0, completed: 0, comments: 0, upcoming: 0, avoidedRisks: 0, following: 0, followers: 0, posts: 0 };
 }
 
-function fallbackBoards(): BoardView[] {
+function defaultBoards(): BoardView[] {
   return [
-    { code: 'recommend', name: '推荐', description: '按热度、官方权重和发布时间混排', count: 128 },
-    { code: 'school', name: '校 PO', description: '全校同学都能看到的校园动态', count: 42 },
-    { code: 'college', name: '院 PO', description: '同学院范围内更贴近课程和活动', count: 31 },
-    { code: 'major', name: '专业 PO', description: '专业相关经验、作业、竞赛和提醒', count: 24 }
-  ];
-}
-
-function fallbackPosts(): CampusPost[] {
-  const now = dayjs();
-  const student = {
-    id: 2,
-    uid: '24052001',
-    nickname: '小坡不鸽',
-    avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=PO',
-    role: 'USER' as const,
-    operatorScope: 'student',
-    level: 64,
-    levelTitle: '校园情报员',
-    school: '试点大学',
-    college: '计算机学院',
-    major: '计算机科学与技术',
-    grade: '大三'
-  };
-  const schoolOperator = {
-    ...student,
-    id: 3,
-    uid: '24052002',
-    nickname: '校霸情报台',
-    avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=XB',
-    role: 'SCHOOL_OPERATOR' as const,
-    operatorScope: 'school',
-    level: 88,
-    levelTitle: '毕设渡劫人'
-  };
-  const collegeOperator = {
-    ...student,
-    id: 4,
-    uid: '24052003',
-    nickname: '计院院花',
-    avatarUrl: 'https://api.dicebear.com/8.x/initials/svg?seed=YH',
-    role: 'COLLEGE_OPERATOR' as const,
-    operatorScope: 'college',
-    level: 72,
-    levelTitle: '劳模舍友'
-  };
-
-  return [
-    {
-      id: 101,
-      board: 'school',
-      sourceType: 'official',
-      title: '四六级报名明天 17:00 截止，没缴费就等于没报名',
-      content: '这条是校霸提醒：系统显示已报名不代表缴费成功。\n今天先确认科目、考点、缴费状态，最好截图留存。去年就有人卡在“待支付”没发现，最后只能等下一轮。',
-      excerpt: '系统显示已报名不代表缴费成功。今天先确认科目、考点、缴费状态，最好截图留存。',
-      coverUrl: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'high',
-      official: true,
-      dontMiss: true,
-      pinned: true,
-      deadlineAt: now.add(1, 'day').hour(17).minute(0).toISOString(),
-      eventDate: now.add(1, 'day').format('YYYY-MM-DD'),
-      missConsequence: '错过后通常不能补报，只能等下一轮。',
-      nextAction: '打开报名系统，确认缴费状态和考点信息。',
-      tags: ['今日校园PO', '官方', '考试'],
-      likeCount: 286,
-      commentCount: 42,
-      favoriteCount: 73,
-      shareCount: 31,
-      liked: false,
-      favorited: true,
-      status: 'published',
-      publishedAt: now.minute(13).second(0).toISOString(),
-      createdAt: now.toISOString(),
-      author: schoolOperator,
-      last2hLikes: 251,
-      last2hComments: 38
-    },
-    {
-      id: 102,
-      board: 'college',
-      sourceType: 'student',
-      title: '计院项目实训组队墙开了，别等 ddl 才找队友',
-      content: '学院今年把项目实训提前到了第 12 周确认队伍。现在已经有人在墙上写技术栈、可用时间和想做方向了，别最后只剩随机匹配。',
-      excerpt: '学院今年把项目实训提前到了第 12 周确认队伍。现在已经有人在墙上写技术栈和想做方向。',
-      coverUrl: 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: false,
-      dontMiss: true,
-      pinned: false,
-      deadlineAt: now.add(6, 'day').hour(15).minute(59).toISOString(),
-      eventDate: now.add(6, 'day').format('YYYY-MM-DD'),
-      tags: ['计院', '组队', '项目实训'],
-      likeCount: 198,
-      commentCount: 57,
-      favoriteCount: 66,
-      shareCount: 29,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(18, 'minute').toISOString(),
-      createdAt: now.subtract(18, 'minute').toISOString(),
-      author: collegeOperator,
-      last2hLikes: 172,
-      last2hComments: 49
-    },
-    {
-      id: 103,
-      board: 'major',
-      sourceType: 'student',
-      title: '数据结构实验报告别只写代码，老师真的会看复杂度分析',
-      content: '上周刚被退回一次。建议每个算法后面都补时间复杂度、边界输入和截图，查重也会更稳一点。尤其是图那一章，别只贴运行结果。',
-      excerpt: '建议每个算法后面都补时间复杂度、边界输入和截图，查重也会更稳一点。',
-      coverUrl: 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: false,
-      dontMiss: false,
-      pinned: false,
-      deadlineAt: now.add(3, 'day').toISOString(),
-      eventDate: now.add(3, 'day').format('YYYY-MM-DD'),
-      tags: ['专业PO', '数据结构', '实验报告'],
-      likeCount: 321,
-      commentCount: 58,
-      favoriteCount: 66,
-      shareCount: 44,
-      liked: true,
-      favorited: true,
-      status: 'published',
-      publishedAt: now.subtract(33, 'minute').toISOString(),
-      createdAt: now.subtract(33, 'minute').toISOString(),
-      author: student,
-      last2hLikes: 210,
-      last2hComments: 44
-    },
-    {
-      id: 104,
-      board: 'school',
-      sourceType: 'student',
-      title: '图书馆三楼靠窗位今天真的像开了专注结界',
-      content: '早八之后去图书馆三楼，靠西侧窗户那一排插座都能用，旁边还不会被阳光直晒。期中周想找安静位置的同学可以冲。',
-      excerpt: '早八之后去图书馆三楼，靠西侧窗户那一排插座都能用，旁边还不会被阳光直晒。',
-      coverUrl: 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: false,
-      dontMiss: false,
-      pinned: false,
-      tags: ['图书馆', '自习', '期中周'],
-      likeCount: 428,
-      commentCount: 96,
-      favoriteCount: 81,
-      shareCount: 47,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(52, 'minute').toISOString(),
-      createdAt: now.subtract(52, 'minute').toISOString(),
-      author: student,
-      last2hLikes: 233,
-      last2hComments: 61
-    },
-    {
-      id: 105,
-      board: 'school',
-      sourceType: 'official',
-      title: '校园卡系统今晚 23:30 维护，提前充值别卡在夜宵窗口',
-      content: '信息办通知今晚校园卡系统短暂停服。宿舍水电、食堂小额支付可能会受影响，建议晚饭前确认余额。',
-      excerpt: '信息办通知今晚校园卡系统短暂停服。宿舍水电、食堂小额支付可能会受影响。',
-      coverUrl: 'https://images.unsplash.com/photo-1556745757-8d76bdb6984b?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'medium',
-      official: true,
-      dontMiss: true,
-      pinned: false,
-      deadlineAt: now.hour(23).minute(30).toISOString(),
-      eventDate: now.format('YYYY-MM-DD'),
-      tags: ['今日校园PO', '校园卡', '维护'],
-      likeCount: 176,
-      commentCount: 35,
-      favoriteCount: 29,
-      shareCount: 22,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(1, 'hour').toISOString(),
-      createdAt: now.subtract(1, 'hour').toISOString(),
-      author: schoolOperator,
-      last2hLikes: 119,
-      last2hComments: 31
-    },
-    {
-      id: 106,
-      board: 'college',
-      sourceType: 'student',
-      title: '计院 403 机房鼠标别碰 12 号位，滚轮已经失灵',
-      content: '下午上机课踩坑，12 号位鼠标滚轮完全不动。老师说已经报修，明天如果还没换，建议提前找助教登记。',
-      excerpt: '下午上机课踩坑，12 号位鼠标滚轮完全不动。老师说已经报修。',
-      coverUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: false,
-      dontMiss: false,
-      pinned: false,
-      tags: ['机房', '上机课', '计院'],
-      likeCount: 143,
-      commentCount: 64,
-      favoriteCount: 18,
-      shareCount: 11,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(72, 'minute').toISOString(),
-      createdAt: now.subtract(72, 'minute').toISOString(),
-      author: student,
-      last2hLikes: 97,
-      last2hComments: 51
-    },
-    {
-      id: 107,
-      board: 'major',
-      sourceType: 'student',
-      title: '操作系统小测范围出来了，PV 操作和死锁一定要刷',
-      content: '老师今天课后口头说了范围，选择题会卡概念，简答重点是 PV 操作、银行家算法和死锁必要条件。别只看 PPT 最后一页。',
-      excerpt: '选择题会卡概念，简答重点是 PV 操作、银行家算法和死锁必要条件。',
-      coverUrl: 'https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'medium',
-      official: false,
-      dontMiss: false,
-      pinned: false,
-      deadlineAt: now.add(2, 'day').hour(8).minute(0).toISOString(),
-      eventDate: now.add(2, 'day').format('YYYY-MM-DD'),
-      tags: ['操作系统', '小测', '复习'],
-      likeCount: 268,
-      commentCount: 41,
-      favoriteCount: 94,
-      shareCount: 38,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(90, 'minute').toISOString(),
-      createdAt: now.subtract(90, 'minute').toISOString(),
-      author: student,
-      last2hLikes: 141,
-      last2hComments: 34
-    },
-    {
-      id: 108,
-      board: 'school',
-      sourceType: 'student',
-      title: '南门打印店今天排队短，论文胶装可以现在去',
-      content: '刚从南门回来，三台机器都开着，胶装大概 15 分钟一份。明天下午毕业生会集中，建议今天能搞完就搞完。',
-      excerpt: '刚从南门回来，三台机器都开着，胶装大概 15 分钟一份。',
-      coverUrl: 'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: false,
-      dontMiss: false,
-      pinned: false,
-      tags: ['打印店', '论文', '南门'],
-      likeCount: 154,
-      commentCount: 22,
-      favoriteCount: 35,
-      shareCount: 18,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(115, 'minute').toISOString(),
-      createdAt: now.subtract(115, 'minute').toISOString(),
-      author: student,
-      last2hLikes: 83,
-      last2hComments: 16
-    },
-    {
-      id: 109,
-      board: 'school',
-      sourceType: 'official',
-      title: '明天 15:00 学生活动中心有保研政策说明会',
-      content: '教务处和各学院教务老师会在现场答疑，重点讲排名核算、竞赛加分和跨专业推免。座位有限，建议提前 20 分钟到。',
-      excerpt: '重点讲排名核算、竞赛加分和跨专业推免。座位有限，建议提前 20 分钟到。',
-      coverUrl: 'https://images.unsplash.com/photo-1515187029135-18ee286d815b?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'normal',
-      official: true,
-      dontMiss: true,
-      pinned: true,
-      deadlineAt: now.add(1, 'day').hour(15).minute(0).toISOString(),
-      eventDate: now.add(1, 'day').format('YYYY-MM-DD'),
-      tags: ['今日校园PO', '保研', '说明会'],
-      likeCount: 244,
-      commentCount: 28,
-      favoriteCount: 107,
-      shareCount: 42,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(3, 'hour').toISOString(),
-      createdAt: now.subtract(3, 'hour').toISOString(),
-      author: schoolOperator,
-      last2hLikes: 71,
-      last2hComments: 14
-    },
-    {
-      id: 110,
-      board: 'college',
-      sourceType: 'official',
-      title: '计院创新实践学分认定材料 5 月 7 日前交到辅导员处',
-      content: '比赛证书、项目证明、论文录用截图都需要原件或可验证链接。材料不完整会退回，别最后一天才打包。',
-      excerpt: '比赛证书、项目证明、论文录用截图都需要原件或可验证链接。',
-      coverUrl: 'https://images.unsplash.com/photo-1450101499163-c8848c66ca85?auto=format&fit=crop&w=900&q=80',
-      images: [],
-      riskLevel: 'medium',
-      official: true,
-      dontMiss: true,
-      pinned: false,
-      deadlineAt: now.add(4, 'day').hour(17).minute(30).toISOString(),
-      eventDate: now.add(4, 'day').format('YYYY-MM-DD'),
-      tags: ['计院', '创新学分', '材料'],
-      likeCount: 185,
-      commentCount: 19,
-      favoriteCount: 88,
-      shareCount: 27,
-      liked: false,
-      favorited: false,
-      status: 'published',
-      publishedAt: now.subtract(4, 'hour').toISOString(),
-      createdAt: now.subtract(4, 'hour').toISOString(),
-      author: collegeOperator,
-      last2hLikes: 42,
-      last2hComments: 8
-    }
-  ];
-}
-
-function fallbackComments(): CampusComment[] {
-  const posts = fallbackPosts();
-  const student = posts[3].author;
-  const schoolOperator = posts[0].author;
-  const collegeOperator = posts[1].author;
-  const now = dayjs();
-  return [
-    { id: 1, postId: 101, userId: 2, content: '补充：缴费截图一定要留，去年有人系统延迟显示很吓人。', likeCount: 88, replyCount: 3, liked: false, featured: true, status: 'visible', createdAt: now.subtract(12, 'minute').toISOString(), author: student },
-    { id: 2, postId: 101, userId: 3, parentId: 1, content: '报名系统右上角的支付状态比短信更准，别只看短信。', likeCount: 61, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(10, 'minute').toISOString(), author: schoolOperator },
-    { id: 3, postId: 101, userId: 4, parentId: 1, content: '手机端也能查，但截图建议电脑端截全一点。', likeCount: 24, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(8, 'minute').toISOString(), author: collegeOperator },
-    { id: 4, postId: 102, userId: 4, content: '想做前端可视化方向的可以看我主页，缺一个会写接口的队友。', likeCount: 72, replyCount: 1, liked: false, featured: true, status: 'visible', createdAt: now.subtract(21, 'minute').toISOString(), author: collegeOperator },
-    { id: 5, postId: 103, userId: 2, content: '复杂度那里最好写最坏情况，老师上次专门圈了。', likeCount: 69, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(29, 'minute').toISOString(), author: student },
-    { id: 6, postId: 104, userId: 3, content: '这个点位我认证，下午两点以后靠近楼梯那边会吵一点。', likeCount: 31, replyCount: 7, liked: false, featured: true, status: 'visible', createdAt: now.subtract(37, 'minute').toISOString(), author: schoolOperator },
-    { id: 7, postId: 104, userId: 2, parentId: 6, content: '靠窗第二排插座比较稳，第一排有两个口松了。', likeCount: 18, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(35, 'minute').toISOString(), author: student },
-    { id: 8, postId: 104, userId: 4, parentId: 6, content: '上午十点之前人不多，下午基本满。', likeCount: 12, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(31, 'minute').toISOString(), author: collegeOperator },
-    { id: 9, postId: 104, userId: 3, parentId: 6, content: '三楼饮水机今天也正常，带杯子就行。', likeCount: 9, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(28, 'minute').toISOString(), author: schoolOperator },
-    { id: 10, postId: 104, userId: 2, parentId: 6, content: '靠电梯那侧会有人打电话，慎选。', likeCount: 7, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(25, 'minute').toISOString(), author: student },
-    { id: 11, postId: 104, userId: 4, parentId: 6, content: '下午四点阳光会偏过来，电脑屏幕有点反光。', likeCount: 6, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(21, 'minute').toISOString(), author: collegeOperator },
-    { id: 12, postId: 104, userId: 3, parentId: 6, content: '隔壁阅览室也有空位，但不能带咖啡。', likeCount: 4, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(18, 'minute').toISOString(), author: schoolOperator },
-    { id: 13, postId: 104, userId: 2, parentId: 6, content: '感谢，刚去占到了一个靠窗位。', likeCount: 3, replyCount: 0, liked: false, featured: false, status: 'visible', createdAt: now.subtract(13, 'minute').toISOString(), author: student },
-    { id: 14, postId: 105, userId: 3, content: '夜宵窗口能刷微信，但洗衣房还是校园卡，提前充最稳。', likeCount: 37, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(48, 'minute').toISOString(), author: schoolOperator },
-    { id: 15, postId: 106, userId: 2, content: '12 号旁边 13 号也有点漂，建议直接坐后排。', likeCount: 40, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(1, 'hour').toISOString(), author: student },
-    { id: 16, postId: 107, userId: 2, content: 'PV 那套题刷完课后题基本就够，银行家算法别算错 available。', likeCount: 46, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(1, 'hour').toISOString(), author: student },
-    { id: 17, postId: 108, userId: 2, content: '刚去，A4 黑白还没涨价，胶装老板说今晚人不多。', likeCount: 29, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(1, 'hour').toISOString(), author: student },
-    { id: 18, postId: 109, userId: 3, content: '跨专业推免问题建议现场问，线上群里答得比较保守。', likeCount: 33, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(2, 'hour').toISOString(), author: schoolOperator },
-    { id: 19, postId: 110, userId: 4, content: '证书照片不行，要 PDF 或官网可查截图，辅导员今天刚强调。', likeCount: 31, replyCount: 0, liked: false, featured: true, status: 'visible', createdAt: now.subtract(3, 'hour').toISOString(), author: collegeOperator }
-  ];
-}
-
-function fallbackConversations(): ConversationView[] {
-  return [];
-}
-
-function fallbackConversationMessages(): Record<number, CampusMessage[]> {
-  return {};
-}
-
-function fallbackCourses(): Course[] {
-  return [
-    seedCourse(1, 1, '数据结构', '08:30', '10:05', '理工楼 B204', '陈老师', '#e8f3ff', '专业通用', 1, 16),
-    seedCourse(2, 1, '大学英语', '10:25', '12:00', '公教 310', '刘老师', '#fff2d8', '个人导入', 1, 16),
-    seedCourse(3, 2, '操作系统', '08:30', '10:05', '计院 403', '周老师', '#eaf8ee', '专业通用', 1, 16),
-    seedCourse(4, 2, '体育', '15:40', '17:15', '东操场', '王老师', '#fde9ec', '个人导入', 1, 12),
-    seedCourse(5, 3, '数据库原理', '10:25', '12:00', '理工楼 A118', '孙老师', '#f0ecff', '专业通用', 1, 16),
-    seedCourse(6, 3, '形势与政策', '14:00', '15:35', '公教 201', '赵老师', '#e8f3ff', '院花统一', 4, 8),
-    seedCourse(7, 4, '计算机网络', '08:30', '10:05', '计院 305', '高老师', '#eaf8ee', '专业通用', 1, 16),
-    seedCourse(8, 5, '项目实训', '14:00', '17:15', '创新实验室', '导师组', '#fff2d8', '院花统一', 5, 18),
-    seedCourse(9, 6, '算法竞赛训练', '09:00', '11:30', '计院 502', 'ACM 队', '#f0ecff', '自选活动', 3, 18),
-    seedCourse(10, 7, '小组周会', '19:00', '20:30', '线上会议', '项目组', '#fde9ec', '个人导入', 1, 20)
+    { code: 'recommend', name: '推荐', description: '按热度、官方权重和发布时间混排', count: 0 },
+    { code: 'school', name: '校 PO', description: '全校同学都能看到的校园动态', count: 0 },
+    { code: 'college', name: '院 PO', description: '同学院范围内更贴近课程和活动', count: 0 },
+    { code: 'major', name: '专业 PO', description: '专业相关经验、作业、竞赛和提醒', count: 0 }
   ];
 }
 

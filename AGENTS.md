@@ -75,7 +75,7 @@ docker compose up -d --build
 ## 6. 前端约定
 - `App.vue` 是 4207 行、6 个 `ViewKey` 手写状态机、无路由。**新功能不要继续堆进去**；动它之前先看 `docs/MOBILE-API-PLAN.md` §6。
 - 类型在 `frontend/src/lib/types.ts` 手写，与后端 DTO 已开始漂移。接口改动要两边一起改，直到换 OpenAPI 生成。
-- **禁止新增 fallback 假数据**（`fallbackPosts` / `fallbackComments` / `fallbackConversations` / `fallbackCourses`）。接口失败应显示错误或空态，不能假装有数据；现有假数据是待清理项。
+- **禁止新增 fallback 假数据**。`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已于 2026-10-19 删除，首屏现在是 `feedLoading` / `feedError`（带重试按钮）/ 空态三态。接口失败必须显式报错，不能假装有数据。`fallbackAvatar()` / `fallbackCover()` 是占位图生成器，不算假数据，可继续用。
 - token 存 `localStorage['bcg_token']`；`localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
 - 唯一 `v-html` 在 `App.vue:885`，配套 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
