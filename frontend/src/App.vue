@@ -114,71 +114,9 @@
 
       <section class="min-h-0 min-w-0 lg:h-full" :class="activeView === 'home' ? '' : 'mx-auto w-[min(1180px,100%)]'">
         <div class="home-feed hide-scrollbar min-h-0 lg:h-full lg:overflow-y-auto lg:pr-1">
-          <template v-if="activeView === 'home'">
-            <section v-if="showSpotlight" class="spotlight-carousel mb-5">
-              <div class="spotlight-carousel__media" :style="{ backgroundImage: `url(${activeSpotlight.imageUrl})` }">
-                <div class="absolute inset-0 bg-gradient-to-t from-[#101827] via-[#101827]/36 to-transparent"></div>
-                <div class="relative flex h-full flex-col justify-between p-6 text-white">
-                  <div class="flex items-center justify-between">
-                    <span class="rounded-full bg-white/20 px-3 py-1 text-xs font-black backdrop-blur-xl">管理员位</span>
-                    <span class="rounded-full bg-white/20 px-3 py-1 text-xs font-black backdrop-blur-xl">{{ activeSpotlight.badge }}</span>
-                  </div>
-                  <div>
-                    <p class="text-sm font-bold text-white/78">{{ activeSpotlight.kicker }}</p>
-                    <h2 class="mt-2 max-w-2xl text-[clamp(34px,5vw,64px)] font-black leading-[0.98] tracking-normal">{{ activeSpotlight.title }}</h2>
-                    <p class="mt-3 max-w-xl text-sm leading-6 text-white/82">{{ activeSpotlight.summary }}</p>
-                  </div>
-                </div>
-              </div>
-              <div class="spotlight-carousel__titles">
-                <button
-                  v-for="(item, index) in spotlightItems"
-                  :key="item.id"
-                  class="spotlight-title"
-                  :class="spotlightIndex === index ? 'spotlight-title--active' : ''"
-                  @click="spotlightIndex = index"
-                >
-                  <span>{{ item.title }}</span>
-                  <small>{{ item.adminOnly ? '仅管理员可编辑' : '重点事件' }}</small>
-                </button>
-              </div>
-            </section>
-
-            <LoadingState v-if="feedLoading && !pagedPosts.length" text="正在加载校园动态…" />
-            <ErrorState v-else-if="feedError && !pagedPosts.length" :message="feedError" @retry="reloadFeed" />
-            <EmptyState v-else-if="!pagedPosts.length" text="这个版块还没有内容" />
-            <div v-else class="grid gap-5 xl:grid-cols-2">
-              <PostCard
-                v-for="post in pagedPosts"
-                :key="post.id"
-                :post="post"
-                :boards="boards"
-                :comments="comments"
-                :selected="selectedPost?.id === post.id"
-                @open="openPost"
-                @open-author="(post) => openAuthorProfile(post.author)"
-              />
-            </div>
-            <div v-if="feedPageCount > 1" class="feed-pagination">
-              <button
-                v-if="canGoPrevFeedPage"
-                class="feed-pagination__button"
-                title="上一页"
-                @click="goFeedPage(-1)"
-              >
-                <ChevronLeft :size="20" />
-              </button>
-              <span class="feed-pagination__count">{{ feedPage }} / {{ feedPageCount }}</span>
-              <button
-                v-if="canGoNextFeedPage"
-                class="feed-pagination__button"
-                title="下一页"
-                @click="goFeedPage(1)"
-              >
-                <ChevronRight :size="20" />
-              </button>
-            </div>
-          </template>
+          <router-view v-if="isHomeRoute" v-slot="{ Component }">
+            <component :is="Component" :board="activeBoard" :date="selectedDate" @open-post="openPost" @open-author="openAuthorProfile" />
+          </router-view>
 
           <template v-else-if="activeView === 'compose'">
             <section class="glass-panel rounded-[34px] p-6">
@@ -1387,15 +1325,18 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue';
+import { storeToRefs } from 'pinia';
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
 import { apiErrorMessage, authApi, campusApi, clearAuthToken, hasAuthToken, isAuthError, mediaApi, postApi, saveAuthToken, userApi } from './lib/api';
+import { useRoute, useRouter } from 'vue-router';
+import { useFeedStore } from './stores/feed';
 import type { AuthorView, BoardCode, BoardView, CalendarDay, CampusComment, CampusMessage, CampusPost, CheckInView, CommentView, ConversationView, Course, InteractionNoticeView, MessageView, PostView, PublicProfileView, SpotlightItem, UserProfile, UserStats } from './types';
 import PostCard from './components/post/PostCard.vue';
 import LoadingState from './components/ui/LoadingState.vue';
 import ErrorState from './components/ui/ErrorState.vue';
 import EmptyState from './components/ui/EmptyState.vue';
-import { boardLabel, compactPostTitle, fallbackAvatar, fallbackCover, formatPublishedAt, hotScore, LEVEL_TIERS, levelTier, levelTitleFor, plainPostContent, recommendScore, roleLabel } from './lib/postHelpers';
+import { boardLabel, compactPostTitle, enrichApiPosts, fallbackAvatar, fallbackCover, formatPublishedAt, hotScore, LEVEL_TIERS, levelTier, levelTitleFor, plainPostContent, recommendScore, roleLabel } from './lib/postHelpers';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
 type MessageTabKey = 'likes' | 'favorites' | 'comments' | 'followers';
@@ -1453,15 +1394,22 @@ const Metric = defineComponent({
   }
 });
 
-const activeView = ref<ViewKey>('home');
+const route = useRoute();
+const router = useRouter();
+const feedStore = useFeedStore();
+
+const isHomeRoute = computed(() => route.name === 'home');
+const activeView = computed<ViewKey>(() => {
+  const name = String(route.name || 'home');
+  if (name === 'home' || name === 'compose' || name === 'schedule' || name === 'messages' || name === 'profile' || name === 'user-profile' || name === 'conversation') {
+    return name === 'conversation' ? 'messages' : (name as ViewKey);
+  }
+  return 'home';
+});
 const activeBoard = ref<BoardCode>('recommend');
 const selectedDate = ref<string | null>(null);
 const feedPage = ref(1);
-const posts = ref<CampusPost[]>([]);
-const feedLoading = ref(false);
-const feedError = ref('');
-const boards = ref<BoardView[]>(defaultBoards());
-const comments = ref<CampusComment[]>([]);
+const { posts, boards, comments, feedLoading, feedError } = storeToRefs(feedStore);
 const interactionNotices = ref<InteractionNoticeView[]>([]);
 const conversations = ref<ConversationView[]>([]);
 const conversationMessages = ref<Record<number, CampusMessage[]>>({});
@@ -1477,7 +1425,7 @@ const profileTab = ref<ProfileTabKey>('posts');
 const viewedProfileTab = ref<ProfileTabKey>('posts');
 const currentUser = ref<UserProfile>(guestUser());
 const userStats = ref<UserStats>(emptyStats());
-const selectedPost = ref<CampusPost | null>(posts.value[0] || null);
+const { selectedPost } = storeToRefs(feedStore);
 const expandedPost = ref<CampusPost | null>(null);
 const spotlightIndex = ref(0);
 const checkedInToday = ref(false);
@@ -1929,39 +1877,9 @@ function boardName(board: BoardCode) {
   return boardLabel(board, boards.value);
 }
 
-function describeError(error: unknown, fallback: string) {
-  const detail = error as { response?: { data?: { message?: string }; status?: number }; message?: string } | null;
-  const serverMessage = detail?.response?.data?.message;
-  if (serverMessage) return serverMessage;
-  const status = detail?.response?.status;
-  // 没有状态码（网络错误）或网关 5xx（vite 代理连不上后端）时，用中文兜底文案
-  if (!status || status >= 500) return fallback;
-  return detail?.message || fallback;
-}
-
 async function loadCampus() {
-  feedLoading.value = true;
-  feedError.value = '';
-  try {
-    const [postList, boardList] = await Promise.all([
-      campusApi.posts('recommend'),
-      campusApi.boards()
-    ]);
-    posts.value = enrichApiPosts(postList);
-    boards.value = boardList.length ? normalizeBoards(boardList) : defaultBoards();
-    comments.value = [];
-    await loadAuthenticatedData();
-    selectedPost.value = posts.value[0] || null;
-  } catch (error) {
-    posts.value = [];
-    boards.value = defaultBoards();
-    comments.value = [];
-    selectedPost.value = null;
-    feedError.value = describeError(error, '无法连接后端，请确认服务已启动');
-    await loadAuthenticatedData();
-  } finally {
-    feedLoading.value = false;
-  }
+  await feedStore.load();
+  await loadAuthenticatedData();
 }
 
 async function reloadFeed() {
@@ -2185,7 +2103,7 @@ function openProfileView() {
     openLoginDialog('请先登录后查看个人中心');
     return;
   }
-  activeView.value = 'profile';
+  router.push('/profile');
 }
 
 async function openAuthorProfile(author: AuthorView) {
@@ -2215,7 +2133,7 @@ async function openAuthorProfile(author: AuthorView) {
   viewedProfilePosts.value = enrichApiPosts(authorPosts);
   viewedProfileLikedPosts.value = enrichApiPosts(likedPosts);
   viewedProfileFavoritePosts.value = enrichApiPosts(favoritePosts);
-  activeView.value = profile.mine ? 'profile' : 'user-profile';
+  router.push(profile.mine ? '/profile' : `/u/${encodeURIComponent(author.uid)}`);
   await nextTick();
   document.querySelector('.home-feed')?.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2226,7 +2144,7 @@ function navigateTo(view: ViewKey) {
     return;
   }
   if (view === 'profile') return openProfileView();
-  activeView.value = view;
+  router.push(view === 'user-profile' ? '/u/me' : `/${view === 'messages' ? 'messages' : view}`);
   if (view === 'messages') markMessageTabRead(activeMessageTab.value);
   if (view !== 'messages') closeConversation();
 }
@@ -2272,7 +2190,7 @@ function selectBoard(board: BoardCode) {
 }
 
 function selectCalendarDate(dateKey: string) {
-  activeView.value = 'home';
+  router.push('/');
   selectedDate.value = selectedDate.value === dateKey ? null : dateKey;
   feedPage.value = 1;
   nextTick(() => {
@@ -2289,7 +2207,7 @@ function goFeedPage(delta: number) {
 }
 
 async function jumpToPost(post: CampusPost) {
-  activeView.value = 'home';
+  router.push('/');
   activeBoard.value = 'recommend';
   selectedDate.value = null;
   selectedPost.value = post;
@@ -2816,7 +2734,7 @@ async function publishLocalPost() {
   profilePosts.value = [post, ...profilePosts.value];
   userStats.value.posts += 1;
   selectedPost.value = post;
-  activeView.value = 'home';
+  router.push('/');
   clearPostImagePreview();
   draft.value = { board: 'school', title: '', content: '', coverUrl: '', images: [] };
   composeErrors.value = { board: '', title: '', content: '' };
@@ -3217,7 +3135,7 @@ async function openMessageDraft(profile: UserProfile) {
     conversation,
     ...conversations.value.filter((item) => item.id !== conversation.id)
   ];
-  activeView.value = 'messages';
+  router.push('/messages');
   await openConversation(conversation);
 }
 
@@ -3295,7 +3213,7 @@ function openLoginDialog(message?: string) {
   closeTransientOverlays();
   closeConversation();
   if (activeView.value !== 'home') {
-    activeView.value = 'home';
+    router.push('/');
   }
   resetAuthForms();
   clearAuthErrors();
@@ -3354,7 +3272,7 @@ async function logoutCurrentUser() {
   profilePosts.value = [];
   profileLikedPosts.value = [];
   profileFavoritePosts.value = [];
-  activeView.value = 'home';
+  router.push('/');
   showAuthNotice('已退出登录');
 }
 
@@ -3879,21 +3797,6 @@ async function safe<T>(fn: () => Promise<T>, fallback: T) {
   }
 }
 
-function enrichApiPosts(list: PostView[]): CampusPost[] {
-  return list.map((post, index) => ({
-    ...post,
-    board: post.board === 'recommend' ? 'school' : post.board,
-    eventDate: post.deadlineAt || post.publishedAt,
-    last2hLikes: Math.round(post.likeCount * (0.32 + index * 0.02)),
-    last2hComments: Math.round(post.commentCount * (0.4 + index * 0.01))
-  }));
-}
-
-function normalizeBoards(list: BoardView[]) {
-  const fallback = defaultBoards();
-  return fallback.map((board) => list.find((item) => item.code === board.code) || board);
-}
-
 function authorFromUser(user: UserProfile) {
   return {
     id: user.id,
@@ -3970,15 +3873,6 @@ function guestUser(): UserProfile {
 
 function emptyStats(): UserStats {
   return { favorites: 0, likedPosts: 0, sharedPosts: 0, completed: 0, comments: 0, upcoming: 0, avoidedRisks: 0, following: 0, followers: 0, posts: 0 };
-}
-
-function defaultBoards(): BoardView[] {
-  return [
-    { code: 'recommend', name: '推荐', description: '按热度、官方权重和发布时间混排', count: 0 },
-    { code: 'school', name: '校 PO', description: '全校同学都能看到的校园动态', count: 0 },
-    { code: 'college', name: '院 PO', description: '同学院范围内更贴近课程和活动', count: 0 },
-    { code: 'major', name: '专业 PO', description: '专业相关经验、作业、竞赛和提醒', count: 0 }
-  ];
 }
 
 function seedCourse(id: number, day: number, title: string, start: string, end: string, location: string, teacher: string, color: string, scope: string, startWeek: number, endWeek: number): Course {

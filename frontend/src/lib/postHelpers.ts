@@ -91,3 +91,37 @@ export function recommendScore(post: CampusPost | PostView) {
 export function hotScore(post: CampusPost) {
   return (post.last2hLikes || Math.round(post.likeCount * 0.38)) + (post.last2hComments || Math.round(post.commentCount * 0.48)) * 4 + post.shareCount * 0.5;
 }
+/** 把后端 PostView 补上前端估算字段（热度、事件日期） */
+export function enrichApiPosts(list: PostView[]): CampusPost[] {
+  return list.map((post, index) => ({
+    ...post,
+    board: post.board === 'recommend' ? 'school' : post.board,
+    eventDate: post.deadlineAt || post.publishedAt,
+    last2hLikes: Math.round(post.likeCount * (0.32 + index * 0.02)),
+    last2hComments: Math.round(post.commentCount * (0.4 + index * 0.01))
+  }));
+}
+
+export function defaultBoards(): BoardView[] {
+  return [
+    { code: 'recommend', name: '推荐', description: '按热度、官方权重和发布时间混排', count: 0 },
+    { code: 'school', name: '校 PO', description: '全校同学都能看到的校园动态', count: 0 },
+    { code: 'college', name: '院 PO', description: '同学院范围内更贴近课程和活动', count: 0 },
+    { code: 'major', name: '专业 PO', description: '专业相关经验、作业、竞赛和提醒', count: 0 }
+  ];
+}
+
+export function normalizeBoards(list: BoardView[]) {
+  const fallback = defaultBoards();
+  return fallback.map((board) => list.find((item) => item.code === board.code) || board);
+}
+
+/** 把 axios 错误转成用户可读文案；网络错误或网关 5xx 用中文兜底 */
+export function describeError(error: unknown, fallback: string) {
+  const detail = error as { response?: { data?: { message?: string }; status?: number }; message?: string } | null;
+  const serverMessage = detail?.response?.data?.message;
+  if (serverMessage) return serverMessage;
+  const status = detail?.response?.status;
+  if (!status || status >= 500) return fallback;
+  return detail?.message || fallback;
+}
