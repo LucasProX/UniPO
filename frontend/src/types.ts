@@ -152,3 +152,52 @@ export interface MessageView {
   read: boolean;
   createdAt: string;
 }
+
+// ---- 前端扩展类型（组件化后从 App.vue 迁出，Web/App 两端共用）----
+
+/** 帖子：后端 PostView + 前端热度估算字段 */
+export interface CampusPost extends PostView {
+  last2hLikes?: number;
+  last2hComments?: number;
+  eventDate?: string;
+}
+
+export interface CampusComment extends CommentView {}
+
+export interface CampusMessage extends MessageView {
+  optimistic?: boolean;
+}
+
+/** 首页重点事件轮播位（后续由管理后台维护） */
+export interface SpotlightItem {
+  id: number;
+  title: string;
+  kicker: string;
+  summary: string;
+  badge: string;
+  imageUrl: string;
+  adminOnly: boolean;
+}
+
+/** 课程表条目（本地创建，暂无后端接口） */
+export interface Course {
+  id: number;
+  day: number;
+  title: string;
+  start: string;
+  end: string;
+  location: string;
+  teacher: string;
+  color: string;
+  scope: string;
+  startWeek: number;
+  endWeek: number;
+  seriesId: number;
+}
+
+export interface CalendarDay {
+  dateKey: string;
+  day: string;
+  inMonth: boolean;
+  postCount: number;
+}

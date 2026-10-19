@@ -144,73 +144,20 @@
               </div>
             </section>
 
-            <div v-if="feedLoading && !pagedPosts.length" class="po-card p-8 text-center text-sm font-bold text-[#718097]">
-              正在加载校园动态…
-            </div>
-            <div v-else-if="feedError && !pagedPosts.length" class="po-card p-8 text-center">
-              <p class="text-base font-black text-[#c0392b]">加载失败</p>
-              <p class="mt-2 text-xs font-semibold text-[#718097]">{{ feedError }}</p>
-              <button class="mt-4 rounded-full bg-[#19202f] px-5 py-2 text-xs font-black text-white" @click="reloadFeed">重试</button>
-            </div>
-            <div v-else-if="!pagedPosts.length" class="po-card p-8 text-center text-sm font-bold text-[#718097]">
-              这个版块还没有内容
-            </div>
+            <LoadingState v-if="feedLoading && !pagedPosts.length" text="正在加载校园动态…" />
+            <ErrorState v-else-if="feedError && !pagedPosts.length" :message="feedError" @retry="reloadFeed" />
+            <EmptyState v-else-if="!pagedPosts.length" text="这个版块还没有内容" />
             <div v-else class="grid gap-5 xl:grid-cols-2">
-              <article
+              <PostCard
                 v-for="post in pagedPosts"
                 :key="post.id"
-                :data-post-id="post.id"
-                class="po-card group"
-                :class="selectedPost?.id === post.id ? 'po-card--selected' : ''"
-                @click="openPost(post)"
-              >
-                <div class="po-card__body">
-                  <div class="po-card__content">
-                    <div class="flex items-start justify-between gap-4">
-                      <div class="flex min-w-0 items-center gap-3">
-                        <button class="author-tap" @click.stop="openAuthorProfile(post.author)">
-                          <img :src="post.author.avatarUrl || fallbackAvatar(post.author.nickname)" alt="" class="h-10 w-10 rounded-[14px] object-cover" />
-                        </button>
-                        <div class="min-w-0">
-                          <p class="truncate text-sm font-black text-[#19202f]">{{ post.author.nickname }}</p>
-                          <p class="mt-1 truncate text-xs font-semibold text-[#718097]">
-                            Lv.{{ post.author.level }} {{ levelTitleFor(post.author.level) }} · {{ roleLabel(post) }}
-                          </p>
-                        </div>
-                      </div>
-                      <span class="mini-chip" :class="post.official ? 'border-[#007aff]/20 bg-[#007aff]/10 text-[#007aff]' : ''">{{ boardName(post.board) }}</span>
-                    </div>
-
-                    <div class="po-card__middle">
-                      <div class="po-card__copy">
-                        <h2 class="po-card__title">{{ compactPostTitle(post.title) }}</h2>
-                        <p class="po-card__excerpt">{{ plainPostContent(post.excerpt || post.content) }}</p>
-                        <div class="flex flex-wrap gap-1.5">
-                          <span v-for="tag in post.tags.slice(0, 3)" :key="tag" class="mini-chip">{{ tag }}</span>
-                        </div>
-                      </div>
-                      <div class="po-card__image-wrap">
-                        <img :src="post.coverUrl || fallbackCover(post.id)" alt="" class="po-card__image transition duration-300 group-hover:scale-[1.015]" />
-                      </div>
-                    </div>
-
-                    <div class="hidden">
-                      <span class="text-[#19202f]">热评</span>
-                      <span class="ml-2 line-clamp-1 inline align-bottom">{{ featuredCommentFor(post) }}</span>
-                    </div>
-
-                    <div class="mt-0 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e9f1] pt-4">
-                      <div class="flex gap-4 text-sm font-bold text-[#718097]">
-                        <span class="inline-flex items-center gap-1" :class="post.liked ? 'text-[#ff3b30]' : ''"><Heart :size="16" :fill="post.liked ? 'currentColor' : 'none'" />{{ post.likeCount }}</span>
-                        <span class="inline-flex items-center gap-1 text-[#007aff]"><MessageCircle :size="16" fill="currentColor" />{{ post.commentCount }}</span>
-                        <span class="inline-flex items-center gap-1" :class="post.favorited ? 'text-[#ffb800]' : ''"><Bookmark :size="16" :fill="post.favorited ? 'currentColor' : 'none'" />{{ post.favoriteCount }}</span>
-                      </div>
-                      <time class="text-sm font-black text-[#19202f]">{{ formatPublishedAt(post.publishedAt) }}</time>
-                    </div>
-                  </div>
-
-                </div>
-              </article>
+                :post="post"
+                :boards="boards"
+                :comments="comments"
+                :selected="selectedPost?.id === post.id"
+                @open="openPost"
+                @open-author="(post) => openAuthorProfile(post.author)"
+              />
             </div>
             <div v-if="feedPageCount > 1" class="feed-pagination">
               <button
@@ -1443,7 +1390,12 @@ import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref
 import dayjs from 'dayjs';
 import { AtSign, Bell, Bold, Bookmark, Building2, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Edit3, Flame, GraduationCap, Heart, Home, ImagePlus, ListPlus, LogIn, LogOut, Menu, MessageCircle, Palette, PlusCircle, Reply, School, Search, Send, Trash2, Type, Upload, UserPlus, UserRound, X } from 'lucide-vue-next';
 import { apiErrorMessage, authApi, campusApi, clearAuthToken, hasAuthToken, isAuthError, mediaApi, postApi, saveAuthToken, userApi } from './lib/api';
-import type { AuthorView, BoardCode, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from './types';
+import type { AuthorView, BoardCode, BoardView, CalendarDay, CampusComment, CampusMessage, CampusPost, CheckInView, CommentView, ConversationView, Course, InteractionNoticeView, MessageView, PostView, PublicProfileView, SpotlightItem, UserProfile, UserStats } from './types';
+import PostCard from './components/post/PostCard.vue';
+import LoadingState from './components/ui/LoadingState.vue';
+import ErrorState from './components/ui/ErrorState.vue';
+import EmptyState from './components/ui/EmptyState.vue';
+import { boardLabel, compactPostTitle, fallbackAvatar, fallbackCover, formatPublishedAt, hotScore, LEVEL_TIERS, levelTier, levelTitleFor, plainPostContent, recommendScore, roleLabel } from './lib/postHelpers';
 
 type ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile';
 type MessageTabKey = 'likes' | 'favorites' | 'comments' | 'followers';
@@ -1466,50 +1418,6 @@ interface ComposeDraft {
   content: string;
   coverUrl: string;
   images: string[];
-}
-
-interface CampusPost extends PostView {
-  last2hLikes?: number;
-  last2hComments?: number;
-  eventDate?: string;
-}
-
-interface CampusComment extends CommentView {}
-
-interface CampusMessage extends MessageView {
-  optimistic?: boolean;
-}
-
-interface SpotlightItem {
-  id: number;
-  title: string;
-  kicker: string;
-  summary: string;
-  badge: string;
-  imageUrl: string;
-  adminOnly: boolean;
-}
-
-interface Course {
-  id: number;
-  day: number;
-  title: string;
-  start: string;
-  end: string;
-  location: string;
-  teacher: string;
-  color: string;
-  scope: string;
-  startWeek: number;
-  endWeek: number;
-  seriesId: number;
-}
-
-interface CalendarDay {
-  dateKey: string;
-  day: string;
-  inMonth: boolean;
-  postCount: number;
 }
 
 interface NoticeItem {
@@ -1759,18 +1667,6 @@ const profileBanner = 'https://images.unsplash.com/photo-1503676260728-1c00da094
 const maxLevel = 100;
 const maxTermWeek = 20;
 const termStart = dayjs('2026-02-16');
-const levelTiers = [
-  '星途引路人',
-  '食域裁决官',
-  '万社登临者',
-  '书渊夜帝君',
-  '课业天机主',
-  '实训执掌者',
-  '百味揽星客',
-  '绩点造化尊',
-  '学海无双尊',
-  '校园万古名'
-];
 const levelTierDescriptions = [
   '刚进入校园 PO 的新同学，先从稳定发布和互动开始。',
   '开始形成自己的信息雷达，能帮同学避开小坑。',
@@ -1943,7 +1839,7 @@ const levelCatalog = computed(() => Array.from({ length: Math.ceil(maxLevel / 10
   const to = Math.min(maxLevel, from + 9);
   return {
     rangeLabel: `${from}-${to}`,
-    title: levelTiers[index],
+    title: LEVEL_TIERS[index],
     className: levelBadgeClass(from),
     active: currentUser.value.level >= from && currentUser.value.level <= to,
     summary: `Lv.${from} 到 Lv.${to}`,
@@ -2028,6 +1924,10 @@ onBeforeUnmount(() => {
   stopActiveConversationPolling();
   stopPresenceHeartbeat();
 });
+
+function boardName(board: BoardCode) {
+  return boardLabel(board, boards.value);
+}
 
 function describeError(error: unknown, fallback: string) {
   const detail = error as { response?: { data?: { message?: string }; status?: number }; message?: string } | null;
@@ -3852,30 +3752,8 @@ function postsForDate(dateKey: string) {
     .sort((a, b) => recommendScore(b) - recommendScore(a));
 }
 
-function boardName(board: BoardCode) {
-  return boards.value.find((item) => item.code === board)?.name || '推荐';
-}
-
-function roleLabel(post: CampusPost) {
-  if (post.author.role === 'SCHOOL_OPERATOR') return '校霸';
-  if (post.author.role === 'COLLEGE_OPERATOR') return '院花';
-  if (post.author.role === 'MAJOR_OPERATOR') return '级草';
-  if (post.author.role === 'ADMIN') return '管理员';
-  return post.official ? '官方 PO' : '同学';
-}
-
 function deadlineText(value?: string) {
   return value ? `${dayjs(value).format('M月D日 HH:mm')} 截止` : '今天保持关注';
-}
-
-function formatPublishedAt(value: string) {
-  const date = dayjs(value);
-  return date.year() === dayjs().year() ? date.format('MM/DD HH:mm') : date.format('YYYY/MM/DD HH:mm');
-}
-
-function compactPostTitle(title: string) {
-  const compact = title.replace(/\s+/g, '');
-  return compact.length > 16 ? compact.slice(0, 16) : compact;
 }
 
 function stripProfileMotto(bio?: string) {
@@ -3897,14 +3775,6 @@ function levelBadgeClass(level: number) {
   return `level-nameplate--tier-${levelTier(level)}`;
 }
 
-function levelTitleFor(level: number) {
-  return levelTiers[levelTier(level) - 1];
-}
-
-function levelTier(level: number) {
-  return Math.min(10, Math.max(1, Math.ceil(level / 10)));
-}
-
 function postDateKey(post: CampusPost) {
   return dayjs(post.eventDate || post.deadlineAt || post.publishedAt).format('YYYY-MM-DD');
 }
@@ -3913,22 +3783,6 @@ function inlineImageUrls(content: string) {
   const markdownUrls = Array.from(content.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)).map((match) => match[1]);
   const htmlUrls = Array.from(content.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)).map((match) => match[1]);
   return [...markdownUrls, ...htmlUrls];
-}
-
-function plainPostContent(content: string) {
-  const htmlAsText = content
-    .replace(/<img[^>]*>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(div|p|li|ul|ol|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, '');
-  const textarea = document.createElement('textarea');
-  textarea.innerHTML = htmlAsText;
-  return textarea.value
-    .replace(/!\[[^\]]*]\([^)]+\)/g, '')
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/\[size=(large|small)](.*?)\[\/size]/g, '$2')
-    .replace(/\[color=#[0-9a-fA-F]{3,8}](.*?)\[\/color]/g, '$1')
-    .trim();
 }
 
 function escapeHtml(content: string) {
@@ -3985,17 +3839,6 @@ function renderRichPostContent(content: string) {
     .replace(/\n/g, '<br>');
 }
 
-function recommendScore(post: CampusPost) {
-  const hours = Math.max(1, dayjs().diff(dayjs(post.publishedAt), 'hour', true));
-  const officialBoost = post.official ? 60 : 0;
-  const pinnedBoost = post.pinned ? 80 : 0;
-  return post.likeCount * 1.2 + post.commentCount * 4 + post.favoriteCount * 1.5 + post.shareCount * 2 + officialBoost + pinnedBoost - hours * 6;
-}
-
-function hotScore(post: CampusPost) {
-  return (post.last2hLikes || Math.round(post.likeCount * 0.38)) + (post.last2hComments || Math.round(post.commentCount * 0.48)) * 4 + post.shareCount * 0.5;
-}
-
 function featuredCommentFor(post: CampusPost) {
   const featured = commentsForPost(post).slice().sort((a, b) => b.likeCount - a.likeCount)[0];
   return featured ? `${featured.author.nickname}：${featured.content}` : '还没有热评，抢第一个补充信息。';
@@ -4026,20 +3869,6 @@ function totalXpForLevel(level: number) {
 
 function levelXpNeed(level: number) {
   return totalXpForLevel(level + 1) - totalXpForLevel(level);
-}
-
-function fallbackAvatar(name: string) {
-  return `https://api.dicebear.com/8.x/initials/svg?seed=${encodeURIComponent(name || 'PO')}`;
-}
-
-function fallbackCover(id: number) {
-  const covers = [
-    'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=900&q=80',
-    'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=900&q=80',
-    'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80',
-    'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?auto=format&fit=crop&w=900&q=80'
-  ];
-  return covers[Math.abs(id) % covers.length];
 }
 
 async function safe<T>(fn: () => Promise<T>, fallback: T) {

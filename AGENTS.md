@@ -14,8 +14,10 @@
 | `backend/src/main/java/com/biecuoguo/security/` | Spring Security + JWT + `CurrentUser` |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
 | `backend/src/main/resources/db/migration/` | Flyway V1–V10，**只增不改** |
-| `frontend/src/App.vue` | 4207 行单文件，全部页面 + 状态 + 轮询 |
+| `frontend/src/App.vue` | 3987 行单文件，全部页面 + 状态 + 轮询（组件化中，已抽出 PostCard / 三态组件） |
+| `frontend/src/components/` | 组件（`ui/` 三态、`post/PostCard`），Web/App 两端复用 |
 | `frontend/src/lib/api.ts` | 手写 axios 封装（187 行），类型在 `types.ts` |
+| `frontend/src/lib/postHelpers.ts` | 帖子纯函数（boardLabel/roleLabel/评分等），**零 Vue 依赖**，App 端可直接复用 |
 | `docs/` | 架构 / API / 问题清单 / 移动端方案 |
 | `deploy-*.sh`、`docker-compose.yml`、`Caddyfile` | 生产部署 |
 
@@ -73,7 +75,8 @@ docker compose up -d --build
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
 
 ## 6. 前端约定
-- `App.vue` 是 4207 行、6 个 `ViewKey` 手写状态机、无路由。**新功能不要继续堆进去**；动它之前先看 `docs/MOBILE-API-PLAN.md` §6。
+- `App.vue` 是 3987 行、6 个 `ViewKey` 手写状态机、无路由。**新功能不要继续堆进去**；动它之前先看 `docs/MOBILE-API-PLAN.md` §6。
+- 纯展示组件放 `frontend/src/components/`，共享纯函数放 `frontend/src/lib/*.ts`（**不能 import Vue**，否则 App 端复用不了）。
 - 类型在 `frontend/src/lib/types.ts` 手写，与后端 DTO 已开始漂移。接口改动要两边一起改，直到换 OpenAPI 生成。
 - **禁止新增 fallback 假数据**。`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已于 2026-10-19 删除，首屏现在是 `feedLoading` / `feedError`（带重试按钮）/ 空态三态。接口失败必须显式报错，不能假装有数据。`fallbackAvatar()` / `fallbackCover()` 是占位图生成器，不算假数据，可继续用。
 - token 存 `localStorage['bcg_token']`；`localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
