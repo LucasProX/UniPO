@@ -131,3 +131,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
 覆盖 17 项：验证码 → 注册 → me → 发帖 → 评论 → 点赞 → 收藏 → 签到 → 统计 → 热榜 → 必看 → 关注 → 建会话 → 发私信 → 会话列表 → 未读数 → **图片上传**。
 
 全 PASS（`failed checks: 0`）说明 **后端 + MySQL + MinIO** 三条链路都健康；改完后端先跑这个再提交。
+
+## 8. 前端排查技巧（无 DevTools 时）
+
+**1）确认页面真的渲染出了什么 —— headless 导出 DOM**
+
+```powershell
+& 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe' --headless=new --disable-gpu --no-first-run `
+  --user-data-dir=D:\Projects\unipo\.logs\edge-profile --virtual-time-budget=12000 `
+  --dump-dom http://127.0.0.1:5173/ > D:\Projects\unipo\.logs\dom.html
+```
+
+然后在 `dom.html` 里搜关键字（`po-card`、`加载失败`）。比截图可靠得多。
+
+**2）截图是白屏不一定是页面挂了**
+
+Chromium 对**非激活/被遮挡的窗口**会暂停绘制，后台窗口截图经常是纯白。抓图前先让窗口到前台，或直接用上面的 headless 方式。
+
+**3）把运行时错误写进 title**
+
+临时在 `main.ts` 里加 `app.config.errorHandler` + `window.onerror`，把消息写到 `document.title`，再用 `list_windows` 读窗口标题即可看到首屏错误。排查完记得删掉。
+
+**4）请求 500 但后端正常？**
+
+Vite dev server 在代理目标（`:8080`）连不上时会自己返回 500，浏览器拿到的是 HTML 而不是 JSON。前端用 `describeError()` 统一兜底成中文提示。
