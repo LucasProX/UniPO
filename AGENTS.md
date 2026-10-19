@@ -23,8 +23,9 @@
 - 本机：Windows 11，Git 2.55，Node 24.18，npm 11.16。
 - 已装 **Temurin JDK 21.0.12.1**（`D:\Environments\Java\jdk-21`）+ **Maven 3.9.16**（`D:\Environments\Maven\apache-maven-3.9.16`）；`JAVA_HOME` 与 PATH 已写入用户环境变量，**新开的终端直接可用**。
 - 已配置阿里云 Maven 镜像（`C:\Users\36840\.m2\settings.xml`），后端首次构建约 2.5 分钟。
-- **正在装 Docker Desktop + 本地 MySQL**（2026-10-19 起，线上服务器 115.190.3.204 不再使用）。
-- 不要用默认配置启动后端——默认 datasource 指向远端库，见 §8；用仓库根的 `.env` 覆盖 `SPRING_DATASOURCE_URL` 即可。
+- **本地链路已跑通（2026-10-19 实测）**：Docker Desktop 29.8.2 + WSL 2.7.13 + MySQL 8.4 容器（`127.0.0.1:12306`）+ 后端 + 前端，完整流程见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
+- 线上服务器 `115.190.3.204` **不再使用**；本机开发不连任何远端库。
+- 后端通过仓库根 `.env`（gitignored）覆盖 `SPRING_DATASOURCE_URL`，不用改代码。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
 - 全局 git 身份已配好：`LucasProX <LucasProX@users.noreply.github.com>`，凭据管理器里有 GitHub token，可直接 push。
 
@@ -36,13 +37,16 @@ npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1 --port 5173   # vite 代理 /api -> localhost:8080
 npm.cmd run build                                   # vue-tsc -b && vite build，提交前必须绿
 ```
-后端（已可编译，启动前需要本地库）：
+本地库（Docker Desktop 必须先运行）：
+```bash
+docker compose --profile local-db up -d mysql   # 127.0.0.1:12306
+```
+后端（Flyway 自动建表 V1–V10）：
 ```bash
 cd backend
-mvn -DskipTests package                  # 只编译打包，安全，已实测通过
+mvn -DskipTests package                  # 只编译打包，安全
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
-# 会自动读仓库根的 .env（application.yml:6 的 spring.config.import）
-# 没有 .env 时会退回默认远端库，可能连接超时
+# 自动读仓库根的 .env（application.yml:6 的 spring.config.import）
 ```
 全栈（需要 Docker）：
 ```bash
@@ -92,7 +96,7 @@ docker compose up -d --build
 ## 9. 当前优先级（2026-10，本地开发模式）
 > 完整分级见 `docs/ISSUES.md`：**B 阻塞 / D 开发体验 / R 上线阻断 / Q 质量**。
 
-1. **跑通本地链路**：Docker → MySQL → 后端 → 前端，看到真实数据（不再吃 fallback 假数据）。
+1. ~~跑通本地链路~~ ✅ **已完成（2026-10-19）**：Docker → MySQL 8.4 → 后端 → 前端，真实数据已渲染，登录/发帖链路实测通过。
 2. 去假数据 + 前端组件化（Web/App 共用的地基）。
 3. 后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包。
 4. 上线前集中清零 **R 项**（验证码放行、后门账号、管理员密码重置）。
@@ -103,3 +107,4 @@ docker compose up -d --build
 - `docs/API.md` — 完整接口清单与调用约定
 - `docs/ISSUES.md` — 问题分级、证据、修复建议
 - `docs/MOBILE-API-PLAN.md` — Web/App 双端接口方案（**有 5 个决策待拍板**）
+- `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障

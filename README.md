@@ -214,16 +214,33 @@ git pull
 ./deploy-ip.sh
 ```
 
-## 本机开发
+## 本机开发（本地 Docker + 本地库）
 
-后端本地开发默认连接测试环境 MySQL（`115.190.3.204:12306`，JDBC 地址不要带 `http://`）：
+> 2026-10 起本机开发不再连接任何远端数据库，线上服务器 `115.190.3.204` 已停用。
+> 完整说明见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
+
+1. 准备 `.env`（已被 `.gitignore` 忽略），见 `.env.example`：
+
+```bash
+cp .env.example .env
+# 把 SPRING_DATASOURCE_URL 改成 jdbc:mysql://127.0.0.1:12306/biecuoguo
+```
+
+2. 起本地 MySQL（需要 Docker Desktop 已运行）：
+
+```bash
+docker compose --profile local-db up -d mysql
+docker compose --profile local-db ps
+```
+
+3. 起后端（Flyway 会自动建表 V1–V10）：
 
 ```bash
 cd backend
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-前端：
+4. 起前端：
 
 ```bash
 cd frontend
@@ -236,7 +253,7 @@ npm run dev -- --host 127.0.0.1 --port 5173
 - Web: `http://127.0.0.1:5173/`
 - API health: `http://127.0.0.1:8080/actuator/health`
 
-本机开发会读取仓库根目录 `.env` 中的数据库密码和 MinIO 配置；本地写入的数据会保留在测试环境数据库里。
+后端通过 `application.yml` 的 `spring.config.import: optional:file:../.env[.properties]` 自动读取仓库根 `.env`，**不需要改代码**就能切换数据源。
 
 ## 主要 API
 
