@@ -229,7 +229,7 @@ cp .env.example .env
 2. 起本地 MySQL（需要 Docker Desktop 已运行）：
 
 ```bash
-docker compose --profile local-db up -d mysql
+docker compose --profile local-db up -d mysql minio
 docker compose --profile local-db ps
 ```
 

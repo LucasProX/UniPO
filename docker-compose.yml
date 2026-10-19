@@ -26,6 +26,31 @@ services:
     ports:
       - "${MYSQL_PUBLIC_BIND:-0.0.0.0}:${MYSQL_PUBLIC_PORT:-12306}:3306"
 
+  minio:
+    # MinIO 官方 Docker Hub 镜像在当前网络下拉取失败（denied / not found），
+    # 本机改用 Bitnami 打包的同款 MinIO 服务端镜像；可用 MINIO_IMAGE 覆盖。
+    image: ${MINIO_IMAGE:-bitnamilegacy/minio:latest}
+    container_name: unipo-minio
+    profiles:
+      - local-db
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_DEFAULT_BUCKETS: ${MINIO_BUCKET:-biecuoguo-media}
+      MINIO_BROWSER: "on"
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    volumes:
+      - unipo_minio_data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -90,5 +115,6 @@ services:
 
 volumes:
   unipo_mysql_data:
+  unipo_minio_data:
   caddy_data:
   caddy_config:

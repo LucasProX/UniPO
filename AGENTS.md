@@ -23,7 +23,7 @@
 - 本机：Windows 11，Git 2.55，Node 24.18，npm 11.16。
 - 已装 **Temurin JDK 21.0.12.1**（`D:\Environments\Java\jdk-21`）+ **Maven 3.9.16**（`D:\Environments\Maven\apache-maven-3.9.16`）；`JAVA_HOME` 与 PATH 已写入用户环境变量，**新开的终端直接可用**。
 - 已配置阿里云 Maven 镜像（`C:\Users\36840\.m2\settings.xml`），后端首次构建约 2.5 分钟。
-- **本地链路已跑通（2026-10-19 实测）**：Docker Desktop 29.8.2 + WSL 2.7.13 + MySQL 8.4 容器（`127.0.0.1:12306`）+ 后端 + 前端，完整流程见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
+- **本地链路已跑通（2026-10-19 实测）**：Docker Desktop 29.8.2 + WSL 2.7.13 + MySQL 8.4 容器（`127.0.0.1:12306`）+ MinIO（`127.0.0.1:9000/9001`，`bitnamilegacy/minio`）+ 后端 + 前端；图片上传/读取已实测。完整流程见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
 - 线上服务器 `115.190.3.204` **不再使用**；本机开发不连任何远端库。
 - 后端通过仓库根 `.env`（gitignored）覆盖 `SPRING_DATASOURCE_URL`，不用改代码。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
@@ -39,7 +39,7 @@ npm.cmd run build                                   # vue-tsc -b && vite build�
 ```
 本地库（Docker Desktop 必须先运行）：
 ```bash
-docker compose --profile local-db up -d mysql   # 127.0.0.1:12306
+docker compose --profile local-db up -d mysql minio   # 3306/12306 + MinIO 9000/9001
 ```
 后端（Flyway 自动建表 V1–V10）：
 ```bash

@@ -12,6 +12,7 @@
 | Docker Desktop | 29.8.2 | `C:\Program Files\Docker\Docker` |
 | WSL | 2.7.13（内核 6.18.33.2） | winget 安装 |
 | MySQL | 8.4（容器 `unipo-mysql`） | `127.0.0.1:12306` |
+| MinIO | RELEASE.2025-05-24（容器 `unipo-minio`，Bitnami 打包） | API `127.0.0.1:9000`，控制台 `127.0.0.1:9001` |
 
 镜像加速写在 `C:\Users\36840\.docker\daemon.json`：
 
@@ -27,10 +28,10 @@
 # 1) 先确认 Docker Desktop 在跑（AutoStart 是关的，需要手动启动）
 docker info
 
-# 2) 起本地 MySQL（首次会建 volume，Flyway 建表靠后端）
+# 2) 起本地 MySQL + MinIO（首次会建 volume；Flyway 建表靠后端）
 cd D:\Projects\unipo
-docker compose --profile local-db up -d mysql
-docker compose --profile local-db ps      # 等到 healthy
+docker compose --profile local-db up -d mysql minio
+docker compose --profile local-db ps      # 等到两个都 healthy
 
 # 3) 起后端（会自动读仓库根 .env）
 cd backend
@@ -42,6 +43,19 @@ npm.cmd run dev -- --host 127.0.0.1 --port 5173
 ```
 
 打开 <http://127.0.0.1:5173/>。
+
+### MinIO 说明（2026-10-19 补充）
+
+- **镜像**：官方 `minio/minio` 在当前网络下**拉不动**（Docker Hub 返回 `denied`，试过的 RELEASE tag 全部 `not found`），所以 compose 改用 `bitnamilegacy/minio:latest`——同一个 MinIO 服务端，只是 Bitnami 打的包。需要换回官方镜像时设 `MINIO_IMAGE=minio/minio:<tag>`。
+- **bucket 自动创建**：容器环境变量 `MINIO_DEFAULT_BUCKETS` 指向 `\${MINIO_BUCKET}`，启动即建 `biecuoguo`；后端的 `MediaService` 在桶不存在时也会自己建。
+- **本地用 `MINIO_PUBLIC_READ=false`**：上传后返回的地址是 `/api/media/{id}/content`，由后端代理回源。好处是不用给桶配匿名读策略，也绕开跨域。
+- 若要改成公开直读（`MINIO_PUBLIC_READ=true`），必须先给桶加匿名读策略，否则前端拿到的 `http://127.0.0.1:9000/...` 会 403：
+
+```bash
+docker exec unipo-minio sh -c "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && mc anonymous set download local/biecuoguo"
+```
+
+- 控制台：<http://127.0.0.1:9001>，账号 `minioadmin / minioadmin`（来自 `.env` 的 `MINIO_ACCESS_KEY/SECRET_KEY`）。
 
 ## 3. 数据源是怎么切过去的
 
@@ -71,7 +85,7 @@ MINIO_PUBLIC_ENDPOINT=http://127.0.0.1:9000
 MINIO_ACCESS_KEY=minioadmin
 MINIO_SECRET_KEY=minioadmin
 MINIO_BUCKET=biecuoguo
-MINIO_PUBLIC_READ=true
+MINIO_PUBLIC_READ=false
 ```
 
 > `MINIO_*` 必须是**非空**的：`docker-compose.yml` 用了 `\${MINIO_ENDPOINT:?}` 必填语法，缺了连 `mysql` 单服务都起不来。
@@ -85,7 +99,8 @@ MINIO_PUBLIC_READ=true
 
 ## 5. 已知限制（本地）
 
-- **MinIO 没启动**：头像/图片上传会失败，其余功能正常。
+- **MinIO 用的是 Bitnami 打包镜像**（官方 `minio/minio` 在国内网络拉不动）。功能等价，但版本冻结在 2025-05，长期建议换官方镜像或自建 registry。
+- **图片走 `/api/media/{id}/content` 代理**（`MINIO_PUBLIC_READ=false`），流量过后端，本地无所谓，生产要评估。
 - **验证码是 mock**：任意 4 位数字通过（本地图方便，生产严禁，见 `docs/ISSUES.md` R-1）。
 - **管理员密码每次启动被重置**为 `BOOTSTRAP_ADMIN_PASSWORD`（R-3，本地无害，上线前必须改）。
 - 数据库数据在 Docker volume `unipo_unipo_mysql_data`，删了重来：
@@ -101,3 +116,7 @@ MINIO_PUBLIC_READ=true
 | 后端启动报 `Communications link failure` | MySQL 容器没起或没 healthy，先 `docker compose ps` |
 | 后端连到了远端库 | 仓库根没有 `.env`，或 `SPRING_DATASOURCE_URL` 拼错 |
 | 端口 12306 被占用 | 本机已有别的 MySQL 或容器，改 `.env` 的 `MYSQL_PUBLIC_PORT` |
+| 拉 `minio/minio` 报 `denied` / `not found` | MinIO 官方镜像在当前网络不可拉。用默认的 `bitnamilegacy/minio:latest`，或设 `MINIO_IMAGE` 指向可用的 registry |
+| 上传报 `无法连接 MinIO 服务` | `unipo-minio` 没起：`docker compose --profile local-db up -d minio`；或 `.env` 的 `MINIO_ENDPOINT` 不是 `http://127.0.0.1:9000` |
+| 图片 403 | 把 `MINIO_PUBLIC_READ` 改成了 `true` 但没给桶配匿名读策略，见 §2 MinIO 说明 |
+| 上传成功但前端不显示 | 检查返回的 `url` 是否以 `/api/` 开头；`MINIO_PUBLIC_READ=true` 时是 `http://127.0.0.1:9000/...`，需要桶策略 |
