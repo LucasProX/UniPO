@@ -79,15 +79,25 @@ public class PostService {
                         .eq(PostDailyStat::getStatDate, today)
                         .orderByDesc(PostDailyStat::getLikeCount)
                         .orderByDesc(PostDailyStat::getCommentCount));
-        for (PostDailyStat stat : stats.stream()
-                .sorted(Comparator.comparingInt((PostDailyStat item) -> safe(item.getLikeCount()) + safe(item.getCommentCount())).reversed())
-                .toList()) {
-            Post post = postMapper.selectById(stat.getPostId());
-            if (post != null && "published".equals(post.getStatus())) {
-                return toView(post, currentUser);
-            }
+        if (stats.isEmpty()) {
+            return null;
         }
-        return list("recommend", currentUser).stream()
+        List<Long> statPostIds = stats.stream().map(PostDailyStat::getPostId).filter(Objects::nonNull).toList();
+        Map<Long, Post> statPosts = postMapper.selectList(new LambdaQueryWrapper<Post>()
+                        .in(Post::getId, statPostIds)
+                        .eq(Post::getStatus, "published"))
+                .stream().collect(Collectors.toMap(Post::getId, Function.identity(), (a, b) -> a));
+        if (statPosts.isEmpty()) {
+            return null;
+        }
+        // 只在排名前的少量候选里挑，避免把整表都转成 view
+        List<Post> candidates = stats.stream()
+                .sorted(Comparator.comparingInt((PostDailyStat item) -> safe(item.getLikeCount()) + safe(item.getCommentCount())).reversed())
+                .map(stat -> statPosts.get(stat.getPostId()))
+                .filter(Objects::nonNull)
+                .limit(10)
+                .toList();
+        return toViews(candidates, currentUser).stream()
                 .max(Comparator.comparingInt(post -> safe(post.likeCount()) + safe(post.commentCount())))
                 .orElse(null);
     }
@@ -412,42 +422,67 @@ public class PostService {
         comments.forEach(item -> actorIds.add(item.getUserId()));
         commentReplies.forEach(item -> actorIds.add(item.getUserId()));
         Map<Long, User> users = actorIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, actorIds))
-                .stream().collect(Collectors.toMap(User::getId, Function.identity()));
+                .stream().collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
+
+        // 涉及到的帖子一次性批量转 view，避免每条 notice 各走一遍 N+1
+        Map<Long, PostDtos.PostView> postViews = toViews(postMap.values().stream().toList(), currentUser).stream()
+                .collect(Collectors.toMap(PostDtos.PostView::id, Function.identity(), (a, b) -> a));
+        // actor 的字典表也统一批量补齐
+        Set<Long> actorSchoolIds = new HashSet<>();
+        Set<Long> actorCollegeIds = new HashSet<>();
+        Set<Long> actorMajorIds = new HashSet<>();
+        users.values().forEach(actor -> {
+            if (actor.getSchoolId() != null) {
+                actorSchoolIds.add(actor.getSchoolId());
+            }
+            if (actor.getCollegeId() != null) {
+                actorCollegeIds.add(actor.getCollegeId());
+            }
+            if (actor.getMajorId() != null) {
+                actorMajorIds.add(actor.getMajorId());
+            }
+        });
+        Map<Long, School> actorSchools = actorSchoolIds.isEmpty() ? Map.of() : schoolMapper.selectList(new LambdaQueryWrapper<School>().in(School::getId, actorSchoolIds))
+                .stream().collect(Collectors.toMap(School::getId, Function.identity(), (a, b) -> a));
+        Map<Long, College> actorColleges = actorCollegeIds.isEmpty() ? Map.of() : collegeMapper.selectList(new LambdaQueryWrapper<College>().in(College::getId, actorCollegeIds))
+                .stream().collect(Collectors.toMap(College::getId, Function.identity(), (a, b) -> a));
+        Map<Long, Major> actorMajors = actorMajorIds.isEmpty() ? Map.of() : majorMapper.selectList(new LambdaQueryWrapper<Major>().in(Major::getId, actorMajorIds))
+                .stream().collect(Collectors.toMap(Major::getId, Function.identity(), (a, b) -> a));
 
         List<PostDtos.InteractionNoticeView> notices = new ArrayList<>();
         likes.forEach(item -> {
             User actor = users.get(item.getUserId());
-            Post post = postMap.get(item.getPostId());
-            if (actor != null && post != null) {
+            PostDtos.PostView postView = postViews.get(item.getPostId());
+            if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "like", authorView(actor), toView(post, currentUser), null, null, item.getCreatedAt(), true
+                        item.getId(), "like", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, item.getCreatedAt(), true
                 ));
             }
         });
         favorites.forEach(item -> {
             User actor = users.get(item.getUserId());
-            Post post = postMap.get(item.getPostId());
-            if (actor != null && post != null) {
+            PostDtos.PostView postView = postViews.get(item.getPostId());
+            if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "favorite", authorView(actor), toView(post, currentUser), null, null, item.getCreatedAt(), true
+                        item.getId(), "favorite", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, item.getCreatedAt(), true
                 ));
             }
         });
         comments.forEach(item -> {
             User actor = users.get(item.getUserId());
-            Post post = postMap.get(item.getPostId());
-            if (actor != null && post != null) {
+            PostDtos.PostView postView = postViews.get(item.getPostId());
+            if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "comment", authorView(actor), toView(post, currentUser), item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                        item.getId(), "comment", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), item.getCreatedAt(), true
                 ));
             }
         });
         commentReplies.forEach(item -> {
             User actor = users.get(item.getUserId());
-            Post post = postMap.get(item.getPostId());
-            if (actor != null && post != null) {
+            PostDtos.PostView postView = postViews.get(item.getPostId());
+            if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "reply", authorView(actor), toView(post, currentUser), item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                        item.getId(), "reply", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), item.getCreatedAt(), true
                 ));
             }
         });
@@ -500,57 +535,154 @@ public class PostService {
     }
 
     private List<PostDtos.PostView> toViews(List<Post> posts, CurrentUser currentUser) {
-        return posts.stream().map(post -> toView(post, currentUser)).toList();
+        if (posts.isEmpty()) {
+            return List.of();
+        }
+        List<Long> postIds = posts.stream().map(Post::getId).toList();
+
+        // 1) 作者一次批量查完
+        Set<Long> authorIds = posts.stream().map(Post::getAuthorId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, User> authors = authorIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, authorIds))
+                .stream().collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
+
+        // 2) 图片一次批量查完，按 sortOrder 保序
+        Map<Long, List<String>> imagesByPost = imageMapper.selectList(new LambdaQueryWrapper<PostImage>()
+                        .in(PostImage::getPostId, postIds)
+                        .orderByAsc(PostImage::getSortOrder))
+                .stream()
+                .collect(Collectors.groupingBy(PostImage::getPostId,
+                        Collectors.mapping(PostImage::getUrl, Collectors.toList())));
+
+        // 3) 当前用户的点赞/收藏只查一次，用 Set 判断（final，供 lambda 捕获）
+        final Set<Long> likedPostIds;
+        final Set<Long> favoritedPostIds;
+        if (currentUser != null) {
+            likedPostIds = likeMapper.selectList(new LambdaQueryWrapper<PostLike>()
+                            .eq(PostLike::getUserId, currentUser.id())
+                            .in(PostLike::getPostId, postIds))
+                    .stream().map(PostLike::getPostId).collect(Collectors.toSet());
+            favoritedPostIds = favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>()
+                            .eq(PostFavorite::getUserId, currentUser.id())
+                            .in(PostFavorite::getPostId, postIds))
+                    .stream().map(PostFavorite::getPostId).collect(Collectors.toSet());
+        } else {
+            likedPostIds = Set.of();
+            favoritedPostIds = Set.of();
+        }
+
+        // 4) authorView 的三张字典表按需批量补齐
+        Set<Long> schoolIds = new HashSet<>();
+        Set<Long> collegeIds = new HashSet<>();
+        Set<Long> majorIds = new HashSet<>();
+        authors.values().forEach(user -> {
+            if (user.getSchoolId() != null) {
+                schoolIds.add(user.getSchoolId());
+            }
+            if (user.getCollegeId() != null) {
+                collegeIds.add(user.getCollegeId());
+            }
+            if (user.getMajorId() != null) {
+                majorIds.add(user.getMajorId());
+            }
+        });
+        Map<Long, School> schools = schoolIds.isEmpty() ? Map.of() : schoolMapper.selectList(new LambdaQueryWrapper<School>().in(School::getId, schoolIds))
+                .stream().collect(Collectors.toMap(School::getId, Function.identity(), (a, b) -> a));
+        Map<Long, College> colleges = collegeIds.isEmpty() ? Map.of() : collegeMapper.selectList(new LambdaQueryWrapper<College>().in(College::getId, collegeIds))
+                .stream().collect(Collectors.toMap(College::getId, Function.identity(), (a, b) -> a));
+        Map<Long, Major> majors = majorIds.isEmpty() ? Map.of() : majorMapper.selectList(new LambdaQueryWrapper<Major>().in(Major::getId, majorIds))
+                .stream().collect(Collectors.toMap(Major::getId, Function.identity(), (a, b) -> a));
+
+        return posts.stream()
+                .map(post -> new PostDtos.PostView(
+                        post.getId(), post.getBoard(), post.getSourceType(), post.getTitle(), post.getContent(), post.getExcerpt(),
+                        post.getCoverUrl(), imagesByPost.getOrDefault(post.getId(), List.of()), post.getRiskLevel(), post.getOfficial(), post.getDontMiss(), post.getPinned(),
+                        post.getDeadlineAt(), post.getMissConsequence(), post.getNextAction(), splitTags(post.getTags()),
+                        safe(post.getLikeCount()), safe(post.getCommentCount()), safe(post.getFavoriteCount()), safe(post.getShareCount()),
+                        likedPostIds.contains(post.getId()), favoritedPostIds.contains(post.getId()), post.getStatus(), post.getPublishedAt(), post.getCreatedAt(),
+                        authorView(authors.get(post.getAuthorId()), schools, colleges, majors)
+                ))
+                .toList();
     }
 
     private PostDtos.PostView toView(Post post, CurrentUser currentUser) {
-        User author = userMapper.selectById(post.getAuthorId());
-        List<String> images = imageMapper.selectList(new LambdaQueryWrapper<PostImage>().eq(PostImage::getPostId, post.getId()).orderByAsc(PostImage::getSortOrder))
-                .stream().map(PostImage::getUrl).toList();
-        boolean liked = currentUser != null && likeMapper.selectCount(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, post.getId()).eq(PostLike::getUserId, currentUser.id())) > 0;
-        boolean favorited = currentUser != null && favoriteMapper.selectCount(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, post.getId()).eq(PostFavorite::getUserId, currentUser.id())) > 0;
-        return new PostDtos.PostView(
-                post.getId(), post.getBoard(), post.getSourceType(), post.getTitle(), post.getContent(), post.getExcerpt(),
-                post.getCoverUrl(), images, post.getRiskLevel(), post.getOfficial(), post.getDontMiss(), post.getPinned(),
-                post.getDeadlineAt(), post.getMissConsequence(), post.getNextAction(), splitTags(post.getTags()),
-                safe(post.getLikeCount()), safe(post.getCommentCount()), safe(post.getFavoriteCount()), safe(post.getShareCount()),
-                liked, favorited, post.getStatus(), post.getPublishedAt(), post.getCreatedAt(), authorView(author)
-        );
+        return toViews(List.of(post), currentUser).stream().findFirst().orElse(null);
     }
 
     private List<PostDtos.CommentView> commentViews(List<Comment> comments, CurrentUser currentUser) {
-        Set<Long> userIds = comments.stream().map(Comment::getUserId).collect(Collectors.toSet());
+        if (comments.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> userIds = comments.stream().map(Comment::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, User> users = userIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, userIds))
-                .stream().collect(Collectors.toMap(User::getId, Function.identity()));
-        Set<Long> likedCommentIds = currentUser == null || comments.isEmpty() ? Set.of() :
+                .stream().collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
+        Set<Long> likedCommentIds = currentUser == null ? Set.of() :
                 commentLikeMapper.selectList(new LambdaQueryWrapper<CommentLike>()
                                 .eq(CommentLike::getUserId, currentUser.id())
                                 .in(CommentLike::getCommentId, comments.stream().map(Comment::getId).toList()))
                         .stream()
                         .map(CommentLike::getCommentId)
                         .collect(Collectors.toSet());
+        // authorView 的三张字典表同样批量补齐
+        Set<Long> schoolIds = new HashSet<>();
+        Set<Long> collegeIds = new HashSet<>();
+        Set<Long> majorIds = new HashSet<>();
+        users.values().forEach(user -> {
+            if (user.getSchoolId() != null) {
+                schoolIds.add(user.getSchoolId());
+            }
+            if (user.getCollegeId() != null) {
+                collegeIds.add(user.getCollegeId());
+            }
+            if (user.getMajorId() != null) {
+                majorIds.add(user.getMajorId());
+            }
+        });
+        Map<Long, School> schools = schoolIds.isEmpty() ? Map.of() : schoolMapper.selectList(new LambdaQueryWrapper<School>().in(School::getId, schoolIds))
+                .stream().collect(Collectors.toMap(School::getId, Function.identity(), (a, b) -> a));
+        Map<Long, College> colleges = collegeIds.isEmpty() ? Map.of() : collegeMapper.selectList(new LambdaQueryWrapper<College>().in(College::getId, collegeIds))
+                .stream().collect(Collectors.toMap(College::getId, Function.identity(), (a, b) -> a));
+        Map<Long, Major> majors = majorIds.isEmpty() ? Map.of() : majorMapper.selectList(new LambdaQueryWrapper<Major>().in(Major::getId, majorIds))
+                .stream().collect(Collectors.toMap(Major::getId, Function.identity(), (a, b) -> a));
         return comments.stream()
                 .map(comment -> new PostDtos.CommentView(
                         comment.getId(), comment.getPostId(), comment.getUserId(), comment.getParentId(), comment.getContent(),
                         safe(comment.getLikeCount()), safe(comment.getReplyCount()), likedCommentIds.contains(comment.getId()), Boolean.TRUE.equals(comment.getFeatured()),
-                        comment.getStatus(), comment.getCreatedAt(), authorView(users.get(comment.getUserId()))
+                        comment.getStatus(), comment.getCreatedAt(), authorView(users.get(comment.getUserId()), schools, colleges, majors)
                 ))
                 .toList();
     }
 
-    private PostDtos.AuthorView authorView(User user) {
+    /**
+     * 带缓存字典表的 authorView，供批量装配使用。
+     * 调用方负责把 schoolIds / collegeIds / majorIds 一次性查成 Map 传进来。
+     */
+    private PostDtos.AuthorView authorView(User user, Map<Long, School> schools, Map<Long, College> colleges, Map<Long, Major> majors) {
         if (user == null) {
             return new PostDtos.AuthorView(null, "00000000", "匿名同学", null, "USER", "student", 1, "萌新探路员", null, null, null, null, false);
         }
-        School school = user.getSchoolId() == null ? null : schoolMapper.selectById(user.getSchoolId());
-        College college = user.getCollegeId() == null ? null : collegeMapper.selectById(user.getCollegeId());
-        Major major = user.getMajorId() == null ? null : majorMapper.selectById(user.getMajorId());
+        School school = user.getSchoolId() == null ? null : schools.get(user.getSchoolId());
+        College college = user.getCollegeId() == null ? null : colleges.get(user.getCollegeId());
+        Major major = user.getMajorId() == null ? null : majors.get(user.getMajorId());
         return new PostDtos.AuthorView(
                 user.getId(), user.getPublicUid(), user.getNickname(), user.getAvatarUrl(), user.getRole(), user.getOperatorScope(),
                 user.getLevel() == null ? 1 : user.getLevel(), firstNonBlank(user.getLevelTitle(), "萌新探路员"),
                 school == null ? null : school.getName(), college == null ? user.getCollege() : college.getName(),
                 major == null ? user.getMajor() : major.getName(), user.getGrade(), presenceService.isOnline(user.getId())
         );
+    }
+
+    /** 单用户兜底版本（非批量路径仍可用），逐个查字典表。 */
+    private PostDtos.AuthorView authorView(User user) {
+        Map<Long, School> schools = user == null || user.getSchoolId() == null ? Map.of() :
+                schoolMapper.selectList(new LambdaQueryWrapper<School>().in(School::getId, user.getSchoolId()))
+                        .stream().collect(Collectors.toMap(School::getId, Function.identity(), (a, b) -> a));
+        Map<Long, College> colleges = user == null || user.getCollegeId() == null ? Map.of() :
+                collegeMapper.selectList(new LambdaQueryWrapper<College>().in(College::getId, user.getCollegeId()))
+                        .stream().collect(Collectors.toMap(College::getId, Function.identity(), (a, b) -> a));
+        Map<Long, Major> majors = user == null || user.getMajorId() == null ? Map.of() :
+                majorMapper.selectList(new LambdaQueryWrapper<Major>().in(Major::getId, user.getMajorId()))
+                        .stream().collect(Collectors.toMap(Major::getId, Function.identity(), (a, b) -> a));
+        return authorView(user, schools, colleges, majors);
     }
 
     private void saveImages(Long postId, List<String> images, LocalDateTime now) {

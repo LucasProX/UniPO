@@ -15,7 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class MessageService {
@@ -32,12 +36,55 @@ public class MessageService {
     }
 
     public List<MessageDtos.ConversationView> conversations(CurrentUser currentUser) {
-        return conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
+        List<Conversation> conversationList = conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
                         .and(w -> w.eq(Conversation::getUserOneId, currentUser.id()).or().eq(Conversation::getUserTwoId, currentUser.id()))
-                        .orderByDesc(Conversation::getLastMessageAt))
+                        .orderByDesc(Conversation::getLastMessageAt));
+        if (conversationList.isEmpty()) {
+            return List.of();
+        }
+        List<Long> conversationIds = conversationList.stream().map(Conversation::getId).toList();
+
+        // 1) 对端用户一次批量查完
+        Set<Long> peerIds = conversationList.stream()
+                .map(conversation -> peerIdOf(conversation, currentUser.id()))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, User> peers = peerIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, peerIds))
+                .stream().collect(Collectors.toMap(User::getId, u -> u, (a, b) -> a));
+
+        // 2) 所有会话的消息一次查完，再按会话分组取最后一条（保持 createdAt 升序，最后一条即最新）
+        Map<Long, Message> lastMessageByConversation = messageMapper.selectList(new LambdaQueryWrapper<Message>()
+                        .in(Message::getConversationId, conversationIds)
+                        .orderByAsc(Message::getCreatedAt))
                 .stream()
-                .map(conversation -> toView(conversation, currentUser.id()))
+                .collect(Collectors.toMap(Message::getConversationId, m -> m, (a, b) -> b));
+
+        // 3) 未读数一次查完，按会话分组计数
+        Map<Long, Integer> unreadByConversation = messageMapper.selectList(new LambdaQueryWrapper<Message>()
+                        .in(Message::getConversationId, conversationIds)
+                        .eq(Message::getReceiverId, currentUser.id())
+                        .eq(Message::getReadFlag, false))
+                .stream()
+                .collect(Collectors.groupingBy(Message::getConversationId, Collectors.summingInt(m -> 1)));
+
+        return conversationList.stream()
+                .map(conversation -> new MessageDtos.ConversationView(
+                        conversation.getId(),
+                        authorView(peers.get(peerIdOf(conversation, currentUser.id()))),
+                        contentOf(lastMessageByConversation.get(conversation.getId())),
+                        unreadByConversation.getOrDefault(conversation.getId(), 0).longValue(),
+                        conversation.getLastMessageAt(),
+                        conversation.getUpdatedAt()
+                ))
                 .toList();
+    }
+
+    private Long peerIdOf(Conversation conversation, Long currentUserId) {
+        return conversation.getUserOneId().equals(currentUserId) ? conversation.getUserTwoId() : conversation.getUserOneId();
+    }
+
+    private String contentOf(Message message) {
+        return message == null ? "" : message.getContent();
     }
 
     @Transactional
@@ -64,12 +111,16 @@ public class MessageService {
         List<Message> messages = messageMapper.selectList(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, conversation.getId())
                 .orderByAsc(Message::getCreatedAt));
-        messages.stream()
+        List<Message> unread = messages.stream()
                 .filter(message -> message.getReceiverId().equals(currentUser.id()) && !Boolean.TRUE.equals(message.getReadFlag()))
-                .forEach(message -> {
-                    message.setReadFlag(true);
-                    messageMapper.updateById(message);
-                });
+                .toList();
+        if (!unread.isEmpty()) {
+            // 批量标记已读：一条 UPDATE 替代逐条 update 的 N+1
+            messageMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<Message>()
+                    .set(Message::getReadFlag, true)
+                    .in(Message::getId, unread.stream().map(Message::getId).toList()));
+            unread.forEach(message -> message.setReadFlag(true));
+        }
         return messages.stream().map(this::messageView).toList();
     }
 
