@@ -1,110 +1,93 @@
-# 问题清单
+# 问题清单（本地开发模式版）
 
-> 快照 2026-10-19（commit `05a265d`）。按修复优先级排序，每条给出证据位置与建议动作。
+> 快照 2026-10-19。**工作模式已变更**：线上服务器 115.190.3.204 不再使用，后续开发全部在本地 Docker + 本地库进行。
+> 因此优先级重新排序：**"能不能跑通" > "上线后会不会被打"**。
 
-## 0. 工程环境阻塞（先解决这个）
+## 0. 优先级定义（本次重排后）
 
-| 问题 | 影响 |
-|---|---|
-| ~~本机没有 JDK / Maven~~ **已解决**：装了 Temurin 21.0.12.1 + Maven 3.9.16，`mvn -DskipTests package` 已实测 **BUILD SUCCESS**（63MB fat jar）；前端 `npm run build` 也已通过 | 编译能力已具备 |
-| **仍无本地数据库 / Docker** | 后端能编译但**不能启动**；唯一的默认库是生产库 |
-| 仓库**0 个测试**（无 `src/test`） | 重构与安全修复没有回归保护 |
-| **无 lint、无 CI**（无 `.github/workflows`、无 eslint/prettier） | 质量全靠人肉 |
+| 级别 | 含义 | 现在处理吗 |
+|---|---|---|
+| **B — 阻塞** | 本地跑不起来，连界面都看不到 | ✅ 立刻做 |
+| **D — 开发体验** | 能跑但改起来痛苦（N+1、无分页、单文件前端） | 顺手做 / 逐步做 |
+| **R — 上线阻断** | 只要不对外提供服务就不影响，**一旦部署上线必须先在** | ⏸ 先记着 |
+| **Q — 质量** | 测试、CI、错误码、时区等长期项 | ⏸ 有空做 |
 
-建议：先装 Temurin JDK 21 + Maven 3.9（`winget install EclipseAdoptium.Temurin.21.JDK` + `winget install Apache.Maven`），或用 Docker Desktop 跑 compose。**这一步不做，后面的后端改造都只能靠读代码。**
+> 原 P0 三项（验证码放行、后门账号、管理员密码重置）全部归入 **R**：它们只在"对外开放"时才是灾难。代码层仍是硬伤，上线前必须清零，见 §3。
 
-## 1. P0 — 安全，可被直接利用
+## 1. B — 当前阻塞项（本地跑通）
 
-### P0-1 验证码默认放行，任意账号可被接管
+| 状态 | 项 | 说明 |
+|---|---|---|
+| ✅ 已解决 | ``没有 JDK / Maven`` | Temurin **21.0.12.1** + Maven **3.9.16** 已装；`mvn -DskipTests package` 实测 **BUILD SUCCESS**（2 分 22 秒，63.1 MB fat jar） |
+| ✅ 已解决 | ``前端依赖`` | `npm install` + `npm run build` 通过（1633 modules，5.26 秒，类型检查干净） |
+| 🔄 进行中 | **没有本地数据库** | 方案已定：Docker Desktop + compose 的 `mysql` 服务（profile `local-db`） |
+| 🔄 进行中 | **Docker Desktop 未装，WSL2 未启用** | 安装包已下到 `D:\Environments\installers\DockerDesktopInstaller.exe`（607 MB）；`wsl --status` 报 `REGDB_E_CLASSNOTREG`，装完需重启一次 |
+| ⏳ 待办 | 默认 datasource 指向远端库 | 不改代码即可绕过：`application.yml:6` 有 `spring.config.import: optional:file:../.env[.properties]`，在仓库根建 `.env` 覆盖 `SPRING_DATASOURCE_URL` 即可 |
+
+## 2. R — 上线阻断项（原 P0，现在不阻塞本地开发）
+
+### R-1 验证码默认放行，任意账号可被接管
 证据：
-- `backend/src/main/resources/application.yml:51`：`mock-accept-any-code: ${VERIFICATION_MOCK_ACCEPT_ANY_CODE:true}`
-- `docker-compose.yml` 的 backend `environment` **没有**这个变量
-- `.env.example` **没有**；`deploy-app.sh` 的 `required_vars` **没有**
+- `backend/src/main/resources/application.yml:51`：`mock-accept-any-code: \${VERIFICATION_MOCK_ACCEPT_ANY_CODE:true}`（默认 true）
+- `docker-compose.yml` 的 backend `environment`、`.env.example`、`deploy-app.sh` 的 `required_vars` **三处都没有**这个变量
 - `VerificationService` 的 mock 分支只校验"4 位数字"
 
 攻击链（3 个请求）：
-1. `GET /api/auth/email-availability?email=目标邮箱&purpose=reset-password` → 确认账号存在
+1. `GET /api/auth/email-availability?email=目标&purpose=reset-password` → 确认账号存在
 2. `POST /api/auth/verification-code` → 服务端"发码"但不校验
 3. `POST /api/auth/reset-password` + 任意 4 位数字 → 密码被改
 
-影响：任何人可接管任意已注册账号，包括运营号与管理员。**这是当前最严重的问题。**
+修复（有顺序依赖）：**先接邮件通道**（SMTP / Resend / SES；现在 `mock=false` 时验证码只打日志，用户收不到），再把默认值改 `false`、本地 profile 显式 `true`，最后补齐三处配置。
 
-修复（有先后依赖）：
-1. **前置**：接入真实邮件通道（SMTP / Resend / SES）。现在 `mock=false` 时代码只把验证码打到日志，用户收不到 → 只改开关等于让注册/找回密码不可用。
-2. `application.yml` 默认改 `false`，在 `application-local.yml` 里显式 `true` 保证本地开发。
-3. 同步补齐 `.env.example`、`docker-compose.yml`、`deploy-app.sh` 三处。
-4. 邮件未接通前的止血：关闭 `purpose=reset-password` 的可用性查询语义、给 `/verification-code` 与 `/reset-password` 加限流（按 IP + 邮箱）。
+### R-2 内置后门账号
+证据：`AuthService.java:22-31` 常量 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua`；`AuthService.java:176-178` 启动即创建（`CommandLineRunner`）；`AuthService.java:226-243`、`263-274` 存在即重置密码；`login()` 对这三个用户名做邮箱特判。
+影响：任何人可登录为 `SCHOOL_OPERATOR` / `COLLEGE_OPERATOR` 发"官方"帖。
+修复：删 `CommandLineRunner` 与三个 `ensure*` 方法，演示数据改为一次性 SQL 脚本。
 
-### P0-2 内置后门账号
-证据：
-- `AuthService.java:22-31` 常量 `GOOD_LOGIN=good/GOOD_PASSWORD=good`、`xiaoba/xiaoba`、`yuanhua/yuanhua`
-- `AuthService.java:176-178` 每次启动 `ensureGoodUser()` / `ensureMockOperator(...)`
-- `AuthService.java:226-243`、`263-274` 存在即重置密码
-- `login()` 把 `good` / `xiaoba` / `yuanhua` 特判成邮箱
+### R-3 管理员密码每次启动被重置
+证据：`AuthService.java:197` 每次启动把 admin 密码写成 `BOOTSTRAP_ADMIN_PASSWORD`；`docker-compose.yml` 默认 `Admin@123456`。
+修复：仅当用户不存在时创建；加管理员改密接口；compose 去掉默认值。
 
-影响：任何看过仓库的人都能以 `SCHOOL_OPERATOR` / `COLLEGE_OPERATOR` 身份登录并发布"官方"帖（`canPostOfficial` 会认这些角色），直接伤害产品可信度。
+### R-4 默认配置指向远端库（已更正，风险降级）
+证据：`application.yml:14` 与 `application-local.yml:3` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`。
+**更正**：先前"本机可连通"是假阳性——本机 Clash/Mihomo TUN（fake-ip 198.18.0.0/15）接管了所有 TCP，连 `192.0.2.1:80` 都"连得上"。外部 6 节点实测：ping 通、**TCP 12306 全部超时**、TCP 22 超时、TCP 80 开放但返回 404。
+现状：该库不可达，本地启动只会连接超时。一旦放开端口，`spring-boot:run` 会对远端库跑 Flyway 并触发 `AuthService` 启动逻辑。
+修复：本地靠 `.env` 覆盖（见 §1）；长期把默认值改成 `127.0.0.1`，缺失即启动失败。
 
-修复：删除 `CommandLineRunner` 实现与三个 `ensure*` 方法；演示数据改为一次性 SQL 脚本（不进启动流程）；生产库中已存在的这三个账号要删除或强制改密。
+## 3. D — 开发体验（影响日常协作，建议边做边改）
 
-### P0-3 管理员密码每次启动被重置
-证据：`AuthService.java:197` `admin.setPasswordHash(encode(properties.bootstrap().adminPassword()))`；`docker-compose.yml` 默认 `BOOTSTRAP_ADMIN_PASSWORD=Admin@123456`。
-
-影响：管理员改密无效；密码恒等于 `.env` 值；`.env` 一旦泄漏即永久失守。
-
-修复：仅在用户不存在时创建；增加管理员自助改密接口；compose 去掉默认值改为必填（`deploy-app.sh` 的 `required_vars` 里已有，但 compose 默认值让缺失时不报错）。
-
-### P0-4 默认配置指向远端数据库（**已更正：该库当前对公网不可达，风险降为 P1**）
-证据：
-- `backend/src/main/resources/application.yml:14` 与 `application-local.yml:3` 的默认 `spring.datasource.url` 都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`
-- README 第 219 行称它为"测试环境 MySQL"，但它就是线上部署唯一在用的库
-- README 的本地开发命令就是 `spring-boot:run -Dspring-boot.run.profiles=local`
-
-**更正（2026-10-19）**：先前"本机可连通该端口"的结论是错的。本机开着 Clash/Mihomo TUN 代理（fake-ip 段 198.18.0.0/15，网关 198.18.0.2），所有 TCP 被本地接管，连 `192.0.2.1` / `203.0.113.1` 这类保留地址都"连得上"。改用 6 个外部节点（check-host.net）实测：**ping 全部通（215-304ms）；TCP 12306 全部超时；TCP 22 全部超时；TCP 80 开放但返回 404**。结论：服务器在线，但数据库端口未对公网开放。
-
-影响：
-- 现在：照 README 在本地启动后端会**连接超时失败**（不会写坏远端数据）。
-- 一旦该端口被放开（安全组放行，或从服务器 B 的内网访问）：本地启动就会对远端库跑 Flyway 迁移，并触发 `AuthService.run()` 重置管理员密码、重建三个演示账号。
-
-修复：默认值改成 `jdbc:mysql://127.0.0.1:3307/biecuoguo`，或干脆不给默认值（缺失即启动失败），远端地址只从 `.env` 提供。
-
-## 2. P1 — 应尽快修
-
-| 编号 | 问题 | 证据 | 建议 |
+| 编号 | 问题 | 证据 | 影响 |
 |---|---|---|---|
-| P1-1 | JWT secret 有默认值 `change-this-secret...`，缺失时用短串补齐 | `application.yml:45` | 启动时校验长度 >= 32，缺失即 fail-fast |
-| P1-2 | Token 10080 分钟 + 无刷新令牌 + 存 `localStorage` | `application.yml:46`、`App.vue` 的 `localStorage` | App 上线前必须改 access 15min + refresh，Web 迁 httpOnly cookie |
-| P1-3 | 登出黑名单、在线状态都是单机 `ConcurrentHashMap` | `TokenBlacklistService`、`PresenceService` | 多实例/重启即失效；换 Redis |
-| P1-4 | 没有任何限流 | 全仓库无 Bucket4j / Redis | 登录、验证码、发帖、上传必须限流 |
-| P1-5 | 用户枚举 | `email-availability`、`nickname-availability` 公开；`purpose=reset-password` 直接暴露注册状态 | 统一模糊返回 + 限流 |
-| P1-6 | 上传只信 `Content-Type` 前缀，无魔数/尺寸校验 | `MediaService.java:45-51` | 校验文件头、重编码图片、限制像素；存储与访问分离 |
-| P1-7 | 媒体内容公开可读且无归属校验 | `GET /api/media/{id}/content` 放行 | 私密场景需签名 URL；当前只有公开帖图，可接受但要记录 |
+| D-1 | **N+1 查询** | `PostService.java:502-519` `toViews` 逐条调 `toView`，每条 7 次 SQL（author + images + like + favorite + school/college/major） | 100 条 feed ≈ 700 次查询，本地都卡 |
+| D-2 | **列表无分页** | `PostService.java:53-64` `selectList` 无 limit；`MessageService.messages()` 全量加载 | 数据一多前端直接卡死 |
+| D-3 | 匿名视角取随机用户 | `PostService.java:470-478` 未登录硬编码 `school_id = 1`；`:646` `defaultViewer()` 随机取 active 用户 | 未登录看到的 feed 不可控 |
+| D-4 | 前端 4207 行单文件 | `frontend/src/App.vue`，6 个 `ViewKey` 手写状态机，无 vue-router | 无法多人协作，也无法复用到 App |
+| D-5 | 前端假数据兜底 | `fallbackPosts` / `fallbackComments` / `fallbackConversations` / `fallbackCourses` | 接口挂了也"看起来正常"，掩盖 bug |
+| D-6 | 轮询过密 | `App.vue:1987` 3s、`:3205` 1.8s、`:2208` 10s | 放大 D-1/D-2 |
+| D-7 | notices 遗留域 | `NoticeController` / `CommentController` / `InteractionController` / `AdminController` + 12 张表，前端零调用 | 阅读与维护成本翻倍 |
+| D-8 | db/local 与 H2 是死代码 | 无任何 profile 引用 `db/local`，H2 未被使用 | 误导后来者 |
 
-## 3. P2 — 质量与体验
+## 4. Q — 质量项（长期）
 
-- `GlobalExceptionHandler` 无兜底 `Exception` handler → 未知异常返回 Spring 默认错误页，前端拿不到 `{message}`。
-- 错误体没有业务错误码，App 只能匹配中文文案。
-- 时间字段全是 `LocalDateTime`，JSON 无时区；跨时区展示与 App 解析都会错。
-- `PostService.baseVisibleWrapper`（`PostService.java:470-478`）未登录时硬编码 `school_id = 1`；`defaultViewer()`（`PostService.java:646`）随机取一个 active 用户当匿名视角。
-- 无 requestId / 无访问日志 / 日志未脱敏。
+- `GlobalExceptionHandler` 无兜底 `Exception` handler → 500 走 Spring 默认错误页，前端拿不到 `{message}`。
+- 错误体无业务错误码，App 只能匹配中文文案。
+- 时间字段全是 `LocalDateTime`，JSON 无时区；App 端跨时区必错。
+- 无限流（登录、验证码、发帖、上传）。
+- JWT 默认 secret、10080 分钟、无刷新令牌、存 `localStorage`。
+- 登出黑名单与在线状态是单机 `ConcurrentHashMap`。
+- 上传只校验 `Content-Type` 前缀。
+- 无测试（0 个）、无 lint、无 CI。
 
-## 4. 架构级技术债
+## 5. 建议顺序（本地开发模式）
 
-| 编号 | 问题 | 影响 | 相关位置 |
-|---|---|---|---|
-| A1 | notices 遗留域（约 15 个类 + 12 张表）与 posts 新域并存，前端零调用 | 阅读成本翻倍；两套 `comments` 共用一张表；`AdminController` 只管遗留域且无前端 | `web/NoticeController`、`CommentController`、`InteractionController`、`AdminController` |
-| A2 | N+1 查询 | `PostService.toView()`（`PostService.java:502-519`）每条 7 次 SQL（author + images + like + favorite + school/college/major），100 条 feed 约 700 次查询 | `PostService`、`MessageService.toView` |
-| A3 | 列表无分页 | `PostService.list()`（`PostService.java:53-64`）全表返回；`messages()` 全量加载 | App 端无法做无限滚动 |
-| A4 | 前端 4207 行单文件 + 假数据 + 轮询 | 无法多人协作；首屏可能展示假 PO；3s/1.8s 轮询放大 A2/A3 | `frontend/src/App.vue` |
-| A5 | 课程表、公告、spotlight 前端硬编码 | 这些"功能"没有后端，无法运营 | `App.vue` |
-| A6 | 无版本化接口、无契约文件 | App 发布后无法演进 | 见 `docs/MOBILE-API-PLAN.md` |
+1. **跑通本地链路**：Docker → MySQL → 后端 → 前端 → 打开 `http://127.0.0.1:5173` 看到真实数据（不再吃 fallback）。
+2. **建 `.env`**，把 datasource 指向本地，顺手把 `R-4` 的坑封死。
+3. **D-5 去假数据 + D-4 拆前端**：这是后续所有 Web/App 工作的地基。
+4. **D-1 / D-2 分页与批量查询**：App 上线前必须做，趁数据量小改代价最低。
+5. **`R-1 ` R-3`**：确定要部署前集中处理（R-1 依赖邮件通道，提前选型）。
+6. **D-7 清理 notices 域**：可与 3 并行，纯删除。
+7. **Q 项**：随功能迭代逐步补，优先"时区"与"错误码"（App 契约依赖）。
 
-## 5. 建议修复顺序
+## 6. 一句话结论
 
-1. **环境**：装 JDK 21 + Maven（半天）——解锁后端验证能力。
-2. **P0-2 / P0-3**：删后门与密码重置（纯代码，风险低，1 小时）。
-3. **P0-1 止血**：限流 + 关闭重置密码枚举；同时排期接邮件通道（1-2 天）。
-4. **`P1-1 / P1-3 / P1-4**：fail-fast + Redis（限流/黑名单/在线态）。
-5. **契约**：`/api/v1` + 统一响应包 + 游标分页 + 时区（3-5 天）。
-6. **认证升级**：refresh token + 设备管理 + Web cookie（3-5 天）。
-7. **前端**：路由化 + 组件拆分 + 清假数据（与 App 信息架构并行）。
-8. **再谈实时化与推送**。
+**本地能跑通之后，最值钱的三件事是：去假数据、前端组件化、后端分页。** 它们决定这个项目能不能撑到 App 端。

@@ -23,7 +23,8 @@
 - 本机：Windows 11，Git 2.55，Node 24.18，npm 11.16。
 - 已装 **Temurin JDK 21.0.12.1**（`D:\Environments\Java\jdk-21`）+ **Maven 3.9.16**（`D:\Environments\Maven\apache-maven-3.9.16`）；`JAVA_HOME` 与 PATH 已写入用户环境变量，**新开的终端直接可用**。
 - 已配置阿里云 Maven 镜像（`C:\Users\36840\.m2\settings.xml`），后端首次构建约 2.5 分钟。
-- **仍无 Docker、无本地 MySQL**。不要用默认配置启动后端——默认 datasource 直连**生产库**，见 §8。
+- **正在装 Docker Desktop + 本地 MySQL**（2026-10-19 起，线上服务器 115.190.3.204 不再使用）。
+- 不要用默认配置启动后端——默认 datasource 指向远端库，见 §8；用仓库根的 `.env` 覆盖 `SPRING_DATASOURCE_URL` 即可。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
 - 全局 git 身份已配好：`LucasProX <LucasProX@users.noreply.github.com>`，凭据管理器里有 GitHub token，可直接 push。
 
@@ -35,13 +36,13 @@ npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1 --port 5173   # vite 代理 /api -> localhost:8080
 npm.cmd run build                                   # vue-tsc -b && vite build，提交前必须绿
 ```
-后端（已可编译，但**启动还需要一个数据库**）：
+后端（已可编译，启动前需要本地库）：
 ```bash
 cd backend
-mvn -DskipTests package                            # 只编译打包，安全，已实测通过
+mvn -DskipTests package                  # 只编译打包，安全，已实测通过
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
-# 上一行会连生产库！启动前必须先导出本地库地址：
-#   SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3307/biecuoguo
+# 会自动读仓库根的 .env（application.yml:6 的 spring.config.import）
+# 没有 .env 时会退回默认远端库，可能连接超时
 ```
 全栈（需要 Docker）：
 ```bash
@@ -88,12 +89,14 @@ docker compose up -d --build
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
 - 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
 
-## 9. 当前优先级（2026-10）
-1. 安全止血：验证码放行、后门账号、管理员密码重置（P0，见 `docs/ISSUES.md`）。
-2. 契约冻结：读完 `docs/API.md`，确认现状。
-3. `/api/v1` 版本化 + 统一响应包 / 游标分页 / 时区（App 开发前必须完成）。
-4. 给后端一个**本地数据库**（便携版 MySQL 8 或 Docker Desktop），并把默认 datasource 从生产库改掉。
-5. 清理 notices 遗留域与前端假数据。
+## 9. 当前优先级（2026-10，本地开发模式）
+> 完整分级见 `docs/ISSUES.md`：**B 阻塞 / D 开发体验 / R 上线阻断 / Q 质量**。
+
+1. **跑通本地链路**：Docker → MySQL → 后端 → 前端，看到真实数据（不再吃 fallback 假数据）。
+2. 去假数据 + 前端组件化（Web/App 共用的地基）。
+3. 后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包。
+4. 上线前集中清零 **R 项**（验证码放行、后门账号、管理员密码重置）。
+5. 清理 notices 遗留域。
 
 ## 10. 文档索引
 - `docs/ARCHITECTURE.md` — 系统架构、请求链路、数据模型
