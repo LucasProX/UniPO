@@ -5,11 +5,8 @@ import HomeView from '../views/HomeView.vue';
  * Web / App 双端共用的路由表。
  * App 端（WebView）用同样的 path，只需把 createWebHistory 换成 createWebHashHistory 或 memory history。
  *
- * 迁移状态（2026-10-20）：
- * - ✅ home：已迁到 views/HomeView.vue，数据来自 stores/feed.ts
- * - ⏳ compose / schedule / messages / profile：仍是 App.vue 内的 v-else-if 旧模板，
- *    由 activeView computed（读 route.name）驱动；views/ 下是对应占位文件，
- *    等旧模板整体搬完后再切到 router-view，避免两份渲染并存。
+ * 全部视图已迁到 views/，App.vue 只做外壳（AppShell + 全局弹窗）。
+ * 新增页面：在 views/ 建文件 -> 在这里加一条路由 -> 在 DockNav 加入口。
  */
 const routes = [
   { path: '/', name: 'home', component: HomeView, meta: { title: '首页' } },
@@ -46,7 +43,7 @@ const routes = [
   {
     path: '/u/:uid',
     name: 'user-profile',
-    component: () => import('../views/ProfileView.vue'),
+    component: () => import('../views/UserProfileView.vue'),
     meta: { title: '主页' }
   }
 ];
