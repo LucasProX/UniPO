@@ -48,8 +48,11 @@ Docker Desktop 29.8.2 + WSL 2.7.13 起得来、MySQL 8.4（`127.0.0.1:12306`）�
 >
 > **验证码字段现在是必填的**（两种模式下都必填）：开发模式只是让任意 4 位数字通过，不再允许留空。
 >
-> **仍待做**：拿一个真实邮箱（QQ / 163 / Gmail + 应用专用密码）跑一遍完整注册，确认邮件能收到、
-> 码能通过、10 分钟过期生效。代码路径已通，但没对真实 SMTP 服务器实测过。
+> **真实邮箱实测已通过（2026-10-20）**：用 QQ 邮箱（smtp.qq.com:465 SSL + 16 位授权码）
+> 发码 → 收信 → 用邮件里的 4 位码注册成功（POST /api/auth/register 返回 200 并拿到 token）。
+> 邮件已从纯文本升级为 HTML 卡片（multipart/alternative，纯文本兜底），品牌名统一为 **UniPO**。
+> **仍未验的**：10 分钟过期边界（没有等到过期再试）和找回密码流程的完整走通；
+> 过期逻辑有单测覆盖，但没在真实 SMTP 上等过一次超时。
 
 ### R-2 内置后门账号
 证据：`AuthService.java:22-31` 常量 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua`；`AuthService.java:176-178` 启动即创建（`CommandLineRunner`）；`AuthService.java:226-243`、`263-274` 存在即重置密码；`login()` 对这三个用户名做邮箱特判。
