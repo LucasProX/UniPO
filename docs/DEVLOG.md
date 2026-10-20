@@ -4195,6 +4195,39 @@ referencePostId 给算法位指回帖子，weight 让运营置顶。以后算法
 验证：GET /api/spotlights 返回 3 条种子数据；后台创建 weight=200 的测试位后排到第一，删除后恢复；
 mvn test 43 绿；前端 lint/build 通过。
 
+## 2026-10-20 管理后台 MVP：同 SPA 的 /admin、审计先行、报表直接写聚合 SQL
+
+用户要一个能真实用的后台。定了几件事：
+
+**入口放同一个 SPA 的 /admin 子树**，懒加载 + 路由守卫。理由：共用 Cookie 会话、设计系统、
+类型和请求层；Vite 自动按路由分包，普通用户不会下载后台代码。等后台团队独立再拆。
+
+**审计先做**。后台是「少数人做高影响操作」的地方，没有审计，出问题连谁改的都查不到。
+V13 建 admin_audit_logs，所有写操作（封禁、改角色、帖子审核、轮播 CRUD）都记 actor/action/target/detail/requestId。
+审计写失败不阻断业务——数据库抖动不该让运营没法处理紧急内容；真实高合规场景再换成同步写 + 告警。
+
+**模块边界**：Controller 不直接碰别人的 internal。
+- 帖子审核：新增 post.api.PostAdminApi（写）与已有的 PostQueryApi（读）分开；
+- 轮播：新增 spotlight.api.SpotlightAdminApi，后台 Controller 放 admin 模块；
+- 审计：admin.api.AdminAuditApi，web 的 AdminController 只依赖接口。
+这样 admin.internal 可以依赖各模块 api，而各模块不会反过来依赖 admin。
+
+**报表没有引入数仓/BI**：AdminReportMapper 直接写两条 GROUP BY 的聚合 SQL（users/posts），
+Service 补齐缺失日期为 0。报表口径以后会变，先把接口形状固定住；真要复杂分析再上独立数仓。
+
+**监控不复用 Prometheus 文本**：后台要的是「现在是否正常」，不是时序数据库。
+AdminMonitorService 把 HealthEndpoint + MeterRegistry 拼成一个稳定 JSON（状态/运行时长/堆/连接数/事件计数），
+前端 10s 刷新；趋势和告警留给 Grafana。
+
+**踩到的一个小问题**：PostView 的 author 字段是 uid 不是 publicUid，后台表格一开始按 publicUid 取，
+vue-tsc 直接报错——类型契约在这里救了一次。
+
+MVP 页面：概览（含近 7 天柱状 + 最近审计）、内容审核、轮播运营、用户与权限、报表、监控、设置占位。
+设置页里明确写了哪些能力还没做，避免入口散落。
+
+验证：后台 API 全部 200；PATCH 帖子置顶后 audit-logs 出现记录；报表返回 7 天补零序列；
+监控返回 UP + 堆内存 + 连接数；mvn test 43 绿；前端 lint/build 通过。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

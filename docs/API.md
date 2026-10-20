@@ -246,6 +246,30 @@
 > 要么让算法任务写 `source='ALGORITHM'` 的行，要么在 `SpotlightService.active()` 里合并算法结果；
 > 两条路都保留 `weight` 作为运营置顶的优先级。
 
+### 9.3 管理后台 API（MVP）
+
+统一前缀 `/api/admin`，需要 `OPERATOR / SCHOOL_OPERATOR / COLLEGE_OPERATOR / MAJOR_OPERATOR / ADMIN` 之一。
+**所有写操作都会写 `admin_audit_logs`**（actor / action / target / detail / requestId）。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/admin/analytics/overview` | 用户/帖子/已发布/评论总量 |
+| GET | `/api/admin/users` | 用户列表 |
+| PUT | `/api/admin/users/{id}/status` | 封禁/解封（`active` / `disabled`） |
+| PUT | `/api/admin/users/{id}/role` | 改角色与运营范围 |
+| GET | `/api/admin/posts?keyword=&status=&limit=` | 帖子搜索（含已下架） |
+| PATCH | `/api/admin/posts/{id}` | 置顶/官方/免错过/上下架（部分更新） |
+| GET/POST/PUT/DELETE | `/api/admin/spotlights[/{id}]` | 轮播位 CRUD（见 9.2） |
+| GET | `/api/admin/reports/daily?days=14` | 近 N 天新增用户/发布帖子（缺失日期补 0） |
+| GET | `/api/admin/monitor/summary` | 健康状态、运行时长、堆内存、实时连接、事件/限流计数 |
+| GET | `/api/admin/audit-logs?limit=50` | 最近审计记录 |
+
+`PATCH /api/admin/posts/{id}` 请求体：`{"pinned":true,"official":false,"dontMiss":true,"status":"removed"}`，
+只更新传入的字段；`status` 只允许 `published / removed / draft`。
+
+前端页面在同一个 SPA 的 `/admin` 下（`layouts/AdminShell.vue` + `views/admin/*`），
+路由守卫 + 后端 `hasAnyRole` 双层校验。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

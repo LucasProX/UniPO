@@ -11,6 +11,8 @@
       router/index.ts     路由表（除首页外全部懒加载）
       layouts/            布局壳（header / 左右栏 / dock）
       views/              路由视图，一个页面一个文件
+      views/admin/        管理后台页面（挂在 /admin 子树）
+      layouts/AdminShell.vue  后台侧边栏 + 顶栏
       components/         可复用组件：layout / modals / post / ui
       stores/             Pinia：feed / auth / messages / schedule / compose / profile
       lib/http.ts         axios、Cookie、CSRF、错误包（基础设施）

@@ -404,6 +404,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/posts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["moderate"];
+        trace?: never;
+    };
     "/api/v1/posts/page": {
         parameters: {
             query?: never;
@@ -828,6 +844,70 @@ export interface paths {
             cookie?: never;
         };
         get: operations["users"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/reports/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["daily"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/monitor/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["recent"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1283,6 +1363,12 @@ export interface components {
             email: string;
             password: string;
         };
+        ModerateRequest: {
+            pinned?: boolean;
+            official?: boolean;
+            dontMiss?: boolean;
+            status?: string;
+        };
         ApiResponsePostPageView: {
             code?: string;
             message?: string;
@@ -1518,6 +1604,71 @@ export interface components {
             message?: string;
             data?: components["schemas"]["User"][];
             requestId?: string;
+        };
+        ApiResponseReportView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReportView"];
+            requestId?: string;
+        };
+        DailyPoint: {
+            day?: string;
+            /** Format: int64 */
+            newUsers?: number;
+            /** Format: int64 */
+            publishedPosts?: number;
+        };
+        ReportView: {
+            /** Format: int32 */
+            days?: number;
+            points?: components["schemas"]["DailyPoint"][];
+            /** Format: int64 */
+            newUsersTotal?: number;
+            /** Format: int64 */
+            postsTotal?: number;
+        };
+        ApiResponseMonitorView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["MonitorView"];
+            requestId?: string;
+        };
+        MonitorView: {
+            status?: string;
+            /** Format: int64 */
+            uptimeSeconds?: number;
+            /** Format: int64 */
+            heapUsedMb?: number;
+            /** Format: int64 */
+            heapMaxMb?: number;
+            /** Format: double */
+            realtimeConnections?: number;
+            /** Format: double */
+            eventsPublished?: number;
+            /** Format: double */
+            eventsDelivered?: number;
+            /** Format: double */
+            rateLimitBlocked?: number;
+            sampledAt?: string;
+        };
+        ApiResponseListAuditView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["AuditView"][];
+            requestId?: string;
+        };
+        AuditView: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int64 */
+            actorId?: number;
+            actorEmail?: string;
+            action?: string;
+            targetType?: string;
+            targetId?: string;
+            detail?: string;
+            requestId?: string;
+            createdAt?: string;
         };
         AnalyticsOverview: {
             /** Format: int64 */
@@ -2397,6 +2548,32 @@ export interface operations {
             };
         };
     };
+    moderate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModerateRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePostView"];
+                };
+            };
+        };
+    };
     page: {
         parameters: {
             query?: {
@@ -2959,6 +3136,94 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseListUser"];
+                };
+            };
+        };
+    };
+    daily: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReportView"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query?: {
+                keyword?: string;
+                status?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListPostView"];
+                };
+            };
+        };
+    };
+    summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseMonitorView"];
+                };
+            };
+        };
+    };
+    recent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListAuditView"];
                 };
             };
         };

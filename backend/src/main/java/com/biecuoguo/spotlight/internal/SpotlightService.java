@@ -2,6 +2,7 @@ package com.biecuoguo.spotlight.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.config.AppTime;
+import com.biecuoguo.spotlight.api.SpotlightAdminApi;
 import com.biecuoguo.spotlight.api.SpotlightDtos;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +25,7 @@ import java.util.NoSuchElementException;
  * 现在先把数据结构留好，别在 API 层分叉。
  */
 @Service
-public class SpotlightService {
+public class SpotlightService implements SpotlightAdminApi {
 
     private static final int MAX_ACTIVE = 5;
 
@@ -47,6 +48,7 @@ public class SpotlightService {
                 .stream().map(SpotlightService::toView).toList();
     }
 
+    @Override
     public List<SpotlightDtos.SpotlightView> listAll() {
         return spotlightMapper.selectList(new LambdaQueryWrapper<Spotlight>()
                         .orderByDesc(Spotlight::getWeight)
@@ -54,6 +56,7 @@ public class SpotlightService {
                 .stream().map(SpotlightService::toView).toList();
     }
 
+    @Override
     @Transactional
     public SpotlightDtos.SpotlightView create(SpotlightDtos.UpsertRequest request, Long operatorId) {
         Spotlight entity = new Spotlight();
@@ -65,6 +68,7 @@ public class SpotlightService {
         return toView(entity);
     }
 
+    @Override
     @Transactional
     public SpotlightDtos.SpotlightView update(Long id, SpotlightDtos.UpsertRequest request) {
         Spotlight entity = spotlightMapper.selectById(id);
@@ -77,6 +81,7 @@ public class SpotlightService {
         return toView(entity);
     }
 
+    @Override
     @Transactional
     public void delete(Long id) {
         spotlightMapper.deleteById(id);

@@ -8,6 +8,7 @@ import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
+import com.biecuoguo.post.api.PostAdminApi;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.mapper.*;
@@ -24,7 +25,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-public class PostService implements PostQueryApi {
+public class PostService implements PostQueryApi, PostAdminApi {
     private static final Set<String> BOARDS = Set.of("recommend", "school", "college", "major");
 
     private final AppProperties appProperties;
@@ -438,6 +439,41 @@ public class PostService implements PostQueryApi {
         postMapper.updateById(post);
         upsertDailyStat(postId, 0, 0, 1);
         return new PostDtos.ShareResponse("/posts/" + postId, post.getShareCount());
+    }
+
+    @Override
+    public List<PostDtos.PostView> search(String keyword, String status, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<Post>()
+                .eq(status != null && !status.isBlank(), Post::getStatus, status)
+                .orderByDesc(Post::getId)
+                .last("LIMIT " + safeLimit);
+        if (keyword != null && !keyword.isBlank()) {
+            String like = "%" + keyword.trim() + "%";
+            wrapper.and(w -> w.like(Post::getTitle, like).or().like(Post::getContent, like));
+        }
+        return toViews(postMapper.selectList(wrapper), null);
+    }
+
+    @Override
+    @Transactional
+    public PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status) {
+        Post post = postMapper.selectById(postId);
+        if (post == null) {
+            throw new NoSuchElementException("帖子不存在");
+        }
+        if (status != null) {
+            if (!Set.of("published", "removed", "draft").contains(status)) {
+                throw new IllegalArgumentException("status 只能是 published / removed / draft");
+            }
+            post.setStatus(status);
+        }
+        if (pinned != null) post.setPinned(pinned);
+        if (official != null) post.setOfficial(official);
+        if (dontMiss != null) post.setDontMiss(dontMiss);
+        post.setUpdatedAt(LocalDateTime.now());
+        postMapper.updateById(post);
+        return toViews(List.of(post), null).get(0);
     }
 
     @Override
