@@ -4,7 +4,7 @@ import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
-import com.biecuoguo.dto.PostDtos;
+import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.security.access.AccessDeniedException;

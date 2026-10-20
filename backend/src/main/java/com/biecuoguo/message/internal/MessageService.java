@@ -6,7 +6,7 @@ import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.message.api.MessageDtos;
-import com.biecuoguo.dto.PostDtos;
+import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;

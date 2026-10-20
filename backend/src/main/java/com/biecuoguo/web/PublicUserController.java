@@ -1,6 +1,6 @@
 package com.biecuoguo.web;
 
-import com.biecuoguo.dto.PostDtos;
+import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.service.PostService;

@@ -4018,6 +4018,37 @@ PresenceService 反而要加 import（现在跨包了）。批量 sed 很容易�
 结果：mvn test 41 绿，smoke 的 conversation/send-message/unread 全 200，
 WebSocket 实测仍能收到 event:message（这条最容易被忽略：推送链路的代码被搬过，必须重测）。
 
+## 2026-10-20 post 只搬了一半：951 行的 Service 背后是五个模块的耦合
+
+按顺序该搬 post 了。列完依赖就知道这次不能整包搬：
+
+    UserService   -> PostMapper / PostLike / PostFavorite / PostShare / CommentMapper
+    AdminService  -> PostMapper / CommentMapper
+    PublicUserController / UserController -> PostService
+
+也就是说「帖子」不只是一个模块，它是个人主页、后台统计、用户资料页的共同数据源。
+把 PostService 和 10 个 Mapper 一起塞进 post.internal，要么让 UserService 依赖 post.internal（违规），
+要么先设计一层 post.api 的查询 facade。
+
+选了先搬「不牵连别人」的部分：
+
+- PostDtos -> post.api（顺带把 message.api 对它的依赖修正成合法方向）
+- PostController / PostV1Controller -> post.internal
+
+PostService 和实体/Mapper 原地不动。这样边界规则（post.internal 不可被外部访问）能先立起来，
+而不会制造一个「为了搬而搬」的大爆炸。
+
+**下一刀需要先做的设计**：post.api 至少要提供
+
+- 个人主页需要的统计（发帖/获赞/收藏/评论数）
+- 用户帖子/点赞/收藏列表（游标分页）
+- 后台需要的总量计数
+
+这些东西现在散在 UserService / AdminService 里直接写 SQL，搬之前要先想清楚 api 的粒度，
+否则很容易做成一个「什么都查」的上帝接口。
+
+验证：mvn test 42 绿；smoke 发帖/评论/点赞/收藏/v1 分页全 200；CI 全绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

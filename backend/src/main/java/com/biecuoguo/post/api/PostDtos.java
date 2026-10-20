@@ -1,4 +1,4 @@
-package com.biecuoguo.dto;
+package com.biecuoguo.post.api;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

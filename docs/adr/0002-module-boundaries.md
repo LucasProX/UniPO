@@ -143,6 +143,31 @@ com.biecuoguo.mapper + media.internal + message.internal。
 
 验证：mvn test 41 绿；smoke 的会话/发信/未读全部 200；WebSocket 实测仍能收到 event:message；CI 全绿。
 
+### post（2026-10-20，部分迁移）
+
+结构：
+
+    com.biecuoguo.post
+      api/PostDtos.java
+      internal/PostController.java
+      internal/PostV1Controller.java
+
+**只搬了 Controller 与 DTO**，PostService（951 行）和 10 个帖子相关 Mapper/实体仍在共享包。
+原因：
+
+- UserService 直接注入 PostMapper / PostLikeMapper / PostFavoriteMapper / PostShareMapper / CommentMapper
+  来算个人主页统计与列表；
+- AdminService 直接用 PostMapper / CommentMapper 做后台计数；
+- PublicUserController / UserController 直接调 PostService。
+
+要整体搬走，得先设计 post.api 的查询 facade（统计、作者视图、批量帖子），
+再改 UserService / AdminService / 两个用户相关 Controller。这是下一刀，不是这一刀。
+
+好处是：PostDtos 先归位，message.api 对它的依赖变成「跨模块依赖 api」（合法方向），
+Controller 也先归位，边界规则可以先立起来。@MapperScan 这次不用动（没有 Mapper 搬）。
+
+验证：mvn test 42 绿；smoke 的 create-post/comment/like/favorite/v1 分页全 200；CI 全绿。
+
 ## 8. 代价
 
 - 迁移期间会出现「两套写法并存」（旧层分包 + 新模块分包），持续几周。

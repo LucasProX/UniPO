@@ -2,7 +2,7 @@ package com.biecuoguo.web;
 
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
-import com.biecuoguo.dto.PostDtos;
+import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.security.SecurityUtils;
 import com.biecuoguo.service.PostService;
 import com.biecuoguo.service.UserService;
