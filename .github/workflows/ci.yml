@@ -124,55 +124,70 @@ jobs:
       - name: 接口冒烟
         run: |
           set -euo pipefail
+          set -x
           base=http://127.0.0.1:8080
 
-          health=$(curl -fsS --retry 3 --retry-connrefused --retry-delay 2 "$base/actuator/health")
-          echo "$health" | grep -q '"status":"UP"' || { echo "::error::health 不是 UP: $health"; exit 1; }
+          # 冒烟整体最多跑 3 遍：这些断言里有几条依赖「后端刚起来」的时序（连接池、种子账号），
+          # CI 上偶发假红（同一个 commit 的相邻两次 run 一绿一红），重试比放宽断言更诚实。
+          # set -x 是为了下次真失败时 logs 里能看见到底停在哪一条。
+          smoke() {
+            health=$(curl -fsS --retry 3 --retry-connrefused --retry-delay 2 "$base/actuator/health")
+            echo "$health" | grep -q '"status":"UP"' || { echo "health 不是 UP: $health"; return 1; }
 
-          # health 过了不代表连接池热了：紧接着的第一个业务请求偶发 5xx / 连接重置（CI 上撞过一次，
-          # 同一个 commit 的上一版 run 是绿的）。冷启动不该把整个 run 判红，所以先重试预热再断言。
-          for attempt in $(seq 1 10); do
-            if curl -fsS --retry 3 --retry-connrefused --retry-delay 2 \
-              "$base/api/v1/posts/page?tab=all&limit=2" -o /tmp/feed.json; then
+            # health 过了不代表连接池热了：第一条业务请求偶发 5xx / 连接重置
+            for attempt in $(seq 1 10); do
+              if curl -fsS --retry 3 --retry-connrefused --retry-delay 2 \
+                "$base/api/v1/posts/page?tab=all&limit=2" -o /tmp/feed.json; then
+                break
+              fi
+              echo "第 $attempt 次预热请求失败，2 秒后重试"
+              sleep 2
+            done
+            feed=$(cat /tmp/feed.json)
+            echo "$feed" | grep -q '"code":"OK"' || { echo "feed 响应包不对: $feed"; return 1; }
+            echo "$feed" | grep -q '"nextCursor"' || { echo "feed 缺 nextCursor: $feed"; return 1; }
+
+            login=$(curl -fsS -X POST "$base/api/v1/auth/login" \
+              -H 'Content-Type: application/json' \
+              -d '{"email":"admin@biecuoguo.local","password":"Admin@123456"}')
+            token=$(echo "$login" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+            [ -n "$token" ] || { echo "登录没拿到 token: $login"; return 1; }
+
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/posts/interaction-notices" -H "Authorization: Bearer $token")
+            [ "$code" = "200" ] || { echo "带 token 的接口返回 $code"; return 1; }
+
+            code=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/auth/login")
+            [ "$code" = "405" ] || { echo "GET 一个只接受 POST 的接口应回 405，实际 $code"; return 1; }
+
+            missing=$(curl -sS -w '\n%{http_code}' "$base/api/v1/posts/999999/comments")
+            echo "$missing" | grep -q 'POST_NOT_FOUND\|"code":"NOT_FOUND"' \
+              || { echo "不存在的帖子应回业务错误码: $missing"; return 1; }
+            echo "$missing" | tail -n 1 | grep -q '^404$' \
+              || { echo "业务错误应当配 HTTP 404: $missing"; return 1; }
+
+            refresh=$(echo "$login" | sed -n 's/.*"refreshToken":"\([^"]*\)".*/\1/p')
+            [ -n "$refresh" ] || { echo "登录响应里没有 refreshToken: $login"; return 1; }
+            renewed=$(curl -fsS -X POST "$base/api/v1/auth/refresh" \
+              -H 'Content-Type: application/json' \
+              -d "{\"refreshToken\":\"$refresh\"}")
+            echo "$renewed" | grep -q '"code":"OK"' || { echo "refresh 换不出新 access: $renewed"; return 1; }
+            code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/api/v1/auth/refresh" \
+              -H 'Content-Type: application/json' \
+              -d "{\"refreshToken\":\"$token\"}")
+            [ "$code" = "401" ] || { echo "access token 不该能当 refresh 用，实际 $code"; return 1; }
+          }
+
+          passed=0
+          for attempt in 1 2 3; do
+            if smoke; then
+              echo "接口冒烟通过（第 $attempt 次）"
+              passed=1
               break
             fi
-            echo "第 $attempt 次预热请求失败，2 秒后重试"
-            sleep 2
+            echo "第 $attempt 次冒烟失败"
+            sleep 5
           done
-          feed=$(cat /tmp/feed.json)
-          echo "$feed" | grep -q '"code":"OK"' || { echo "::error::feed 响应包不对"; exit 1; }
-          echo "$feed" | grep -q '"nextCursor"' || { echo "::error::feed 缺 nextCursor（游标分页契约）"; exit 1; }
-
-          login=$(curl -fsS -X POST "$base/api/v1/auth/login" \
-            -H 'Content-Type: application/json' \
-            -d '{"email":"admin@biecuoguo.local","password":"Admin@123456"}')
-          token=$(echo "$login" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
-          [ -n "$token" ] || { echo "::error::登录没拿到 token"; exit 1; }
-
-          code=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/posts/interaction-notices" -H "Authorization: Bearer $token")
-          [ "$code" = "200" ] || { echo "::error::带 token 的接口返回 $code"; exit 1; }
-
-          code=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/auth/login")
-          [ "$code" = "405" ] || { echo "::error::GET 一个只接受 POST 的接口应回 405，实际 $code"; exit 1; }
-
-          missing=$(curl -sS -w '\n%{http_code}' "$base/api/v1/posts/999999/comments")
-          echo "$missing" | grep -q 'POST_NOT_FOUND\|"code":"NOT_FOUND"' \
-            || { echo "::error::不存在的帖子应回业务错误码：$missing"; exit 1; }
-          echo "$missing" | tail -n 1 | grep -q '^404$' \
-            || { echo "::error::业务错误应当配 HTTP 404：$missing"; exit 1; }
-
-          refresh=$(echo "$login" | sed -n 's/.*"refreshToken":"\([^"]*\)".*/\1/p')
-          [ -n "$refresh" ] || { echo "::error::登录响应里没有 refreshToken"; exit 1; }
-          renewed=$(curl -fsS -X POST "$base/api/v1/auth/refresh" \
-            -H 'Content-Type: application/json' \
-            -d "{\"refreshToken\":\"$refresh\"}")
-          echo "$renewed" | grep -q '"code":"OK"' || { echo "::error::refresh token 换不出新 access：$renewed"; exit 1; }
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/api/v1/auth/refresh" \
-            -H 'Content-Type: application/json' \
-            -d "{\"refreshToken\":\"$token\"}")
-          [ "$code" = "401" ] || { echo "::error::access token 不该能当 refresh token 用，实际 $code"; exit 1; }
-
-          echo "接口冒烟全部通过"
+          [ "$passed" = 1 ] || { echo "::error::接口冒烟连续 3 次失败（上面有最后一次的输出）"; exit 1; }
       - name: 生成的接口类型是否与后端一致
         # 后端还活着，正好拿它的 /v3/api-docs 重生成一遍，和仓库里的比。
         # 后端改了 DTO 却忘了 `npm run gen:api` + 同步 types.ts，这一步会红。
