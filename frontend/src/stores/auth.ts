@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { apiErrorMessage, authApi, authRefreshToken, campusApi, clearAuthToken, hasAuthToken, isAuthError, saveAuthToken } from '../lib/api';
+import { apiErrorMessage, authApi, campusApi, isAuthError, UNAUTHORIZED_EVENT } from '../lib/api';
 import { describeError } from '../lib/postHelpers';
 import type { AuthSessionView, UserProfile, UserStats } from '../types';
 import { useFeedStore } from './feed';
@@ -51,6 +51,19 @@ export const useAuthStore = defineStore('auth', () => {
   const currentUser = ref<UserProfile>(guestUser());
   const userStats = ref<UserStats>(emptyStats());
   const isAuthenticated = ref(false);
+
+  // 会话在 Cookie 里，前端无法判断是否过期；任何非登录请求的 401 都统一降级为访客。
+  if (typeof window !== 'undefined') {
+    window.addEventListener(UNAUTHORIZED_EVENT, () => {
+      if (!isAuthenticated.value) return;
+      isAuthenticated.value = false;
+      currentUser.value = guestUser();
+      userStats.value = emptyStats();
+      stopPresenceHeartbeat();
+      useProfileStore().reset();
+      useMessagesStore().resetAll();
+    });
+  }
 
   // ---- UI 反馈（toast / 登录弹窗）----
   const notice = ref('');
@@ -264,11 +277,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 登录/注册成功后的公共收尾；onSuccess 由调用方注入（默认刷新全站数据） */
   async function finishAuth(
-    session: { token: string; refreshToken?: string | null },
     user: UserProfile,
     onSuccess?: () => Promise<void> | void
   ) {
-    saveAuthToken(session.token, session.refreshToken);
+    // 登录态已经在 Set-Cookie 里，前端只需要记住当前用户。
     isAuthenticated.value = true;
     currentUser.value = user;
     startPresenceHeartbeat();
@@ -295,7 +307,7 @@ export const useAuthStore = defineStore('auth', () => {
       authSubmitting.value = false;
       return showNotice(`登录失败：${error instanceof Error ? error.message : '登录失败'}`, 'error');
     }
-    await finishAuth(result, result.user, onSuccess || defaultOnSuccess);
+    await finishAuth(result.user, onSuccess || defaultOnSuccess);
   }
 
   async function register(onSuccess?: () => Promise<void> | void) {
@@ -313,7 +325,7 @@ export const useAuthStore = defineStore('auth', () => {
     authSubmitting.value = true;
     try {
       const result = await authApi.register(payload);
-      await finishAuth(result, result.user, onSuccess || defaultOnSuccess);
+      await finishAuth(result.user, onSuccess || defaultOnSuccess);
     } catch (error) {
       authSubmitting.value = false;
       showNotice(`注册失败：${apiErrorMessage(error, '注册失败')}`, 'error');
@@ -344,9 +356,8 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /** 校验本地 token；失效时清理登录态。返回是否有效 */
+  /** 用 /auth/me 探一次 Cookie 会话；失效时把本地降级为访客。 */
   async function sessionStillValid() {
-    if (!hasAuthToken()) return false;
     try {
       const me = await campusApi.me();
       currentUser.value = me;
@@ -354,7 +365,6 @@ export const useAuthStore = defineStore('auth', () => {
       return true;
     } catch (error) {
       if (isAuthError(error)) {
-        clearAuthToken();
         isAuthenticated.value = false;
         stopPresenceHeartbeat();
       }
@@ -391,7 +401,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   function startPresenceHeartbeat() {
     stopPresenceHeartbeat();
-    if (!hasAuthToken()) return;
+    if (!isAuthenticated.value) return;
     sendPresenceHeartbeat();
     presenceHeartbeatTimer = window.setInterval(() => sendPresenceHeartbeat(), 10000);
   }
@@ -402,7 +412,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function sendPresenceHeartbeat() {
-    if (!hasAuthToken()) return;
+    if (!isAuthenticated.value) return;
     try {
       await authApi.heartbeat();
     } catch {
@@ -412,14 +422,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 退出登录：清 token、停心跳、重置所有域数据 */
   async function logout() {
-    // 先通知服务端（拉黑 access + refresh），再清本地——顺序反了请求就不带 Authorization 头了。
-    const refreshToken = authRefreshToken();
+    // 先让服务端吊销 Cookie 会话并清 Cookie，再清本地状态。
     try {
-      await authApi.logout(refreshToken);
+      await authApi.logout();
     } catch {
-      // 网络失败也照样退出本地登录态；服务端那份 token 到过期时间自然失效。
+      // 网络失败也照样退出本地登录态；服务端会话到空闲超时自然失效。
     }
-    clearAuthToken();
     isAuthenticated.value = false;
     currentUser.value = guestUser();
     userStats.value = emptyStats();
@@ -430,7 +438,7 @@ export const useAuthStore = defineStore('auth', () => {
     showNotice('已退出登录');
   }
 
-  const hasSession = computed(() => hasAuthToken());
+  const hasSession = computed(() => isAuthenticated.value);
 
   return {
     currentUser,

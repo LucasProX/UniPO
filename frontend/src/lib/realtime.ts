@@ -1,4 +1,4 @@
-import { API_PREFIX, authToken } from './api';
+import { API_PREFIX } from './api';
 
 export type RealtimeState = 'connecting' | 'open' | 'closed';
 
@@ -96,11 +96,10 @@ export function openRealtimeStream(options: RealtimeStreamOptions = {}): () => v
       case 'pong':
         lastPongAt = Date.now();
         break;
-      case 'auth-required': {
-        const token = authToken();
-        if (token) send({ type: 'auth', token });
+      case 'auth-required':
+        // 浏览器走 httpOnly Cookie，握手阶段就认出来了；走到这里说明没登录，
+        // 不重试、等 auth store 触发重连即可。
         break;
-      }
       case 'error':
         if (frame.code === 'AUTH_UNAUTHENTICATED') {
           socket?.close();
@@ -122,8 +121,8 @@ export function openRealtimeStream(options: RealtimeStreamOptions = {}): () => v
     }
 
     socket.onopen = () => {
-      const token = authToken();
-      if (token) send({ type: 'auth', token });
+      // 不在这里发 auth：浏览器握手会自动带 httpOnly 会话 Cookie。
+      // App 端将来接 WS 时，才需要首帧 auth 帧带 Bearer。
       if (lastSeq > 0) send({ type: 'resume', lastEventId: lastSeq });
       lastPongAt = Date.now();
       heartbeatTimer = window.setInterval(() => {

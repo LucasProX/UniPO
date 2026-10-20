@@ -71,8 +71,9 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 
 ## 5. 认证方案
 
-现状（2026-10-20 已升级）：access token 120 分钟 + refresh token 14 天，都是 JWT（`typ` 区分），Web 存 `localStorage`，
-登出把两者一起写进内存黑名单。**还没做**：refresh 轮换、`httpOnly` cookie、`refresh_tokens` 落库、`/auth/logout-all`、多设备管理。
+现状（2026-10-20 已升级）：**Web 已切 httpOnly Cookie 会话**（`unipo_sid` + `unipo_csrf`，会话存 Redis，7 天滑动过期），
+写请求带 `X-CSRF-Token`；App 用 access 120 分钟 + refresh 14 天（JWT，`typ` 区分，存 Keychain）。
+登出会吊销会话并拉黑 token。**还没做**：refresh 轮换、`refresh_tokens` 落库、`/auth/logout-all`、多设备管理。
 
 目标：
 | 项 | Web | App |

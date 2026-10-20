@@ -32,14 +32,13 @@ onUnmounted(() => {
   messages.stopConversationListPolling();
 });
 
-/** 有 token 时校验一次会话，并拉登录后才能看的数据 */
+/** 每次启动都用 /auth/me 探一次 Cookie 会话，并拉登录后才能看的数据 */
 async function bootstrapSession() {
-  if (!auth.hasSession) {
+  const valid = await auth.sessionStillValid();
+  if (!valid) {
     auth.resetCheckInState();
     return;
   }
-  const valid = await auth.sessionStillValid();
-  if (!valid) return;
   auth.startPresenceHeartbeat();
   await Promise.all([
     profile.loadMine().catch(() => undefined),

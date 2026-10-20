@@ -207,8 +207,12 @@
 
 | | 有效期 | 用途 | 存哪 |
 |---|---|---|---|
-| access（`typ=access`） | `JWT_EXPIRATION_MINUTES`，默认 120 分钟 | 放进 `Authorization: Bearer` 调接口 | Web：`localStorage['bcg_token']` |
-| refresh（`typ=refresh`） | `JWT_REFRESH_EXPIRATION_MINUTES`，默认 20160 分钟（14 天） | 只能调 `POST /api/auth/refresh` | Web：`localStorage['bcg_refresh_token']` |
+| access（`typ=access`） | `JWT_EXPIRATION_MINUTES`，默认 120 分钟 | 放进 `Authorization: Bearer` 调接口 | Web：**不用**（走 httpOnly Cookie 会话）／App：Keychain |
+| refresh（`typ=refresh`） | `JWT_REFRESH_EXPIRATION_MINUTES`，默认 20160 分钟（14 天） | 只能调 `POST /api/auth/refresh` | Web：**不用**／App：Keychain |
+
+> Web 端登录后服务端下发 `unipo_sid`（HttpOnly）+ `unipo_csrf`（可读）两个 Cookie，
+> 会话存 Redis，7 天滑动过期；写请求由前端自动带 `X-CSRF-Token`。
+> 响应体里的 token 只给 App 用，Web 忽略。
 
 - **两种 token 不能混用**：拿 refresh 当 access 调业务接口是 401，拿 access 去 `/auth/refresh` 也是 401。
 - `expiresInSeconds` 是 access 的剩余秒数，客户端可据此提前刷新，不必等 401。

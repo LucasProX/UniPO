@@ -4077,6 +4077,41 @@ Docker Hub 即可。同样的坑以后拉 grafana/loki 也会遇到。
 
 还没做：Grafana 面板、告警规则、慢查询日志、链路追踪。先把指标暴露出来，等有真实流量再定阈值。
 
+## 2026-10-20 前端切 Cookie：删掉的代码比加的多
+
+后端 Cookie 会话落了一整天，前端今天跟上。原则很简单：**前端不再知道 token 存在**。
+
+删掉的东西：
+
+- localStorage 的 bcg_token / bcg_refresh_token
+- 401 时单飞刷新 + 重放原请求（服务端会话自己滑动续期）
+- 启动时「本地有没有 token」的判断（改成调 /auth/me 探一次）
+- WebSocket 的 auth 帧（浏览器握手自带 Cookie）
+
+加的东西：
+
+1. 三个 axios 实例都 `withCredentials: true`。开发环境 5173 -> 8080 是跨端口，
+   即使同主机也需要它才会带 Cookie；本地 fallback 到 127.0.0.1:8080 时更是跨源。
+2. 请求拦截器：非安全方法自动读 `unipo_csrf` Cookie，塞进 `X-CSRF-Token`。
+   这里有个容易忽略的点——**读 Cookie 的代码必须在浏览器里跑**，
+   所以不能把这些函数挪到 SSR/Node 侧复用。
+3. 401 统一广播 `unipo:unauthorized`，由 auth store 降级为访客。
+   特意排除 /auth/login 与 /auth/register：它们的 401 是「密码错」，不是会话失效，
+   如果也触发降级，用户会在登录框里被莫名清空状态。
+
+验证（都走 Vite 代理，模拟真实浏览器路径）：
+
+    POST /api/v1/auth/login   -> Set-Cookie: unipo_sid(HttpOnly) + unipo_csrf
+    GET  /api/v1/auth/me      -> 200
+    POST /api/v1/posts 无 CSRF -> 403
+    POST /api/v1/posts 带 CSRF -> 200
+
+WebSocket 也验了代理升级：连 ws://127.0.0.1:5173/api/v1/realtime/ws 能收到 auth-required，
+说明 vite 的 `ws: true` 生效（开发环境不加这个，升级请求会 404）。
+
+一个仍然存在的取舍：`lib/api.ts` 的 localApi 兜底（DEV 直连 8080）保留着，
+它现在也必须 withCredentials，否则兜底路径会「登录成功但没登录」——这类问题很容易在本地测不出来。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

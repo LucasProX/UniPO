@@ -142,7 +142,8 @@ docker compose up -d --build
   安全方法不校验。Bearer 请求不经过 CSRF（Authorization 不会被浏览器自动带上）。
   Cookie 的 `Secure` 由 `AUTH_COOKIE_SECURE` 控制：HTTPS 必须 true，纯 HTTP 的 IP 部署必须 false，
   否则浏览器不保存 Cookie，表现为「登录成功但没登录」。
-  **前端目前仍走 localStorage + Bearer**，切 Cookie 是下一步前端改造；在那之前两套入口并存是刻意的。
+  **前端已切 Cookie**（2026-10-20）：`lib/api.ts` 全部 `withCredentials`，写请求自动读 `unipo_csrf` 塞 `X-CSRF-Token`，
+  不再存 localStorage、也不再做前端刷新。App 仍是 Bearer，两套入口并存是刻意的。
 - **限流规则表在 `web/RateLimitFilter.java`**：按「来源 IP + 接口」做固定窗口，命中回 429 + `Retry-After`。
   新增「能被刷出成本」的接口（发邮件、上传、写库）要往 `RULES` 里加一条。
   数值是「挡脚本」不是「精确配额」，本地连着跑三四遍 `smoke.ps1` 有可能撞到，等窗口过去或临时 `RATE_LIMIT_ENABLED=false`。
@@ -176,9 +177,10 @@ docker compose up -d --build
   **后端改了 DTO 就要跑一次 `cd frontend && npm run gen:api`**（后端得先起来），再按报错同步 `types.ts`。
   CI 的冒烟 job 会重生成一遍并 `git diff --exit-code`，忘了提交生成文件会红。
 - **禁止新增 fallback 假数据**。`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已于 2026-10-19 删除，首屏现在是 `feedLoading` / `feedError`（带重试按钮）/ 空态三态。接口失败必须显式报错，不能假装有数据。`fallbackAvatar()` / `fallbackCover()` 是占位图生成器，不算假数据，可继续用。
-- token 存 `localStorage['bcg_token']`（access）+ `localStorage['bcg_refresh_token']`（refresh）；
-  `lib/api.ts` 的响应拦截器在 401 时**单飞**刷新并重放原请求（同一时刻只发一个 `/auth/refresh`），
-  刷新失败才清 token 并抛 401 —— 新增请求不需要自己处理刷新。
+- **登录态不落 localStorage**：Cookie 是 HttpOnly 的，JS 读不到；前端只读非 HttpOnly 的 `unipo_csrf`，
+  由请求拦截器自动加到写请求的 `X-CSRF-Token` 头。会话过期靠服务端滑动续期，
+  401 时 `lib/api.ts` 广播 `unipo:unauthorized`，auth store 统一降级为访客并停心跳——**不要再写前端 refresh 逻辑**。
+  `bootstrapSession()` 每次启动都调 `/auth/me` 探会话，不要用「本地有没有 token」判断登录态。
   `localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
 - 唯一 `v-html` 在 `components/post/PostDetailModal.vue`，内容统一过 `lib/richText.ts` 的 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
