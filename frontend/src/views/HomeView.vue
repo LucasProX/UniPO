@@ -20,7 +20,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'open-post', post: CampusPost): void;
-  (event: 'open-author', post: CampusPost): void;
+  (event: 'open-author', author: CampusPost['author']): void;
 }>();
 
 const feed = useFeedStore();

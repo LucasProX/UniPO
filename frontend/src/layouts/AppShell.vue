@@ -7,11 +7,13 @@ import LeftRail from '../components/layout/LeftRail.vue';
 import RightRail from '../components/layout/RightRail.vue';
 import AccountDrawer from '../components/modals/AccountDrawer.vue';
 import LevelCatalogModal from '../components/modals/LevelCatalogModal.vue';
+import { useAuthStore } from '../stores/auth';
 import { useFeedStore } from '../stores/feed';
 import type { CampusPost } from '../types';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const feed = useFeedStore();
 
 const accountDrawerOpen = ref(false);
@@ -22,6 +24,25 @@ const selectedDate = computed(() => (route.query.date as string) || null);
 
 function openPost(post: CampusPost) {
   void feed.openPost(post);
+}
+
+/**
+ * 点头像/昵称进作者主页。
+ *
+ * 注意：这里只负责「导航」，数据由 UserProfileView 自己按 /u/:uid 加载。
+ * 之前打开了 profile store 的 openAuthorProfile 却没有 push 路由，数据加载完页面还停在首页，
+ * 看起来就是「点了头像没反应」。
+ */
+function openAuthor(author: CampusPost['author']) {
+  if (!auth.hasSession) {
+    auth.openDialog('请先登录后查看个人主页');
+    return;
+  }
+  if (auth.isAuthenticated && author.uid === auth.currentUser.publicUid) {
+    void router.push('/profile');
+    return;
+  }
+  void router.push(`/u/${author.uid}`);
 }
 
 function selectDate(dateKey: string | null) {
@@ -42,9 +63,18 @@ function selectDate(dateKey: string | null) {
     >
       <LeftRail v-if="isHome" class="max-[880px]:hidden" @open-post="openPost($event as CampusPost)" @show-level-catalog="showLevelCatalog = true" />
 
-      <section class="min-h-0 min-w-0 lg:h-full" :class="isHome ? '' : 'mx-auto w-[min(1180px,100%)]'">
+      <section
+        class="min-h-0 min-w-0 lg:h-full"
+        :class="isHome ? '' : 'mx-auto w-[min(1180px,100%)] lg:overflow-y-auto hide-scrollbar max-[880px]:overflow-visible'"
+      >
         <router-view v-slot="{ Component }">
-          <component :is="Component" :board="(route.query.board as string) || 'recommend'" :date="selectedDate" @open-post="openPost" />
+          <component
+            :is="Component"
+            :board="(route.query.board as string) || 'recommend'"
+            :date="selectedDate"
+            @open-post="openPost"
+            @open-author="openAuthor"
+          />
         </router-view>
       </section>
 

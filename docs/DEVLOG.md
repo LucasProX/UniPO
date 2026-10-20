@@ -4249,6 +4249,34 @@ MVP 页面：概览（含近 7 天柱状 + 最近审计）、内容审核、轮�
 
 验证：1440×900 与 756 宽各截一次图，侧边栏/顶栏只出现一次；六个后台页面文本都能正常渲染。
 
+## 2026-10-20 头像点了没反应、发 PO/我的页面滚不动
+
+用户报了两个回归，都跟组件化之后的「事件/滚动容器」有关。
+
+**1. 点帖子头像不进主页**
+
+链路上有三处断点，不是单点问题：
+
+- AppShell 的 `<router-view>` 只接了 `@open-post`，没接 `@open-author`——
+  App.vue 里 PostDetailModal 接了，所以「详情弹窗里点头像」能用，「信息流卡片点头像」没反应；
+- PostCard 的 `open-author` 实际 emit 的是整个 `post`，但监听方按 `author` 处理，
+  于是 `author.uid` 是 undefined，路由变成 `/u/undefined`；
+- 就算事件接上了，原来的 `profile.openAuthorProfile()` 只把数据塞进 store，**没有 push 路由**，
+  页面还停在首页，看起来仍然像没反应。
+
+修法：PostCard 统一 emit `post.author`（和 PostDetailModal 一致）；AppShell 监听 `open-author`；
+处理函数只做导航（未登录弹登录框、自己跳 /profile、别人跳 /u/:uid），数据由 UserProfileView 按路由参数加载。
+
+**2. 发 PO / 我的页面滚不动**
+
+桌面端 `main` 是 `lg:h-[calc(100vh-100px)] + lg:overflow-hidden`，滚动必须由中间那列自己承担。
+HomeView 有 `lg:overflow-y-auto`，但当时只给 HomeView 加了；Compose/Profile/Messages 这些
+根节点没有滚动容器，内容超出就被裁掉。修法是在 AppShell 的中间 `<section>` 上统一加
+`lg:overflow-y-auto`（非首页时），视图本身不用各写一套。
+
+实测（1280×700）：compose scrollHeight 748/600、profile 774/600、messages 2266/600，都能滚；
+点头像跳到 `/u/24052001` 并渲染出对方主页。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

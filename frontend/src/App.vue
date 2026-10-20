@@ -55,7 +55,15 @@ async function bootstrapSession() {
 }
 
 function openAuthor(author: CampusPost['author']) {
-  void profile.openAuthorProfile(author);
+  if (!auth.hasSession) {
+    auth.openDialog('请先登录后查看个人主页');
+    return;
+  }
+  if (auth.isAuthenticated && author.uid === auth.currentUser.publicUid) {
+    void router.push('/profile');
+    return;
+  }
+  void router.push(`/u/${author.uid}`);
 }
 </script>
 

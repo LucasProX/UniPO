@@ -13,7 +13,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'open', post: CampusPost): void;
-  (event: 'open-author', post: CampusPost): void;
+  (event: 'open-author', author: CampusPost['author']): void;
 }>();
 
 const boardText = computed(() => boardLabel(props.post.board, props.boards));
@@ -38,7 +38,7 @@ const featuredComment = computed(() => {
       <div class="po-card__content">
         <div class="flex items-start justify-between gap-4">
           <div class="flex min-w-0 items-center gap-3">
-            <button class="author-tap" @click.stop="emit('open-author', post)">
+            <button class="author-tap" @click.stop="emit('open-author', post.author)">
               <img :src="post.author.avatarUrl || fallbackAvatar(post.author.nickname)" alt="" class="h-10 w-10 rounded-[14px] object-cover" />
             </button>
             <div class="min-w-0">
