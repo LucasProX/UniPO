@@ -23,7 +23,8 @@ UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + Min
 |---|---|
 | `backend/src/main/java/com/biecuoguo/web/` | Controller 层（9 个），统一返回 `ApiResponse` |
 | `backend/src/main/java/com/biecuoguo/service/` | 业务逻辑（10 个），N+1 与手写权限判断都在这一层 |
-| `backend/src/main/java/com/biecuoguo/security/` | Spring Security + JWT + `CurrentUser` |
+| `backend/src/main/java/com/biecuoguo/security/` | Spring Security + JWT + Cookie 会话 + `CurrentUser` |
+| `backend/src/main/java/com/biecuoguo/media/` | **第一个按领域拆的模块**：`api/`（MediaDtos）+ `internal/`（Controller/Service/Mapper/实体/ImageSignature）。跨模块只能依赖 `api` |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
 | `backend/src/main/resources/db/migration/` | Flyway V1–V11，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
@@ -110,7 +111,7 @@ docker compose up -d --build
     **两种模式下都调用 `verifyCode()`**，不要再写 `if (mock) skip` —— 那样本地和线上的调用链不一致。
   - **密码上限是 72 字节，不是 72 个字符**：BCrypt 的有效输入只有 72 字节，超出会被静默忽略（两个不同的长密码可能算出同一个哈希）。`AuthService.assertPasswordAcceptable()` 显式拒绝超长，不要改成截断。
 - **「默认学校」只有一个来源**：`app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 `1`）。未登录访客看 feed、新注册用户还没选学校、演示账号初始化，全都读它。**不要再在代码里写 `1L`**，也不要再写「随便挑一个用户代表访客」那种兜底（那正是 D-3）。该值必须存在于 `schools` 表，否则建号时会撞 `fk_users_school`。
-- **上传只信文件头，不信 `Content-Type` 和扩展名**：`service/ImageSignature.java` 按 magic bytes 识别 JPEG/PNG/GIF/WebP，
+- **上传只信文件头，不信 `Content-Type` 和扩展名**：`media/internal/ImageSignature.java` 按 magic bytes 识别 JPEG/PNG/GIF/WebP，
   存进 MinIO 的扩展名和 `Content-Type` 都由识别结果决定。以前只看请求头是不是 `image/` 开头，
   一个 HTML 或带 `<script>` 的 SVG 改个请求头就能存进来，再被 `/api/media/{id}/content` 原样吐回浏览器。
   **故意不支持 SVG**（它是 XML，能带脚本），也不要把校验降级成「看后缀」。上限由 `MAX_UPLOAD_FILE_SIZE` 控制，默认 5MB。

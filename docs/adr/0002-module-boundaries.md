@@ -69,7 +69,33 @@ PostService 可以随手调 MessageMapper，AdminService 可以读任意表，�
 - admin 不能直接调业务 Mapper，只能走各模块 api
 - 事件发布方不能直接调订阅方（只能发事件）
 
-## 7. 代价
+## 7. 迁移记录
+
+### media（2026-10-20，第一个模块）
+
+结构：
+
+    com.biecuoguo.media
+      api/MediaDtos.java                 ← 对外只暴露 DTO
+      internal/MediaController.java
+      internal/MediaService.java
+      internal/ImageSignature.java
+      internal/MediaObject.java
+      internal/MediaObjectMapper.java
+
+改动点：
+
+- MediaObjectMapper 不在 com.biecuoguo.mapper 下了，@MapperScan 必须显式加
+  com.biecuoguo.media.internal（漏了这个，编译能过、启动时 Mapper 找不到）。
+- MediaController 原来和 ApiResponse 同包，不需要 import；搬家后必须显式 import
+  com.biecuoguo.web.ApiResponse。**web 包暂时充当共享内核**（统一响应包/错误码），
+  等 infra 模块落地再决定是否下移。
+- ImageSignatureTest 跟着移到 media.internal，包名和被测类一致。
+- 新增 ArchUnit 规则：media.internal 不能被模块外访问；其余模块只能依赖 media.api。
+
+验证：mvn test 39 绿；smoke.sh 37/37（含图片上传）；CI 全绿。
+
+## 8. 代价
 
 - 迁移期间会出现「两套写法并存」（旧层分包 + 新模块分包），持续几周。
 - 包移动期间 git blame 会断一次，属于可接受成本。

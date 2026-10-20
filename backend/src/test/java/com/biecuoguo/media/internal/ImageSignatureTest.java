@@ -1,4 +1,4 @@
-package com.biecuoguo.service;
+package com.biecuoguo.media.internal;
 
 import org.junit.jupiter.api.Test;
 

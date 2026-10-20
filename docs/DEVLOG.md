@@ -3944,6 +3944,33 @@ review 不了、出问题没法二分，而且模块边界不是搬出来的，�
 所以 ADR-0002 定了每步一个模块的顺序：media → taxonomy → message → post → user/auth → admin，
 每步都必须 CI 绿 + smoke 37/37。realtime / state / config 已经是独立包，先算 infra。
 
+## 2026-10-20 搬第一个模块 media：编译能过、启动才炸的两个坑
+
+按 ADR-0002 把 media 从「按层分包」搬到「按模块分包」：
+
+    media/api/MediaDtos.java
+    media/internal/{MediaController,MediaService,ImageSignature,MediaObject,MediaObjectMapper}.java
+
+搬完 mvn compile 一次就过，但有两处是「编译期看不出来、运行期才炸」的：
+
+**1. @MapperScan 写死了包名**。MediaObjectMapper 从 com.biecuoguo.mapper 搬到
+com.biecuoguo.media.internal 之后，@MapperScan("com.biecuoguo.mapper") 就扫不到它了。
+编译没问题（接口还在），启动时 Mapper bean 不存在，上传接口 500。
+现在改成显式列两个包：@MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.media.internal"})，
+每搬一个模块都要记得加一行 —— 这是模块化迁移的固定动作。
+
+**2. 同包 import 是会「消失」的**。MediaController 原来和 ApiResponse 都在 com.biecuoguo.web，
+所以不需要 import；搬到 media.internal 之后必须显式 import com.biecuoguo.web.ApiResponse。
+这类错误编译会报，但很容易在批量 sed 时漏掉——所以搬完必须真跑一次 smoke，
+不能只看 mvn compile 绿。
+
+**顺带定了一条规则**：media.internal 不允许被模块外访问（ArchUnit 新增一条），
+跨模块只能依赖 media.api。web 包暂时充当共享内核（ApiResponse / ErrorCode），
+等 infra 模块落地再决定要不要下移。
+
+验证：mvn test 39 绿（ImageSignatureTest 跟着搬到 media.internal）；smoke.sh 37/37，上传那项 200；
+CI 4/4 绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

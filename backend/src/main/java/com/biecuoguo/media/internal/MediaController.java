@@ -1,8 +1,8 @@
-package com.biecuoguo.web;
+package com.biecuoguo.media.internal;
 
-import com.biecuoguo.dto.MediaDtos;
+import com.biecuoguo.media.api.MediaDtos;
 import com.biecuoguo.security.SecurityUtils;
-import com.biecuoguo.service.MediaService;
+import com.biecuoguo.web.ApiResponse;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;

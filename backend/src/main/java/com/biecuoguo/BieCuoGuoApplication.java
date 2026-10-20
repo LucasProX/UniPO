@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
-@MapperScan("com.biecuoguo.mapper")
+@MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.media.internal"})
 @ConfigurationPropertiesScan
 public class BieCuoGuoApplication {
     public static void main(String[] args) {

@@ -1,4 +1,4 @@
-package com.biecuoguo.domain;
+package com.biecuoguo.media.internal;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;

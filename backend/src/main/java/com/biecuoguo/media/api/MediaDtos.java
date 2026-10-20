@@ -1,4 +1,4 @@
-package com.biecuoguo.dto;
+package com.biecuoguo.media.api;
 
 import java.io.InputStream;
 import java.time.OffsetDateTime;

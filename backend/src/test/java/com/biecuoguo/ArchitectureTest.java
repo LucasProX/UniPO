@@ -73,6 +73,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void moduleInternalsAreNotAccessedFromOutside() {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("com.biecuoguo.media..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.media.internal..")
+                .because("模块内部实现对其他模块不可见，跨模块只能依赖 api 包（ADR-0002）");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void realtimeDoesNotDependOnBusinessServices() {
         ArchRule rule = noClasses()
                 .that().resideInAPackage(REALTIME)

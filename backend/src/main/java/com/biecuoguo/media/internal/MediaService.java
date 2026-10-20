@@ -1,10 +1,8 @@
-package com.biecuoguo.service;
+package com.biecuoguo.media.internal;
 
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.config.AppProperties;
-import com.biecuoguo.domain.MediaObject;
-import com.biecuoguo.dto.MediaDtos;
-import com.biecuoguo.mapper.MediaObjectMapper;
+import com.biecuoguo.media.api.MediaDtos;
 import com.biecuoguo.security.CurrentUser;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
