@@ -270,6 +270,35 @@
 前端页面在同一个 SPA 的 `/admin` 下（`layouts/AdminShell.vue` + `views/admin/*`），
 路由守卫 + 后端 `hasAnyRole` 双层校验。
 
+### 9.4 关注 / 粉丝 / 拉黑 / 举报
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/users/{uid}/followers` | 粉丝列表（匿名可看，登录时带 `following` 标记） |
+| GET | `/api/users/{uid}/following` | 关注列表 |
+| DELETE | `/api/users/me/followers/{followerUid}` | 移除自己的粉丝 |
+| GET | `/api/users/me/followers/new-count` | 上次打开粉丝列表后新增的粉丝数 |
+| POST | `/api/users/me/followers/seen` | 把 `users.followers_seen_at` 推到当前时间 |
+| POST / DELETE | `/api/users/{uid}/block` | 拉黑 / 取消拉黑；拉黑会双向取关 |
+| POST | `/api/users/{uid}/report` | 举报用户 |
+
+**新粉丝 +n**：服务端用 `users.followers_seen_at` 做游标，第一次没有该值时为 0（不补历史），
+打开粉丝列表后调用 `/seen` 清零，跨设备一致。
+
+**列表项**（`FollowUserView`）：id / publicUid / nickname / avatarUrl / role / level / levelTitle /
+college / major / grade / following / followedAt；不返回 email 等敏感字段。
+
+**举报分类**（后端校验，稳定 key）：`spam` 垃圾广告、`fraud` 诈骗虚假信息、`harassment` 人身攻击、
+`porn` 色情低俗、`impersonation` 冒充他人、`other` 其他。请求体：
+
+```json
+{ "category": "spam", "detail": "补充说明（选填，≤500 字）" }
+```
+
+**拉黑的语义（MVP）**：双向取关、禁止再关注；公开主页返回 `blocked / blockedBy`，
+前端据此隐藏关注/私信入口。**信息流过滤还没接**（被拉黑用户的帖子仍可能出现在推荐里），
+下一步在 `PostService` 的可见性条件里排除双向拉黑关系。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

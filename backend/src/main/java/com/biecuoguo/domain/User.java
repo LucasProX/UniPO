@@ -35,4 +35,6 @@ public class User {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime lastLoginAt;
+    /** 上次查看粉丝列表的时间；用于个人主页的「+n 新粉丝」。 */
+    private LocalDateTime followersSeenAt;
 }

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { api, localApi, publicApi, unwrap, apiErrorMessage, apiErrorCode } from './http';
-import type { AuthSessionView, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, SpotlightView, UserProfile, UserStats, ApiResponse } from '../types';
+import type { AuthSessionView, BlockStatusView, BoardView, CheckInView, CommentView, ConversationView, FollowUserView, InteractionNoticeView, MessageView, NewFollowersView, PagedResponse, PostView, PublicProfileView, SpotlightView, UserProfile, UserStats, ApiResponse } from '../types';
 
 /**
  * 业务端点。按领域分组，新增接口时只动对应分组的文件/段落。
@@ -85,6 +85,15 @@ export const campusApi = {
   userFavorites: (uid: string) => unwrap<PostView[]>(api.get(`/users/${uid}/post-favorites`)),
   follow: (uid: string) => unwrap<boolean>(api.post(`/users/${uid}/follow`)),
   unfollow: (uid: string) => unwrap<boolean>(api.delete(`/users/${uid}/follow`)),
+  followers: (uid: string) => unwrap<FollowUserView[]>(api.get(`/users/${uid}/followers`)),
+  following: (uid: string) => unwrap<FollowUserView[]>(api.get(`/users/${uid}/following`)),
+  removeFollower: (uid: string) => unwrap<boolean>(api.delete(`/users/me/followers/${uid}`)),
+  newFollowers: () => unwrap<NewFollowersView>(api.get('/users/me/followers/new-count')),
+  markFollowersSeen: () => unwrap<boolean>(api.post('/users/me/followers/seen')),
+  blockUser: (uid: string) => unwrap<BlockStatusView>(api.post(`/users/${uid}/block`)),
+  unblockUser: (uid: string) => unwrap<BlockStatusView>(api.delete(`/users/${uid}/block`)),
+  reportUser: (uid: string, payload: { category: string; detail?: string }) =>
+    unwrap<number>(api.post(`/users/${uid}/report`, payload)),
   createConversation: (peerUid: string) => unwrap<ConversationView>(api.post('/messages/conversations', { peerUid })),
   sendMessage: (conversationId: number, content: string) =>
     unwrap<MessageView>(api.post(`/messages/conversations/${conversationId}/messages`, { content }))

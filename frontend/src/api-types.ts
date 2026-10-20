@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{uid}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["report"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{uid}/follow": {
         parameters: {
             query?: never;
@@ -95,6 +111,38 @@ export interface paths {
         put?: never;
         post: operations["follow"];
         delete: operations["unfollow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{uid}/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["block"];
+        delete: operations["unblock"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/me/followers/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["markFollowersSeen"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -500,6 +548,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{uid}/following": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["following"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/{uid}/followers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["followers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/me/stats": {
         parameters: {
             query?: never;
@@ -556,6 +636,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["likes_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/me/followers/new-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["newFollowers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -932,6 +1028,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/followers/{followerUid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["removeFollower"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/posts/{id}": {
         parameters: {
             query?: never;
@@ -1067,6 +1179,8 @@ export interface components {
             updatedAt?: string;
             /** Format: date-time */
             lastLoginAt?: string;
+            /** Format: date-time */
+            followersSeenAt?: string;
         };
         UserRoleRequest: {
             role?: string;
@@ -1114,11 +1228,32 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        ReportRequest: {
+            category: string;
+            detail?: string;
+        };
+        ApiResponseLong: {
+            code?: string;
+            message?: string;
+            /** Format: int64 */
+            data?: number;
+            requestId?: string;
+        };
         ApiResponseBoolean: {
             code?: string;
             message?: string;
             data?: boolean;
             requestId?: string;
+        };
+        ApiResponseBlockStatusView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BlockStatusView"];
+            requestId?: string;
+        };
+        BlockStatusView: {
+            blocked?: boolean;
+            blockedBy?: boolean;
         };
         ApiResponseCheckInView: {
             code?: string;
@@ -1393,6 +1528,8 @@ export interface components {
             stats?: components["schemas"]["UserStats"];
             following?: boolean;
             mine?: boolean;
+            blocked?: boolean;
+            blockedBy?: boolean;
         };
         UserStats: {
             /** Format: int64 */
@@ -1422,11 +1559,44 @@ export interface components {
             data?: components["schemas"]["PostView"][];
             requestId?: string;
         };
+        ApiResponseListFollowUserView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["FollowUserView"][];
+            requestId?: string;
+        };
+        FollowUserView: {
+            /** Format: int64 */
+            id?: number;
+            publicUid?: string;
+            nickname?: string;
+            avatarUrl?: string;
+            role?: string;
+            /** Format: int32 */
+            level?: number;
+            levelTitle?: string;
+            college?: string;
+            major?: string;
+            grade?: string;
+            following?: boolean;
+            /** Format: date-time */
+            followedAt?: string;
+        };
         ApiResponseUserStats: {
             code?: string;
             message?: string;
             data?: components["schemas"]["UserStats"];
             requestId?: string;
+        };
+        ApiResponseNewFollowersView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["NewFollowersView"];
+            requestId?: string;
+        };
+        NewFollowersView: {
+            /** Format: int64 */
+            count?: number;
         };
         ApiResponseListTagView: {
             code?: string;
@@ -1556,13 +1726,6 @@ export interface components {
             schoolId?: number;
             name?: string;
             code?: string;
-        };
-        ApiResponseLong: {
-            code?: string;
-            message?: string;
-            /** Format: int64 */
-            data?: number;
-            requestId?: string;
         };
         ApiResponseListConversationView: {
             code?: string;
@@ -1863,6 +2026,32 @@ export interface operations {
             };
         };
     };
+    report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLong"];
+                };
+            };
+        };
+    };
     follow: {
         parameters: {
             query?: never;
@@ -1892,6 +2081,70 @@ export interface operations {
             path: {
                 uid: string;
             };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    block: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBlockStatusView"];
+                };
+            };
+        };
+    };
+    unblock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBlockStatusView"];
+                };
+            };
+        };
+    };
+    markFollowersSeen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -2686,6 +2939,50 @@ export interface operations {
             };
         };
     };
+    following: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListFollowUserView"];
+                };
+            };
+        };
+    };
+    followers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListFollowUserView"];
+                };
+            };
+        };
+    };
     stats: {
         parameters: {
             query?: never;
@@ -2762,6 +3059,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseListPostView"];
+                };
+            };
+        };
+    };
+    newFollowers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseNewFollowersView"];
                 };
             };
         };
@@ -3244,6 +3561,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAnalyticsOverview"];
+                };
+            };
+        };
+    };
+    removeFollower: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                followerUid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
         };

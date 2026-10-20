@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Flame, UserRound } from 'lucide-vue-next';
-import { useAuthStore } from '../../stores/auth';
+import { Flame } from 'lucide-vue-next';
 import { useFeedStore } from '../../stores/feed';
-import { levelTier, levelTitleFor, recommendScore } from '../../lib/postHelpers';
+import { recommendScore } from '../../lib/postHelpers';
 
-const auth = useAuthStore();
 const feed = useFeedStore();
 
 const emit = defineEmits<{
@@ -21,47 +19,7 @@ const hotRankings = computed(() =>
 
 <template>
   <aside class="home-left-rail min-h-0 space-y-4 lg:h-full lg:overflow-hidden max-[880px]:hidden">
-    <section v-if="auth.isAuthenticated" class="glass-panel rounded-[28px] p-4">
-      <div class="flex items-center gap-3">
-        <img :src="auth.currentUser.avatarUrl || ''" alt="" class="h-14 w-14 rounded-[20px] object-cover" />
-        <div class="min-w-0">
-          <p class="home-profile-name truncate font-black text-[#19202f]">{{ auth.currentUser.nickname }}</p>
-        </div>
-      </div>
-      <button class="level-nameplate level-nameplate--side" :class="`level-nameplate--tier-${levelTier(auth.currentUser.level)}`" @click="emit('show-level-catalog')">
-        <strong>Lv.{{ auth.currentUser.level }}</strong>
-        <span>{{ levelTitleFor(auth.currentUser.level) }}</span>
-      </button>
-      <div class="mt-4 grid grid-cols-3 gap-2">
-        <div class="rounded-[18px] bg-white/62 p-3 text-center">
-          <p class="text-lg font-black">{{ auth.userStats.posts }}</p>
-          <p class="text-[11px] text-[#718097]">作品</p>
-        </div>
-        <div class="rounded-[18px] bg-white/62 p-3 text-center">
-          <p class="text-lg font-black">{{ auth.userStats.following }}</p>
-          <p class="text-[11px] text-[#718097]">关注</p>
-        </div>
-        <div class="rounded-[18px] bg-white/62 p-3 text-center">
-          <p class="text-lg font-black">{{ auth.userStats.followers }}</p>
-          <p class="text-[11px] text-[#718097]">粉丝</p>
-        </div>
-      </div>
-    </section>
-    <section v-else class="glass-panel rounded-[28px] p-4">
-      <div class="flex items-center gap-3">
-        <span class="grid h-14 w-14 place-items-center rounded-[20px] bg-white/70 text-[#718097]">
-          <UserRound :size="24" />
-        </span>
-        <div class="min-w-0">
-          <p class="truncate text-sm font-black text-[#19202f]">未登录</p>
-          <p class="mt-1 text-xs font-semibold leading-5 text-[#718097]">登录后显示你的作品和互动数据</p>
-        </div>
-      </div>
-      <button class="mt-4 w-full rounded-full bg-[#19202f] px-4 py-2.5 text-sm font-black text-white" data-testid="rail-login" @click="auth.openDialog()">
-        登录
-      </button>
-    </section>
-
+    <!-- 左上角个人用户信息卡片暂时隐藏（2026-10-20），保留热度榜作为左栏主体。 -->
     <section class="glass-panel rounded-[28px] p-4">
       <div class="flex items-end justify-between gap-3">
         <div>

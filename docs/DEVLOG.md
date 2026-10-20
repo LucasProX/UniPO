@@ -4277,6 +4277,39 @@ HomeView 有 `lg:overflow-y-auto`，但当时只给 HomeView 加了；Compose/Pr
 实测（1280×700）：compose scrollHeight 748/600、profile 774/600、messages 2266/600，都能滚；
 点头像跳到 `/u/24052001` 并渲染出对方主页。
 
+## 2026-10-20 粉丝 +n、关注列表、拉黑与举报：为什么「+n」放服务端
+
+需求里最容易做错的是「新增粉丝 +n」。第一反应是 localStorage 存上次进主页的时间，
+然后拿粉丝列表按时间过滤。问题是换设备/清缓存就归零，而且列表长的时候为了一个数字要拉全量。
+
+最后选了服务端游标：`users.followers_seen_at`。
+
+- 进主页 GET /users/me/followers/new-count：count(follows where following_id=me and created_at > seen_at)；
+- 打开粉丝列表 POST /users/me/followers/seen 把 seen_at 推到 now；
+- seen_at 为 NULL 时返回 0，而不是「全部粉丝都算新」——老用户第一次上线不应该看到 +18。
+
+这里踩到一个 MySQL DATETIME 的秒级精度问题：mark seen 和 follow 在同一秒发生时，
+`created_at > seen_at` 不成立，测试里 +1 变成 0。真实使用几乎碰不到（人不会在同一秒看完又关注），
+所以没有改成毫秒/微秒；测试脚本里 sleep 2 秒规避。
+
+**关注/粉丝列表**没有复用 UserProfile：列表只需要展示字段，返回完整资料会顺带把 email 带出去。
+单独定义了 FollowUserView（不含 email），列表按 created_at 倒序，上限 200。
+
+**拉黑**的语义先定成：双向取关 + 禁止再关注 + 主页返回 blocked/blockedBy，前端隐藏关注和私信入口。
+信息流过滤还没做——那要在 PostService 的可见性条件里加「排除双向拉黑关系」，是下一步。
+
+**举报**只落库（user_reports），分类是稳定 key（spam/fraud/harassment/porn/impersonation/other），
+文案在前端映射。后台审核队列还没接，先把数据收上来。
+
+另外两个顺手修的问题：
+
+1. 直接打开 /u/:uid 或刷新时，UserProfileView 的 onMounted 比 App.vue 的 bootstrap 早，
+   `auth.hasSession` 还是 false，会误弹登录框、显示「用户不存在」。现在页面自己先 await sessionStillValid()。
+2. 首页左栏个人卡按需求先隐藏，左栏只留热度榜。
+
+验证：+1 角标出现并在打开列表后消失；移除粉丝后列表 18→17；拉黑出现提示条、取消拉黑恢复；
+举报提交成功；smoke 37/37；前端 lint/build 绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

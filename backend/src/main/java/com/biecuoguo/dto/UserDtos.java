@@ -1,8 +1,10 @@
 package com.biecuoguo.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 public final class UserDtos {
     private UserDtos() {}
@@ -49,5 +51,33 @@ public final class UserDtos {
 
     public record CheckInView(UserProfile profile, boolean checkedInToday, int streak, int xpGained, LocalDate checkinDate) {}
 
-    public record PublicProfile(UserProfile profile, UserStats stats, boolean following, boolean mine) {}
+    /**
+     * 关注/粉丝列表里的一行。刻意不返回完整 UserProfile：
+     * 列表只需要展示信息，别把 email 等字段带出去。
+     */
+    public record FollowUserView(
+            Long id,
+            String publicUid,
+            String nickname,
+            String avatarUrl,
+            String role,
+            Integer level,
+            String levelTitle,
+            String college,
+            String major,
+            String grade,
+            boolean following,
+            OffsetDateTime followedAt
+    ) {}
+
+    public record PublicProfile(UserProfile profile, UserStats stats, boolean following, boolean mine,
+                                boolean blocked, boolean blockedBy) {}
+
+    public record NewFollowersView(long count) {}
+
+    /** 举报分类由后端校验，前端只传稳定 key。 */
+    public record ReportRequest(@NotBlank @Size(max = 30) String category,
+                                @Size(max = 500) String detail) {}
+
+    public record BlockStatusView(boolean blocked, boolean blockedBy) {}
 }

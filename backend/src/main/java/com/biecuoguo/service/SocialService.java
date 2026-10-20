@@ -1,25 +1,48 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
+import com.biecuoguo.domain.UserBlock;
 import com.biecuoguo.domain.UserFollow;
+import com.biecuoguo.domain.UserReport;
+import com.biecuoguo.dto.UserDtos;
+import com.biecuoguo.mapper.UserBlockMapper;
 import com.biecuoguo.mapper.UserFollowMapper;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.mapper.UserReportMapper;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Set;
 
 @Service
 public class SocialService {
+
+    private static final int LIST_LIMIT = 200;
+    private static final Set<String> REPORT_CATEGORIES = Set.of(
+            "spam", "fraud", "harassment", "porn", "impersonation", "other"
+    );
+
     private final UserMapper userMapper;
     private final UserFollowMapper followMapper;
+    private final UserBlockMapper blockMapper;
+    private final UserReportMapper reportMapper;
 
-    public SocialService(UserMapper userMapper, UserFollowMapper followMapper) {
+    public SocialService(UserMapper userMapper, UserFollowMapper followMapper,
+                         UserBlockMapper blockMapper, UserReportMapper reportMapper) {
         this.userMapper = userMapper;
         this.followMapper = followMapper;
+        this.blockMapper = blockMapper;
+        this.reportMapper = reportMapper;
     }
 
     @Transactional
@@ -27,6 +50,9 @@ public class SocialService {
         User target = userByUid(uid);
         if (target.getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("不能关注自己");
+        }
+        if (blockedEitherWay(currentUser.id(), target.getId())) {
+            throw new IllegalArgumentException("无法关注该用户");
         }
         UserFollow existing = followMapper.selectOne(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, currentUser.id())
@@ -51,12 +77,185 @@ public class SocialService {
         return true;
     }
 
+    /** 粉丝列表：谁关注了 uid。 */
+    public List<UserDtos.FollowUserView> followers(String uid, Long viewerId) {
+        User target = userByUid(uid);
+        List<UserFollow> rows = followMapper.selectList(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowingId, target.getId())
+                .orderByDesc(UserFollow::getCreatedAt)
+                .last("LIMIT " + LIST_LIMIT));
+        return toViews(rows, true, viewerId);
+    }
+
+    /** 关注列表：uid 关注了谁。 */
+    public List<UserDtos.FollowUserView> following(String uid, Long viewerId) {
+        User target = userByUid(uid);
+        List<UserFollow> rows = followMapper.selectList(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, target.getId())
+                .orderByDesc(UserFollow::getCreatedAt)
+                .last("LIMIT " + LIST_LIMIT));
+        return toViews(rows, false, viewerId);
+    }
+
+    /**
+     * 移除粉丝：只有本人能移除自己的粉丝（把「对方关注我」这条边删掉）。
+     * 不允许用这个接口去删别人对自己的关注关系。
+     */
+    @Transactional
+    public boolean removeFollower(String followerUid, CurrentUser currentUser) {
+        User follower = userByUid(followerUid);
+        followMapper.delete(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, follower.getId())
+                .eq(UserFollow::getFollowingId, currentUser.id()));
+        return true;
+    }
+
+    /** 上次查看粉丝列表之后新增的粉丝数；从未看过返回 0（首次进入不补历史）。 */
+    public long newFollowerCount(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || user.getFollowersSeenAt() == null) {
+            return 0;
+        }
+        return followMapper.selectCount(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowingId, userId)
+                .gt(UserFollow::getCreatedAt, user.getFollowersSeenAt()));
+    }
+
+    @Transactional
+    public void markFollowersSeen(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) return;
+        user.setFollowersSeenAt(LocalDateTime.now());
+        userMapper.updateById(user);
+    }
+
+    @Transactional
+    public UserDtos.BlockStatusView block(String uid, CurrentUser currentUser) {
+        User target = userByUid(uid);
+        if (target.getId().equals(currentUser.id())) {
+            throw new IllegalArgumentException("不能拉黑自己");
+        }
+        boolean exists = blockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, currentUser.id())
+                .eq(UserBlock::getBlockedId, target.getId())) > 0;
+        if (!exists) {
+            UserBlock block = new UserBlock();
+            block.setBlockerId(currentUser.id());
+            block.setBlockedId(target.getId());
+            block.setCreatedAt(LocalDateTime.now());
+            blockMapper.insert(block);
+        }
+        // 拉黑时双向取关：拉黑后还互相关注是最容易让人困惑的状态。
+        followMapper.delete(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, currentUser.id())
+                .eq(UserFollow::getFollowingId, target.getId()));
+        followMapper.delete(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, target.getId())
+                .eq(UserFollow::getFollowingId, currentUser.id()));
+        return new UserDtos.BlockStatusView(true, blockedBy(target.getId(), currentUser.id()));
+    }
+
+    @Transactional
+    public UserDtos.BlockStatusView unblock(String uid, CurrentUser currentUser) {
+        User target = userByUid(uid);
+        blockMapper.delete(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, currentUser.id())
+                .eq(UserBlock::getBlockedId, target.getId()));
+        return new UserDtos.BlockStatusView(false, blockedBy(target.getId(), currentUser.id()));
+    }
+
+    public UserDtos.BlockStatusView blockStatus(Long viewerId, Long targetId) {
+        if (viewerId == null) return new UserDtos.BlockStatusView(false, false);
+        return new UserDtos.BlockStatusView(
+                blocked(viewerId, targetId),
+                blockedBy(targetId, viewerId)
+        );
+    }
+
+    @Transactional
+    public Long report(String uid, UserDtos.ReportRequest request, CurrentUser currentUser) {
+        User target = userByUid(uid);
+        if (target.getId().equals(currentUser.id())) {
+            throw new IllegalArgumentException("不能举报自己");
+        }
+        String category = request.category() == null ? "" : request.category().trim();
+        if (!REPORT_CATEGORIES.contains(category)) {
+            throw new IllegalArgumentException("举报分类不合法");
+        }
+        String detail = request.detail() == null ? null : request.detail().trim();
+        if (detail != null && detail.length() > 500) {
+            throw new IllegalArgumentException("补充说明最多 500 字");
+        }
+        UserReport report = new UserReport();
+        report.setReporterId(currentUser.id());
+        report.setTargetUserId(target.getId());
+        report.setCategory(category);
+        report.setDetail(detail == null || detail.isBlank() ? null : detail);
+        report.setStatus("pending");
+        report.setCreatedAt(LocalDateTime.now());
+        reportMapper.insert(report);
+        return report.getId();
+    }
+
     public long followingCount(Long userId) {
         return followMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowerId, userId));
     }
 
     public long followerCount(Long userId) {
         return followMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowingId, userId));
+    }
+
+    private List<UserDtos.FollowUserView> toViews(List<UserFollow> rows, boolean followers, Long viewerId) {
+        if (rows.isEmpty()) return List.of();
+        List<Long> userIds = rows.stream()
+                .map(follow -> followers ? follow.getFollowerId() : follow.getFollowingId())
+                .toList();
+        Map<Long, User> users = new LinkedHashMap<>();
+        for (User user : userMapper.selectBatchIds(userIds)) {
+            users.put(user.getId(), user);
+        }
+        Set<Long> viewerFollowing = new HashSet<>();
+        if (viewerId != null) {
+            followMapper.selectList(new LambdaQueryWrapper<UserFollow>()
+                            .eq(UserFollow::getFollowerId, viewerId)
+                            .in(UserFollow::getFollowingId, userIds))
+                    .forEach(follow -> viewerFollowing.add(follow.getFollowingId()));
+        }
+        List<UserDtos.FollowUserView> result = new ArrayList<>();
+        for (UserFollow row : rows) {
+            Long userId = followers ? row.getFollowerId() : row.getFollowingId();
+            User user = users.get(userId);
+            if (user == null) continue;
+            result.add(new UserDtos.FollowUserView(
+                    user.getId(),
+                    user.getPublicUid(),
+                    user.getNickname(),
+                    user.getAvatarUrl(),
+                    user.getRole(),
+                    user.getLevel() == null ? 1 : user.getLevel(),
+                    user.getLevelTitle(),
+                    user.getCollege(),
+                    user.getMajor(),
+                    user.getGrade(),
+                    viewerFollowing.contains(userId),
+                    AppTime.toOffset(row.getCreatedAt())
+            ));
+        }
+        return result;
+    }
+
+    private boolean blockedEitherWay(Long a, Long b) {
+        return blocked(a, b) || blocked(b, a);
+    }
+
+    private boolean blocked(Long blockerId, Long blockedId) {
+        return blockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, blockerId)
+                .eq(UserBlock::getBlockedId, blockedId)) > 0;
+    }
+
+    private boolean blockedBy(Long targetId, Long viewerId) {
+        return blocked(targetId, viewerId);
     }
 
     private User userByUid(String uid) {

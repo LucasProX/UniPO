@@ -178,6 +178,35 @@ export interface PublicProfileView {
   stats: UserStats;
   following: boolean;
   mine: boolean;
+  /** 我拉黑了对方 */
+  blocked: boolean;
+  /** 对方拉黑了我 */
+  blockedBy: boolean;
+}
+
+/** 关注/粉丝列表的一行（后端刻意不返回完整 UserProfile）。 */
+export interface FollowUserView {
+  id: number;
+  publicUid: string;
+  nickname: string;
+  avatarUrl?: string;
+  role: Role;
+  level: number;
+  levelTitle?: string;
+  college?: string;
+  major?: string;
+  grade?: string;
+  following: boolean;
+  followedAt: string;
+}
+
+export interface NewFollowersView {
+  count: number;
+}
+
+export interface BlockStatusView {
+  blocked: boolean;
+  blockedBy: boolean;
 }
 
 export interface CheckInView {

@@ -18,16 +18,19 @@ public class UserService {
     private final UserMapper userMapper;
     private final UserPreferenceMapper preferenceMapper;
     private final UserFollowMapper userFollowMapper;
+    private final UserBlockMapper userBlockMapper;
     private final UserCheckInMapper checkInMapper;
     private final PresenceService presenceService;
     /** 帖子统计走 facade，不直接注入 PostMapper（ADR-0002）。 */
     private final PostQueryApi postQueryApi;
 
     public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
-                       UserCheckInMapper checkInMapper, PresenceService presenceService, PostQueryApi postQueryApi) {
+                       UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper,
+                       PresenceService presenceService, PostQueryApi postQueryApi) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.userFollowMapper = userFollowMapper;
+        this.userBlockMapper = userBlockMapper;
         this.checkInMapper = checkInMapper;
         this.presenceService = presenceService;
         this.postQueryApi = postQueryApi;
@@ -139,7 +142,14 @@ public class UserService {
         boolean following = viewerId != null && !mine && userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, viewerId)
                 .eq(UserFollow::getFollowingId, user.getId())) > 0;
-        return new UserDtos.PublicProfile(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())), stats(user.getId()), following, mine);
+        boolean blocked = viewerId != null && !mine && userBlockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, viewerId)
+                .eq(UserBlock::getBlockedId, user.getId())) > 0;
+        boolean blockedBy = viewerId != null && !mine && userBlockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, user.getId())
+                .eq(UserBlock::getBlockedId, viewerId)) > 0;
+        return new UserDtos.PublicProfile(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())),
+                stats(user.getId()), following, mine, blocked, blockedBy);
     }
 
     private UserDtos.CheckInView checkInView(User user, boolean checkedInToday, int streak, int xpGained, java.time.LocalDate checkinDate) {

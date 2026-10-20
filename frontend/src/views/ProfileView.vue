@@ -4,10 +4,13 @@ import { useRouter } from 'vue-router';
 import { Bookmark, Heart, MessageCircle, Trash2 } from 'lucide-vue-next';
 import { storeToRefs } from 'pinia';
 import PostCard from '../components/post/PostCard.vue';
+import FollowListModal from '../components/profile/FollowListModal.vue';
 import EmptyState from '../components/ui/EmptyState.vue';
+import { formatCount } from '../lib/format';
 import { useAuthStore } from '../stores/auth';
 import { useFeedStore } from '../stores/feed';
 import { useProfileStore } from '../stores/profile';
+import { campusApi } from '../lib/api';
 import { compactPostTitle, fallbackAvatar, fallbackCover, formatPublishedAt, levelTier, levelTitleFor, plainPostContent, roleLabel } from '../lib/postHelpers';
 import type { CampusPost } from '../types';
 
@@ -19,6 +22,9 @@ const router = useRouter();
 const { profilePosts, profileLikedPosts, profileFavoritePosts } = storeToRefs(profile);
 
 const tab = ref<'posts' | 'likes' | 'favorites'>('posts');
+const followModalOpen = ref(false);
+const followModalTab = ref<'followers' | 'following'>('followers');
+const newFollowers = ref(0);
 
 const tabs = computed(() => [
   { key: 'posts' as const, label: '作品', count: profilePosts.value.length },
@@ -42,13 +48,37 @@ const motto = computed(() => {
 
 const bio = computed(() => (auth.currentUser.bio || '').replace(/\n?座右铭：.{0,30}$/u, '').trim());
 
-onMounted(() => {
+onMounted(async () => {
+  if (!auth.hasSession) {
+    await auth.sessionStillValid();
+  }
   if (!auth.hasSession) {
     auth.openDialog('请先登录后查看个人主页');
     return;
   }
   if (!profilePosts.value.length) void profile.loadMine();
+  // 新粉丝角标：上次打开粉丝列表之后新增的数量（服务端游标，跨设备一致）。
+  try {
+    const result = await campusApi.newFollowers();
+    newFollowers.value = result.count;
+  } catch {
+    newFollowers.value = 0;
+  }
 });
+
+function openFollowList(target: 'followers' | 'following') {
+  followModalTab.value = target;
+  followModalOpen.value = true;
+  if (target === 'followers' && newFollowers.value > 0) {
+    newFollowers.value = 0;
+    void campusApi.markFollowersSeen().catch(() => undefined);
+  }
+}
+
+function handleFollowUpdated(payload: { followersDelta: number; followingDelta: number }) {
+  auth.userStats.followers = Math.max(0, auth.userStats.followers + payload.followersDelta);
+  auth.userStats.following = Math.max(0, auth.userStats.following + payload.followingDelta);
+}
 
 function openPost(post: CampusPost) {
   void feed.openPost(post);
@@ -84,14 +114,19 @@ async function removePost(post: CampusPost) {
         <button class="rounded-full bg-[#19202f] px-5 py-3 text-sm font-black text-white" data-testid="profile-edit" @click="profile.openEditor()">编辑资料</button>
       </div>
       <div class="profile-social-strip">
-        <div class="profile-social-pill">
-          <strong>{{ auth.userStats.following }}</strong>
+        <button type="button" class="profile-social-pill" @click="openFollowList('following')">
+          <strong>{{ formatCount(auth.userStats.following) }}</strong>
           <span>关注</span>
-        </div>
-        <div class="profile-social-pill">
-          <strong>{{ auth.userStats.followers }}</strong>
+        </button>
+        <button type="button" class="profile-social-pill relative" @click="openFollowList('followers')">
+          <strong>{{ formatCount(auth.userStats.followers) }}</strong>
           <span>粉丝</span>
-        </div>
+          <span
+            v-if="newFollowers > 0"
+            class="absolute -right-2 -top-2 rounded-full bg-[#ff3b30] px-1.5 py-0.5 text-[10px] font-black text-white"
+            data-testid="new-followers-badge"
+          >+{{ formatCount(newFollowers) }}</span>
+        </button>
       </div>
 
       <div class="profile-copy">
@@ -178,4 +213,13 @@ async function removePost(post: CampusPost) {
       <EmptyState v-if="!sectionPosts.length" :text="`${sectionTitle}还是空的`" />
     </div>
   </section>
+
+  <FollowListModal
+    :open="followModalOpen"
+    :uid="auth.currentUser.publicUid"
+    :mine="true"
+    :initial-tab="followModalTab"
+    @close="followModalOpen = false"
+    @updated="handleFollowUpdated"
+  />
 </template>
