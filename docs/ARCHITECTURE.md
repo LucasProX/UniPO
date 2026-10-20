@@ -113,6 +113,13 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 `media_objects`：`bucket` / `object_key` / `url` / `content_type` / `size_bytes` / `purpose`。
 `url` 先存 `minio://bucket/key`，再由 `minio.publicEndpoint` 拼成可访问 URL 回写。
 
+**存储策略（2026-10-20 定）**：
+- **开发阶段（现在）**：本地 MinIO，不引入云依赖；
+- **内测/生产阶段**：切腾讯云 COS + CDN，图片下载不再经过 ECS 带宽；
+- 切换时加 `ObjectStorage` 抽象（MinIO / COS 两个实现），`/api/media/...` 契约不变；
+  旧数据先双读（MinIO 走代理、COS 走 CDN），稳定后再迁移。
+- **不要现在就加 COS 依赖**：没有云凭证、没有 CDN 域名，提前接只会让本地开发变复杂。
+
 ### 4.5 成就域（V15）
 | 表 | 说明 |
 |---|---|
