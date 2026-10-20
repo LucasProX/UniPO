@@ -188,6 +188,13 @@ jobs:
             sleep 5
           done
           [ "$passed" = 1 ] || { echo "::error::接口冒烟连续 3 次失败（上面有最后一次的输出）"; exit 1; }
+      - name: 全链路冒烟 scripts/smoke.sh
+        # 与 Windows 的 smoke.ps1 对齐的 37 项检查（认证/发帖/互动/私信/v1 契约/分页/响应包/时区/注册规则）。
+        # CI 只起 MySQL、没有 MinIO，图片上传那一项用 SMOKE_SKIP_UPLOAD=1 跳过。
+        env:
+          SMOKE_SKIP_UPLOAD: '1'
+          RATE_LIMIT_ENABLED: 'true'
+        run: bash scripts/smoke.sh http://127.0.0.1:8080
       - name: 生成的接口类型是否与后端一致
         # 后端还活着，正好拿它的 /v3/api-docs 重生成一遍，和仓库里的比。
         # 后端改了 DTO 却忘了 `npm run gen:api` + 同步 types.ts，这一步会红。

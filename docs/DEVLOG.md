@@ -3636,6 +3636,142 @@ A 发消息 → SSE 流里立刻出现 event:message data:{"conversationId":36,"
 而不是把连接改成粘性会话。
 ---
 
+> 后续（同日）：这条被推翻了——代理开了之后 colima 两分钟就起好了。
+> 现在本地默认走 compose，见本文末尾「代理开了以后……」。下面保留当时的过程，别再照着做。
+
+## 2026-10-20 换到 Mac：colima 拉 VM 镜像的功夫，brew 已经把 MySQL 装完了
+
+迁移到 macOS 之后第一件事是把本地链路跑起来。按文档 `docker compose --profile local-db up -d mysql minio` 起，
+结果发现这台机器上根本没有 Docker。想当然地 `brew install colima docker docker-compose`，然后 `colima start`。
+
+现象很说明问题：colima 卡在下载 Ubuntu 虚拟机镜像上，`~/Library/Caches/colima` 从 80MB 涨到 160MB
+花了六七分钟，按这个速度至少还要十几分钟；而同一时间 `brew install mysql@8.4 minio` 两分钟就装完了。
+第一次的怀疑是「网络又被墙了」，查了 `lsof -p <colima pid>` 看到连接是 ESTABLISHED、字节数在涨，
+所以不是断流，纯粹是 GitHub CDN 在国内太慢。
+
+结论：**macOS 本地开发不需要 Docker**。MySQL 8.4 和 MinIO 都有 brew 包，直接跑在宿主机上：
+
+```bash
+brew install mysql@8.4 minio
+brew services start mysql@8.4      # 3306
+brew services start minio          # 9000 / 9001，默认 minioadmin/minioadmin
+```
+
+后端那边只认 `.env` 里的 `SPRING_DATASOURCE_URL`，所以把端口从 compose 的 12306 改成 3306 就行，
+代码一行不用动。冒烟脚本、Flyway、MinIO 上传全部照常。
+真正要跑整栈（`docker compose up`）或者验证 CI 里的 compose 配置时，再装 Docker 不迟。
+
+省下来的另一点：colima 要固定占 2 CPU / 4GB 内存，brew 起两个服务几乎无感。
+
+## 2026-10-20 smoke 脚本里写死的 admin uid，换台机器就是 404
+
+照着 `scripts/smoke.ps1` 写 `scripts/smoke.sh`，第一次跑出来 35/37，挂的是 `follow` 和 `conversation`，
+都是 404。
+
+第一反应是「关注/建会话的接口改了」或者「前端用的 publicUid 和后端要的不一样」。去翻了 Controller 才想起来：
+脚本里 `$AdminUid = '84431313'` 是**Windows 那台机器上演示数据库里的用户 id**，不是配置。
+`users.id` 是自增主键，新库第一次跑 Flyway + seed，管理员拿到的 id 完全可能是 5。
+
+所以改成：`ADMIN_UID` 没显式传时，先用 `BOOTSTRAP_ADMIN_EMAIL/PASSWORD` 登录一次，
+从 `data.user.publicUid` 拿真实 uid；登录失败就 SKIP 这两项而不是 FAIL。
+写死 id 的脚本看着能跑，其实只在一台机器上能跑 —— 这跟「环境相关的东西不能进代码」是同一条规矩。
+
+（顺带：`/auth/me` 和 `/auth/login` 的 user 对象结构不一样，login 是 `data.user.publicUid`，
+me 是 `data.publicUid`。第一次改的时候按 me 的结构取，拿到空串，脚本静默 SKIP 了，差点以为通过了。）
+
+## 2026-10-20 github.com 443 超时，但 api.github.com 是通的
+
+`git pull` 连续两次卡在 `Failed to connect to github.com port 443 after 75002 ms`。
+一开始怀疑是代理没开、或者 DNS 污染，`nslookup github.com` 解析到 20.205.243.166（香港），
+`curl https://api.github.com` 直接 200 —— 说明不是整个 GitHub 不可达，是 `github.com:443` 这个入口本身被卡。
+
+结论：拉代码走镜像，`git fetch https://ghfast.top/https://github.com/<owner>/<repo>.git main:refs/remotes/origin/main`，
+`origin` 保持官方地址不动（push 还走官方）。ghfast.top / ghproxy.net 都能用，`codeload.github.com` 也能通。
+下次再遇到 fetch 超时，先 `curl -m 10 https://api.github.com` 判断是整个站挂了还是只有 git 入口被卡，
+不要一上来就怀疑自己网络。
+
+## 2026-10-20 代理开了以后，colima 两分钟就好了：本地链路切回 compose
+
+上午为了绕开 colima 拉镜像慢，临时用 brew 起了原生 MySQL/MinIO，还把文档改成了「Mac 不用 Docker」。
+下午用户把代理打开（`127.0.0.1:7897`）之后重试，`~/Library/Caches/colima` 从 160MB 到 320MB 只用了 45 秒，
+`colima start` 两分钟就完成了。所以根本原因是**代理没开**，不是 colima 本身慢。
+
+顺带发现两件 Mac 上的小事：
+
+1. `brew install docker-compose` 装的是独立二进制，docker CLI 默认找不到它，
+   `docker compose` 会回落到 `docker --profile ...` 然后报 `unknown flag: --profile`。
+   要在 `~/.docker/config.json` 里加：
+   ```json
+   { "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"] }
+   ```
+2. compose 跑起来后端口是 `127.0.0.1:12306`（MySQL）和 `9000/9001`（MinIO），
+   和服务器完全一致，`.env` 只需要把 `MYSQL_PUBLIC_BIND` 收到 `127.0.0.1`。
+   brew 那套原生服务就停掉了——两套 MySQL 同时开着，最坑的不是端口，是「你以为在测 compose，其实连的是 brew 那份数据」。
+
+结论：**本地默认用 compose**（和服务器同形态，避免「本地能跑、服务器不一样」）。
+brew 原生服务只在 colima 实在拉不动镜像时当应急，切换前必须先停另一边。
+
+## 2026-10-20 docker compose v5 拒绝启动：STATE_BACKEND 在 yml 里写了两遍
+
+切回 compose 后第一次 `docker compose --profile local-db up -d mysql minio` 直接失败：
+
+```text
+failed to parse docker-compose.yml: yaml: construct errors:
+line 1: line 122: mapping key "STATE_BACKEND" already defined at line 115
+```
+
+第一反应是「.env 里哪个变量重复了」或者「compose 版本对 ${VAR:-default} 解析有问题」，
+因为报错里带着行号，很像是变量展开冲突。打开文件才发现是**真的复制粘贴重复**：
+`STATE_BACKEND / REDIS_HOST / REDIS_PORT / REDIS_PASSWORD` 整块连着注释出现了两次（115-118 和 119-125）。
+
+Windows 上一直没炸，是因为 Docker Desktop 自带的 compose 版本对重复 key 是「后者覆盖前者」的宽容行为；
+brew 装的 compose v5.6.0 走的是严格 YAML 构造，重复 key 直接拒绝。所以这不是「换机器带来的新 bug」，
+是**一直存在的坏文件，只是以前没人校验**。
+
+修法就是删掉重复的那一块。以后提交前顺手跑一次：
+
+```bash
+docker compose config -q && echo OK
+```
+
+CI 里暂时没加这条（CI 不跑 compose），但本地改过 `docker-compose.yml` 就该跑。
+
+## 2026-10-20 本地怎么验「真实模式」验证码：smtpd 假邮件 + 命令行覆盖 profile 的 mock 开关
+
+ISSUES 里 R-1 一直挂着「SMTP 通道接好了但没实测」。想先在本地把真实模式跑一遍，
+设了 `VERIFICATION_MOCK_ACCEPT_ANY_CODE=false` 重启，日志还是：
+
+```text
+[verification] 开发模式（mock-accept-any-code=true）：不发送邮件
+```
+
+第一反应是环境变量没传进去（`export` 顺序、mvn fork 丢环境变量之类），查了进程 environ 发现变量确实在。
+真正的原因是**优先级**：`application-local.yml` 里硬编码了 `app.verification.mock-accept-any-code: true`，
+profile 专属文件的优先级高于 `application.yml` 里的 `\${VERIFICATION_MOCK_ACCEPT_ANY_CODE:false}` 表达式，
+所以环境变量根本轮不到生效。
+
+正确的开法是命令行参数（最高优先级）：
+
+```bash
+# 1) 起一个假 SMTP，把收到的信直接打到 stdout
+python3 -u -m smtpd -n -c DebuggingServer 127.0.0.1:2525
+
+# 2) 后端：关 mock，指向假 SMTP，并关掉写死的 smtp.auth
+SMTP_HOST=127.0.0.1 SMTP_PORT=2525 SMTP_SSL_ENABLE=false \
+  mvn spring-boot:run -Dspring-boot.run.profiles=local \
+  -Dspring-boot.run.arguments='--app.verification.mock-accept-any-code=false --spring.mail.properties.mail.smtp.auth=false'
+```
+
+第二个坑：`application.yml` 里 `spring.mail.properties.mail.smtp.auth: true` 是写死的，
+而 Python 的 DebuggingServer 不实现 AUTH，不覆盖就会在发信那步失败。
+
+跑通的结果：邮件正文里拿到 4 位码（base64），
+错码 → `400 验证码不正确`；对码 → `200` 并且拿到 token；同一个码再用 → `400 验证码不存在或已失效`。
+注册码是「存 BCrypt 哈希 + 校验后消费」，这三点都对上了。
+
+**局限**：这只证明代码链路通，不证明真实服务商可达（465 的 TLS、授权码、发件人域名信誉都没覆盖）。
+上线前仍然要拿真实邮箱跑一次——别把这条当成 R-1 的验收。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

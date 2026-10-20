@@ -37,6 +37,14 @@
 - 线上服务器 `115.190.3.204` **不再使用**；本机开发不连任何远端库。
 - 后端通过仓库根 `.env`（gitignored）覆盖 `SPRING_DATASOURCE_URL`，不用改代码。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
+- **2026-10-20 起主力机改为 macOS**（Win 机器仍是 `D:\Projects\unipo`）。Mac 上：JDK 21 + Maven 用 brew 装
+  （`/opt/homebrew/opt/openjdk@21`，`JAVA_HOME` 写进 `~/.zshrc`），Node 在 `~/local/node-v22.12.0/bin`。
+  **Docker 用 colima 提供，本地库走 `docker compose --profile local-db`（MySQL 12306 / MinIO 9000 / 9001），
+  与服务器形态保持一致**；brew 原生 MySQL/MinIO 只作 colima 拉镜像太慢时的应急备选（端口 3306）。
+  `scripts/smoke.ps1` 在 Mac 上跑不了，用 `bash scripts/smoke.sh`（37 项，同一批断言）。
+  本地 `.env` 默认 `RATE_LIMIT_ENABLED=false`——冒烟一次注册 6 个账号，开着限流一小时跑三遍就 429；
+  要验证限流行为时临时改成 true 再重启后端。
+  Windows 专属的坑（`npm.cmd`、`.ps1` 必须 CRLF、PowerShell 输出编码）在 Mac 上不适用。
 - 全局 git 身份已配好：`LucasProX <LucasProX@users.noreply.github.com>`，凭据管理器里有 GitHub token，可直接 push。
 
 ## 3. 命令
@@ -49,9 +57,10 @@ npm.cmd run build                                   # vue-tsc -b && vite build�
 npm.cmd run lint                                    # eslint 基线（no-debugger / no-var / prefer-const 等）
 npm.cmd run gen:api                                 # 后端起着时，重生成 src/api-types.ts（改了后端 DTO 就必跑）
 ```
-本地库（Docker Desktop 必须先运行）：
+本地库（macOS 用 colima，Windows 用 Docker Desktop，命令相同）：
 ```bash
-docker compose --profile local-db up -d mysql minio   # 3306/12306 + MinIO 9000/9001
+docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
+docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
 后端（Flyway 自动建表 V1–V11）：
 ```bash

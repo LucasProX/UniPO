@@ -1,8 +1,54 @@
-# 本地开发环境（Windows）
+# 本地开发环境（Windows / macOS）
 
-> 2026-10-19 实测跑通。线上服务器 `115.190.3.204` 已停用，**所有开发都在本地 Docker + 本地 MySQL 上进行**。
+> 2026-10-19 在 Windows 上实测跑通；2026-10-20 起主力机迁到 macOS。
+> 线上服务器 `115.190.3.204` 已停用，**所有开发都在本地数据库 + 本地 MinIO 上进行**。
 
-## 1. 一次性准备（已完成）
+## 0. macOS：colima + docker compose（与服务器一致）
+
+2026-10-20 实测（macOS 26.6.2 / arm64）。**本地默认走 compose**，和服务器上的部署形态一致，
+数据库端口也保持 12306，避免「本地能跑、服务器不一样」这类问题。
+
+```bash
+brew install colima docker docker-compose jq
+# docker compose 插件不在默认搜索路径：写入 ~/.docker/config.json
+# { "cliPluginsExtraDirs": ["/opt/homebrew/lib/docker/cli-plugins"] }
+
+colima start --cpu 2 --memory 4 --disk 20     # 走代理时先 export HTTP(S)_PROXY
+docker compose --profile local-db up -d mysql minio
+```
+
+- MySQL：`127.0.0.1:12306`（容器内 3306），账号密码来自 `.env` 的 `MYSQL_USER/MYSQL_PASSWORD`
+- MinIO：`127.0.0.1:9000`（控制台 9001），`minioadmin/minioadmin`
+- Redis（可选，只有 `STATE_BACKEND=redis` 才需要）：`docker compose --profile redis up -d redis`
+
+`.env` 关键值（与服务器同一套，只有 `MYSQL_PUBLIC_BIND` 收紧到本机）：
+
+```ini
+MYSQL_PUBLIC_BIND=127.0.0.1
+MYSQL_PUBLIC_PORT=12306
+SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+MINIO_ENDPOINT=http://127.0.0.1:9000
+```
+
+启动顺序：
+
+```bash
+docker compose --profile local-db up -d mysql minio   # 首次会拉镜像；等 healthy
+cd backend && mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local   # 8080（Flyway 自动建表）
+cd frontend && npm run dev -- --host 127.0.0.1 --port 5173                        # 5173
+bash scripts/smoke.sh                                                             # 37 项
+```
+
+> **备选：brew 原生服务。** 如果 colima 拉虚拟机镜像太慢（GitHub CDN），可以临时用
+> `brew install mysql@8.4 minio && brew services start mysql@8.4 minio`，
+> 此时把 `SPRING_DATASOURCE_URL` 改成 `127.0.0.1:3306` 即可，代码不动。
+> 这是应急路径，不是默认路径——它与服务器形态不一致，容易掩盖 compose/部署脚本的问题。
+>
+> 注意 compose 的 MySQL 和 brew 的 MySQL 不能同时起（端口/数据是两套），切换前先
+> `brew services stop mysql@8.4` 或 `docker compose --profile local-db down`。
+
+
+## 1. 一次性准备（Windows，已完成）
 
 | 组件 | 版本 | 位置 |
 |---|---|---|
@@ -135,12 +181,25 @@ MINIO_PUBLIC_READ=false
 
 ## 7. 冒烟测试（一条命令验全链路）
 
+```bash
+# 后端和 MySQL/MinIO 都在跑的前提下（macOS / Linux）
+bash scripts/smoke.sh
+# 只起了 MySQL、没有 MinIO 时
+SMOKE_SKIP_UPLOAD=1 bash scripts/smoke.sh
+```
+
 ```powershell
-# 后端和 MySQL/MinIO 都在跑的前提下
+# Windows
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
 ```
 
-覆盖 17 项：验证码 → 注册 → me → 发帖 → 评论 → 点赞 → 收藏 → 签到 → 统计 → 热榜 → 必看 → 关注 → 建会话 → 发私信 → 会话列表 → 未读数 → **图片上传**。
+两份脚本检查同一批东西（37 项）：验证码 → 注册 → me → refresh / 拒绝 access 冒充 refresh →
+发帖 → 评论 → 点赞 → 收藏 → 签到 → 统计 → 热榜 → 必看 → 关注 → 建会话 → 发私信 → 会话列表 → 未读数 →
+**图片上传** → `/api/v1` 五个端点 → 游标分页走完不重不漏 → 非法游标 400 → 统一响应包（成功/错误/401）→
+时间带时区偏移 → 极简注册 → 重名 400 → 缺验证码 400 → 超长密码 400。
+
+`follow` / `conversation` 需要一个真实存在的对端用户：`ADMIN_UID` 没传时脚本会用 bootstrap 管理员
+登录一次、从 `data.user.publicUid` 取，所以换库、换机器都不用改脚本。
 
 全 PASS（`failed checks: 0`）说明 **后端 + MySQL + MinIO** 三条链路都健康；改完后端先跑这个再提交。
 

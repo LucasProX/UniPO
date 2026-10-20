@@ -142,7 +142,8 @@ JWT 默认 secret 已删（见 **R-5**）。
 **已补（2026-10-20）**：后端单测 **22 个**（`backend/src/test/java/`：JWT 两种 token 不可混用 + 短密钥拒签 + 过期拒收、
 图片文件头识别 + HTML/SVG 拒绝、时区边界、限流窗口/fail-open、三个内存 store），CI 的 `后端编译` job 改成 `mvn -B package`（跑测试）；
 前端加了 **eslint 基线**（`frontend/eslint.config.js`，只开 no-debugger / no-var / prefer-const / eqeqeq 等一小撮，`npm run lint`），CI `前端` job 加一步。
-**故意没上**：官方 recommended（几百条纯风格告警）、prettier（会和现有手写风格打架）、CI 里跑完整 `smoke.ps1`（依赖 Windows PowerShell + `curl.exe`，要移植成 bash） |
+**已补（2026-10-20，macOS 迁移）**：`scripts/smoke.ps1` 移植成 **`scripts/smoke.sh`**（bash + curl + jq，同一批 37 项断言，macOS/Linux 可直接跑），CI 的 `启动 + 接口冒烟` job 里新增一步跑它（`SMOKE_SKIP_UPLOAD=1`——CI 只起 MySQL 没有 MinIO）；脚本不再写死演示账号 id，`ADMIN_UID` 缺省时用 bootstrap 管理员登录取 `data.user.publicUid`。
+**故意没上**：官方 recommended（几百条纯风格告警）、prettier（会和现有手写风格打架） |
 | Q-6 ✅ | ~~类型手写，与后端 DTO 已漂移~~ **已上契约（2026-10-20）** | `npm run gen:api` 用 `openapi-typescript` 把 `/v3/api-docs` 生成到
 `frontend/src/api-types.ts`；`frontend/src/api-contract.ts` 用类型断言要求手写 `types.ts` 与生成类型字段名/类型完全一致，
 `npm run build` 不过就是漂移；CI 冒烟 job 会重生成并 `git diff --exit-code`。
@@ -163,7 +164,10 @@ preferSameMajor / emailNotificationEnabled / browserNotificationEnabled / remind
 2. **建 `.env`**，把 datasource 指向本地，顺手把 `R-4` 的坑封死。
 3. **D-5 去假数据 + D-4 拆前端**：这是后续所有 Web/App 工作的地基。
 4. **D-1 / D-2 分页与批量查询**：App 上线前必须做，趁数据量小改代价最低。
-5. ~~**R-1 / R-2 / R-3**~~ ✅ **已完成（2026-10-20）**：默认值翻到安全侧 + `StartupSafetyGuard` 启动拦截 + `VerificationMailer` 接上真实 SMTP。**部署前仍需**拿真实邮箱跑一遍注册，确认邮件能收到。
+5. ~~**R-1 / R-2 / R-3**~~ ✅ **已完成（2026-10-20）**：默认值翻到安全侧 + `StartupSafetyGuard` 启动拦截 + `VerificationMailer` 接上真实 SMTP。
+   **真实模式的链路已在本地用假 SMTP 验过**（2026-10-20）：错码 400 / 对码 200 / 同码重用 400，邮件里能拿到 4 位码；
+   细节见 `docs/DEVLOG.md`「本地怎么验真实模式验证码」。**仍未验的**是真实服务商的投递（465 TLS、授权码、发件域名信誉）——
+   上线前仍需拿真实邮箱跑一遍注册，确认邮件能收到。
 6. ~~**D-7 清理 notices 域**~~ ✅ **已完成（2026-10-20）**。
 7. **Q 项**：随功能迭代逐步补，优先"时区"与"错误码"（App 契约依赖）。
 

@@ -116,13 +116,6 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      # 撤销名单 / 在线状态 / 限流计数存哪。单实例 memory 够用；
-      # 起多副本（或加网关后要多实例）必须换成 redis，否则各实例状态不共享（ISSUES Q-4）。
-      # 换成 redis 时记得同时带上 --profile redis 把上面的 redis 服务拉起来。
-      STATE_BACKEND: ${STATE_BACKEND:-memory}
-      REDIS_HOST: ${REDIS_HOST:-redis}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:?MINIO_ENDPOINT is required in .env}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT is required in .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required in .env}
