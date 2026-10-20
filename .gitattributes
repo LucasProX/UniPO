@@ -1,1 +1,4 @@
 *.sh text eol=lf
+# PowerShell 5.1 解析 LF-only 的 .ps1 会静默出错（见 AGENTS.md §8），
+# 所以让 checkout 出来的 .ps1 一定是 CRLF，Linux CI 上也一样。
+*.ps1 text eol=crlf
