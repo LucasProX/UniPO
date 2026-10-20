@@ -61,8 +61,14 @@ public class AuthController {
         return ApiResponse.ok(authService.login(request));
     }
 
+    @PostMapping("/refresh")
+    public ApiResponse<AuthDtos.AuthResponse> refresh(@Valid @RequestBody AuthDtos.RefreshRequest request) {
+        return ApiResponse.ok(authService.refresh(request.refreshToken()));
+    }
+
     @PostMapping("/logout")
-    public ApiResponse<Boolean> logout(HttpServletRequest request) {
+    public ApiResponse<Boolean> logout(HttpServletRequest request,
+                                          @RequestBody(required = false) AuthDtos.LogoutRequest body) {
         Long currentUserId = null;
         try {
             currentUserId = SecurityUtils.currentUser().id();
@@ -73,6 +79,14 @@ public class AuthController {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             tokenBlacklistService.revoke(token, jwtService.expiresAt(token));
+        }
+        // refresh token 也拉黑，否则退出登录后它还能换出一对新的 access token。
+        if (body != null && body.refreshToken() != null && !body.refreshToken().isBlank()) {
+            try {
+                tokenBlacklistService.revoke(body.refreshToken(), jwtService.expiresAt(body.refreshToken()));
+            } catch (RuntimeException ignored) {
+                // 已经过期或格式不对的 refresh token 不用拉黑，本来也用不了。
+            }
         }
         if (currentUserId != null) {
             authService.logout(currentUserId);

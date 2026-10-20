@@ -89,7 +89,11 @@ app:
     # 缺失/还是示例值/短于 32 字符时 StartupSafetyGuard 会拒绝启动（见 config/StartupSafetyGuard.java）。
     # 本地开发由 application-local.yml 提供专用值，不用配这个。
     secret: ${JWT_SECRET:}
-    expiration-minutes: ${JWT_EXPIRATION_MINUTES:10080}
+    # access token 有效期（分钟）。故意短——过期后用 refresh token 换新的（POST /api/auth/refresh），
+    # 不再像以前那样一签就是 7 天。
+    expiration-minutes: ${JWT_EXPIRATION_MINUTES:120}
+    # refresh token 有效期（分钟），默认 14 天。只在换 token 和退出登录时用到。
+    refresh-expiration-minutes: ${JWT_REFRESH_EXPIRATION_MINUTES:20160}
   bootstrap:
     admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin@biecuoguo.local}
     # 只在管理员账号「不存在」时用来创建一次；已存在则不再读取，不会覆盖已有密码。

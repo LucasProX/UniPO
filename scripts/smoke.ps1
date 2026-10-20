@@ -54,6 +54,16 @@ if (-not $tok) {
 }
 Check 'me' (CallApi 'GET' "$Base/api/auth/me" $null $tok)
 
+# refresh token：注册/登录返回里的 refreshToken 能换出新 access；access token 不能拿去换（typ 隔离）
+$refreshTok = $null
+try { $refreshTok = ($r.body | ConvertFrom-Json).data.refreshToken } catch {}
+$refreshed = CallApi 'POST' "$Base/api/v1/auth/refresh" @{ refreshToken = $refreshTok } $null
+Check 'refresh' $refreshed
+$newTok = $null
+try { $newTok = ($refreshed.body | ConvertFrom-Json).data.token } catch {}
+if ($newTok) { Check 'refresh-me' (CallApi 'GET' "$Base/api/auth/me" $null $newTok) } else { $script:fail++; 'FAIL refresh-no-token' }
+Check 'refresh-rejects-access' (CallApi 'POST' "$Base/api/v1/auth/refresh" @{ refreshToken = $tok } $null) '401'
+
 $r = CallApi 'POST' "$Base/api/posts" @{ board='school'; title='Smoke test post'; content='Created by scripts/smoke.ps1.'; tags=@('smoke') } $tok
 Check 'create-post' $r
 $postId = $null

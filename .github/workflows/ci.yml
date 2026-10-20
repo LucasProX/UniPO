@@ -148,6 +148,17 @@ jobs:
           echo "$missing" | tail -n 1 | grep -q '^404$' \
             || { echo "::error::业务错误应当配 HTTP 404：$missing"; exit 1; }
 
+          refresh=$(echo "$login" | sed -n 's/.*"refreshToken":"\([^"]*\)".*/\1/p')
+          [ -n "$refresh" ] || { echo "::error::登录响应里没有 refreshToken"; exit 1; }
+          renewed=$(curl -fsS -X POST "$base/api/v1/auth/refresh" \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$refresh\"}")
+          echo "$renewed" | grep -q '"code":"OK"' || { echo "::error::refresh token 换不出新 access：$renewed"; exit 1; }
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/api/v1/auth/refresh" \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$token\"}")
+          [ "$code" = "401" ] || { echo "::error::access token 不该能当 refresh token 用，实际 $code"; exit 1; }
+
           echo "接口冒烟全部通过"
       - name: 失败时打印后端日志
         if: failure()

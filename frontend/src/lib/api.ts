@@ -20,6 +20,8 @@ const publicApi = axios.create({ baseURL: API_PREFIX });
 // 仅 DEV 生效：vite 代理不可用时直连后端，避免把跨域问题当成接口失败
 const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api/v1' });
 const TOKEN_KEY = 'bcg_token';
+/** refresh token：只用来换新的 access token，不参与业务请求头。 */
+const REFRESH_TOKEN_KEY = 'bcg_refresh_token';
 
 function isUsableToken(token: string | null | undefined) {
   if (!token) return false;
@@ -40,17 +42,63 @@ export function hasAuthToken() {
   return Boolean(authToken());
 }
 
-export function saveAuthToken(token: string) {
+export function saveAuthToken(token: string, refreshToken?: string | null) {
   if (!isUsableToken(token)) {
     localStorage.removeItem(TOKEN_KEY);
     throw new Error('登录返回的 token 无效，请重新登录');
   }
   localStorage.setItem(TOKEN_KEY, token.trim());
+  if (refreshToken && isUsableToken(refreshToken)) {
+    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken.trim());
+  } else {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+  }
+}
+
+export function authRefreshToken() {
+  const token = localStorage.getItem(REFRESH_TOKEN_KEY);
+  if (!isUsableToken(token)) {
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    return '';
+  }
+  return token!.trim();
 }
 
 export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
+
+/**
+ * 单飞刷新：同一时刻只发一个 /auth/refresh。
+ *
+ * 首屏经常同时打七八个接口，access token 一过期它们会一起 401；
+ * 各自去刷新的话服务端会收到一串重复请求（还都带着同一个 refresh token）。
+ * 这里用模块级 Promise 合并：谁先到谁发，后来的等同一个结果。
+ */
+let refreshing: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = authRefreshToken();
+  if (!refreshToken) return false;
+  if (!refreshing) {
+    refreshing = publicApi
+      .post('/auth/refresh', { refreshToken })
+      .then((response) => {
+        const data = response.data?.data as { token?: string; refreshToken?: string } | undefined;
+        if (!data?.token) return false;
+        saveAuthToken(data.token, data.refreshToken || refreshToken);
+        return true;
+      })
+      .catch(() => false)
+      .finally(() => {
+        refreshing = null;
+      });
+  }
+  return refreshing;
+}
+
+type RetryableConfig = { _retriedAuth?: boolean; url?: string; headers?: Record<string, unknown> };
 
 function attachToken(client: AxiosInstance) {
   client.interceptors.request.use((config) => {
@@ -62,10 +110,23 @@ function attachToken(client: AxiosInstance) {
   });
   client.interceptors.response.use(
     (response) => response,
-    (error) => {
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        clearAuthToken();
+    async (error) => {
+      if (!axios.isAxiosError(error) || error.response?.status !== 401) {
+        return Promise.reject(error);
       }
+      const config = error.config as (typeof error.config & RetryableConfig) | undefined;
+      const url = config?.url || '';
+      const worthRetrying = Boolean(config) && !config!._retriedAuth
+        && !url.includes('/auth/refresh')
+        && !url.includes('/auth/login')
+        && !url.includes('/auth/logout');
+      if (worthRetrying && (await refreshAccessToken())) {
+        config!._retriedAuth = true;
+        config!.headers = config!.headers || {};
+        (config!.headers as Record<string, unknown>).Authorization = `Bearer ${authToken()}`;
+        return client.request(config!);
+      }
+      clearAuthToken();
       return Promise.reject(error);
     }
   );
@@ -116,7 +177,7 @@ export function isAuthError(error: unknown) {
  * 「密码错」和「网络断了」——现在两者都只是 message 不一样，
  * 而 message 是用来展示的，不该拿来做分支。
  */
-async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; user: UserProfile }> }>) {
+async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; refreshToken?: string; expiresInSeconds?: number; user: UserProfile }> }>) {
   try {
     return await unwrap(request);
   } catch (error) {
@@ -193,10 +254,10 @@ export const campusApi = {
 
 export const authApi = {
   login: loginWithFallback,
-  logout: () => unwrap<boolean>(api.post('/auth/logout')),
+  logout: (refreshToken?: string) => unwrap<boolean>(api.post('/auth/logout', refreshToken ? { refreshToken } : {})),
   heartbeat: () => unwrap<boolean>(api.post('/auth/heartbeat')),
   register: (payload: { email: string; password: string; confirmPassword: string; nickname: string; verificationCode: string }) =>
-    unwrap<{ token: string; user: UserProfile }>(publicApi.post('/auth/register', payload)),
+    unwrap<{ token: string; refreshToken?: string; expiresInSeconds?: number; user: UserProfile }>(publicApi.post('/auth/register', payload)),
   requestVerificationCode: (payload: { email: string; purpose: 'register' | 'reset-password' }) =>
     unwrap<boolean>(publicApi.post('/auth/verification-code', payload)),
   emailAvailability: (email: string, purpose: 'register' | 'reset-password' = 'register') =>

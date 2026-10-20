@@ -90,6 +90,12 @@ docker compose up -d --build
   存进 MinIO 的扩展名和 `Content-Type` 都由识别结果决定。以前只看请求头是不是 `image/` 开头，
   一个 HTML 或带 `<script>` 的 SVG 改个请求头就能存进来，再被 `/api/media/{id}/content` 原样吐回浏览器。
   **故意不支持 SVG**（它是 XML，能带脚本），也不要把校验降级成「看后缀」。上限由 `MAX_UPLOAD_FILE_SIZE` 控制，默认 5MB。
+- **两种 token，靠 JWT 的 `typ` 声明区分**（2026-10-20）：access 默认 120 分钟（`JWT_EXPIRATION_MINUTES`），只能调接口；
+  refresh 默认 14 天（`JWT_REFRESH_EXPIRATION_MINUTES`），只能调 `POST /api/auth/refresh`。
+  `security/JwtService.java` 的 `parse()` 只认 access、`parseRefresh()` 只认 refresh，**混用一律 401**——
+  不要为了「少写一个方法」把类型检查去掉，那等于把 14 天的 token 变成能直接调接口的通行证。
+  退出登录会把 access 和 refresh 一起写进 `TokenBlacklistService`；**刷新刻意不轮换** refresh token（理由见 DEVLOG：
+  黑名单是进程内的，轮换会在多标签页并发刷新 / 多实例部署时把用户误踢下线）。
 - **限流规则表在 `web/RateLimitFilter.java`**：按「来源 IP + 接口」做固定窗口，命中回 429 + `Retry-After`。
   新增「能被刷出成本」的接口（发邮件、上传、写库）要往 `RULES` 里加一条。
   数值是「挡脚本」不是「精确配额」，本地连着跑三四遍 `smoke.ps1` 有可能撞到，等窗口过去或临时 `RATE_LIMIT_ENABLED=false`。
@@ -110,7 +116,10 @@ docker compose up -d --build
 - 纯展示组件放 `frontend/src/components/`，共享纯函数放 `frontend/src/lib/*.ts`（**不能 import Vue**，否则 App 端复用不了）。
 - 类型在 `frontend/src/lib/types.ts` 手写，与后端 DTO 已开始漂移。接口改动要两边一起改，直到换 OpenAPI 生成。
 - **禁止新增 fallback 假数据**。`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已于 2026-10-19 删除，首屏现在是 `feedLoading` / `feedError`（带重试按钮）/ 空态三态。接口失败必须显式报错，不能假装有数据。`fallbackAvatar()` / `fallbackCover()` 是占位图生成器，不算假数据，可继续用。
-- token 存 `localStorage['bcg_token']`；`localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
+- token 存 `localStorage['bcg_token']`（access）+ `localStorage['bcg_refresh_token']`（refresh）；
+  `lib/api.ts` 的响应拦截器在 401 时**单飞**刷新并重放原请求（同一时刻只发一个 `/auth/refresh`），
+  刷新失败才清 token 并抛 401 —— 新增请求不需要自己处理刷新。
+  `localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
 - 唯一 `v-html` 在 `components/post/PostDetailModal.vue`，内容统一过 `lib/richText.ts` 的 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
 ## 7. 硬性禁止（安全红线）

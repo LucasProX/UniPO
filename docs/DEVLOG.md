@@ -2196,6 +2196,61 @@ Ubuntu 上的 GNU grep 没有这个文本模式转换，同一条命令在 CI �
 但 workflow 本身还没在 GitHub 上真正跑过一次——runner 环境、MySQL service 容器、
 `setup-java` 的缓存放行都得等第一次 push 才知道。
  有特殊含义**：`
+## 2026-10-20 加了 refresh token，然后发现「退出登录」根本没用
+
+需求很直接：现在 token 一签 7 天，偷到就是 7 天会话；过期了还得重新登录。改成短 access + 长 refresh。
+
+### 先说两个自己挖的坑
+
+**坑一：改完默认值，行为一点没变。**
+
+`application.yml` 里把 `expiration-minutes` 的默认值从 `10080` 改成 `120`，重启，登录，解 token：
+
+```text
+access typ: access | 有效期分钟: 10080
+```
+
+十分钟后想起来仓库根有个 `.env`（gitignored，`spring.config.import: optional:file:../.env` 读的），
+里面赫然一行 `JWT_EXPIRATION_MINUTES=10080`。环境变量/`.env` 比 yml 里的默认值优先，
+**yml 里那个 120 只是「没人配的时候」的值**。这和之前 D-3 那次踩的是同一个坑：
+`application-local.yml` 里的字面量 `seed-demo-data: true` 压过了 yml 的占位符。
+
+验证这种改动不能「跑一下看看」，得**算出来**：解 JWT 的 payload，`(exp - iat) / 60` 必须等于预期分钟数。
+
+**坑二：退出登录之后，refresh token 还能换出新 access。**
+
+端到端脚本里第 11 条：`logout 后 refresh 换 token（应 401）` → 结果 **200**。
+
+原因很蠢：`AuthController.logout` 拉黑的是 `Authorization` 头里的 access token，
+而 `AuthService.refresh()` 从头到尾没查过黑名单——它只验签名和过期时间。
+于是「退出登录」在服务端拉黑了一个 120 分钟就自然失效的 token，却放过了那个能活 14 天的。
+
+补法就是在 `refresh()` 最前面加一句 `tokenBlacklistService.isRevoked(refreshToken)`。
+这类 bug 天然不会在有状态测试里暴露，**必须真的走一遍「登录 → 退出 → 再刷新」这个顺序**。
+
+### 为什么不做 refresh 轮换
+
+标准做法是每次刷新都换一个新的 refresh token、把旧的立刻作废。我没做，理由：
+
+轮换要求「旧 token 一旦用过就永久失效」，而这张黑名单是**进程内**的 `ConcurrentHashMap`（见 ISSUES Q-4）。
+放到真实场景里会出两种误伤：
+
+1. **多标签页**：两个页面同时 401，各自拿同一个 refresh token 去换；A 成功并作废旧 token，
+   B 拿着刚被作废的 token 换失败 → B 那个页面被踢下线。前端可以做单飞刷新缓解，但两个标签页是两套 JS 上下文，管不到一起。
+2. **多实例**：A 实例轮换、B 实例不知道，请求一落到 B 就 401。
+
+而收益呢？refresh token 被偷，等价于「已经登录了」。轮换能缩小窗口，但前提是**作废这件事本身可靠**。
+所以在拿到共享存储之前，轮换带来的净收益是负的——先把短 access 落地，轮换等 Redis 那一步再做。
+
+这个决定写进了 AGENTS.md §4，别哪天顺手「补上了轮换」又把多标签页搞坏。
+
+### 顺带补的
+
+- 前端不是「存两个 token」就完了：401 时要**单飞**刷新再重放原请求。首屏七八个请求一起 401 的话，
+  各自去刷新会打出一串重复的 `/auth/refresh`。用模块级 Promise 合并，谁先到谁发。
+- `smoke.ps1` 从 34 项加到 37 项（refresh / 用刷新后的 token 调 /me / access 冒充 refresh 必须 401），
+  CI 的 bash 冒烟也补了同样两条。两边都跑过才算数。
+
 ---
 
 ## 怎么写这篇文档` 是匹配到的内容，

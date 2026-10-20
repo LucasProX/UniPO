@@ -187,7 +187,7 @@
 
 公开：
 - `/actuator/health`、`/swagger-ui/**`、`/v3/api-docs/**`
-- `/api/auth/register`、`/login`、`/verification-code`、`/verification-code/verify`、`/reset-password`、`/email-availability`、`/nickname-availability`
+- `/api/auth/register`、`/login`、`/refresh`、`/verification-code`、`/verification-code/verify`、`/reset-password`、`/email-availability`、`/nickname-availability`
 - `GET /api/categories`、`/api/tags`、`/api/schools`
 - `GET /api/posts/**`、`GET /api/options/**`
 - `GET /api/media/*/content`
@@ -197,6 +197,24 @@
 
 > 隐患：公开的 `GET /api/users/{uid}` 系列可被用于批量枚举用户；`email-availability?purpose=reset-password` 可直接判定邮箱是否注册。
 
+### 9.1 两种 token（2026-10-20 起）
+
+`POST /api/auth/login`、`/register`、`/refresh` 都返回同一个结构：
+
+```json
+{"code":"OK","data":{"token":"<access>","refreshToken":"<refresh>","expiresInSeconds":7200,"user":{...}}}
+```
+
+| | 有效期 | 用途 | 存哪 |
+|---|---|---|---|
+| access（`typ=access`） | `JWT_EXPIRATION_MINUTES`，默认 120 分钟 | 放进 `Authorization: Bearer` 调接口 | Web：`localStorage['bcg_token']` |
+| refresh（`typ=refresh`） | `JWT_REFRESH_EXPIRATION_MINUTES`，默认 20160 分钟（14 天） | 只能调 `POST /api/auth/refresh` | Web：`localStorage['bcg_refresh_token']` |
+
+- **两种 token 不能混用**：拿 refresh 当 access 调业务接口是 401，拿 access 去 `/auth/refresh` 也是 401。
+- `expiresInSeconds` 是 access 的剩余秒数，客户端可据此提前刷新，不必等 401。
+- `POST /api/auth/logout` 可选带 `{"refreshToken":"..."}`，把 access 与 refresh 一起拉黑；不带也能退出（只拉黑 access）。
+- 刷新**不轮换** refresh token：换出来的 refresh 还是原来那一个，直到过期或退出登录。原因见 DEVLOG 同名条目（拉黑表是进程内的，轮换会在多标签页/多实例下误踢人）。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |
@@ -205,7 +223,7 @@
 | `campusApi.boards()` | `GET /api/posts/boards` |
 | `campusApi.hotToday()` / `dontMiss()` | 同名接口 |
 | `postApi.create / like / favorite / comments` | `/api/posts/**` |
-| `authApi.login / me / heartbeat` | `/api/auth/**` |
+| `authApi.login / me / heartbeat / logout` | `/api/auth/**` |
 | `userApi.profile / stats / checkIn` | `/api/users/me/**` |
 | `mediaApi.upload` | `POST /api/media/upload` |
 | 会话轮询 | `GET /api/messages/conversations`（3s） |
@@ -217,6 +235,7 @@
 
 1. `GET /api/posts/interaction-notices` 在公开白名单里但方法要求登录 -> 401 而非 403。
 2. 评论点赞有两套路径（见 §8）。
-3. 全部列表无分页；App 端无法做游标滚动，必须后端补。
-4. 没有接口版本号，App 发布后无法安全演进。
+3. ~~全部列表无分页~~ 已补：`GET /api/v1/posts/page` 用游标分页（旧的 `/api/posts` 全量列表仍保留）。
+4. ~~没有接口版本号~~ 已补：`/api/v1/**`，见 §1 的版本化说明。
+5. refresh token **不轮换**，也不落库——进程内黑名单重启即清空（见 ISSUES Q-4）。
 5. 错误体没有业务错误码，App 只能靠中文 message 判断类型。

@@ -13,7 +13,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  public record AppProperties(Cors cors, Jwt jwt, Bootstrap bootstrap, Minio minio, Verification verification,
                              Long defaultSchoolId) {
     public record Cors(String allowedOrigins) {}
-    public record Jwt(String secret, long expirationMinutes) {}
+    /**
+     * JWT 配置。
+     *
+     * <p>{@code expirationMinutes} 是 access token 的有效期（默认 120 分钟），
+     * {@code refreshExpirationMinutes} 是 refresh token 的（默认 20160 分钟 = 14 天）。
+     * access 故意短：客户端用 refresh 换新的，见 {@code POST /api/auth/refresh}。
+     */
+    public record Jwt(String secret, long expirationMinutes, long refreshExpirationMinutes) {}
     /**
      * 启动引导配置。
      *

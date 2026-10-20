@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
-import { apiErrorMessage, authApi, campusApi, clearAuthToken, hasAuthToken, isAuthError, saveAuthToken } from '../lib/api';
+import { apiErrorMessage, authApi, authRefreshToken, campusApi, clearAuthToken, hasAuthToken, isAuthError, saveAuthToken } from '../lib/api';
 import { describeError } from '../lib/postHelpers';
 import type { UserProfile, UserStats } from '../types';
 import { useFeedStore } from './feed';
@@ -263,8 +263,12 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** 登录/注册成功后的公共收尾；onSuccess 由调用方注入（默认刷新全站数据） */
-  async function finishAuth(token: string, user: UserProfile, onSuccess?: () => Promise<void> | void) {
-    saveAuthToken(token);
+  async function finishAuth(
+    session: { token: string; refreshToken?: string | null },
+    user: UserProfile,
+    onSuccess?: () => Promise<void> | void
+  ) {
+    saveAuthToken(session.token, session.refreshToken);
     isAuthenticated.value = true;
     currentUser.value = user;
     startPresenceHeartbeat();
@@ -284,14 +288,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (!password) { authErrors.value.login.password = '请输入密码'; hasError = true; }
     if (hasError) return;
     authSubmitting.value = true;
-    let result: { token: string; user: UserProfile };
+    let result: { token: string; refreshToken?: string; user: UserProfile };
     try {
       result = await authApi.login(email, password);
     } catch (error) {
       authSubmitting.value = false;
       return showNotice(`登录失败：${error instanceof Error ? error.message : '登录失败'}`, 'error');
     }
-    await finishAuth(result.token, result.user, onSuccess || defaultOnSuccess);
+    await finishAuth(result, result.user, onSuccess || defaultOnSuccess);
   }
 
   async function register(onSuccess?: () => Promise<void> | void) {
@@ -309,7 +313,7 @@ export const useAuthStore = defineStore('auth', () => {
     authSubmitting.value = true;
     try {
       const result = await authApi.register(payload);
-      await finishAuth(result.token, result.user, onSuccess || defaultOnSuccess);
+      await finishAuth(result, result.user, onSuccess || defaultOnSuccess);
     } catch (error) {
       authSubmitting.value = false;
       showNotice(`注册失败：${apiErrorMessage(error, '注册失败')}`, 'error');
@@ -408,6 +412,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** 退出登录：清 token、停心跳、重置所有域数据 */
   async function logout() {
+    // 先通知服务端（拉黑 access + refresh），再清本地——顺序反了请求就不带 Authorization 头了。
+    const refreshToken = authRefreshToken();
+    try {
+      await authApi.logout(refreshToken);
+    } catch {
+      // 网络失败也照样退出本地登录态；服务端那份 token 到过期时间自然失效。
+    }
     clearAuthToken();
     isAuthenticated.value = false;
     currentUser.value = guestUser();

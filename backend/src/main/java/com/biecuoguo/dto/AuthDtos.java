@@ -38,7 +38,18 @@ public final class AuthDtos {
             @NotBlank String password
     ) {}
 
-    public record AuthResponse(String token, UserProfile user) {}
+    /**
+     * 登录/注册/刷新 的统一返回。
+     *
+     * <p>{@code token} 是 access token（短），{@code refreshToken} 是换新 token 用的长 token，
+     * {@code expiresInSeconds} 是 access token 的剩余秒数，客户端可以据此提前刷新。
+     */
+    public record AuthResponse(String token, String refreshToken, long expiresInSeconds, UserProfile user) {}
+
+    public record RefreshRequest(@NotBlank String refreshToken) {}
+
+    /** 退出登录时可选地带上 refresh token，一起拉黑。 */
+    public record LogoutRequest(String refreshToken) {}
 
     public record VerificationRequest(@Email @NotBlank String email, @NotBlank @Pattern(regexp = "register|reset-password") String purpose) {}
 

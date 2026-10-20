@@ -71,7 +71,8 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 
 ## 5. 认证方案
 
-现状：单一 access token，10080 分钟，localStorage，登出靠内存黑名单。
+现状（2026-10-20 已升级）：access token 120 分钟 + refresh token 14 天，都是 JWT（`typ` 区分），Web 存 `localStorage`，
+登出把两者一起写进内存黑名单。**还没做**：refresh 轮换、`httpOnly` cookie、`refresh_tokens` 落库、`/auth/logout-all`、多设备管理。
 
 目标：
 | 项 | Web | App |

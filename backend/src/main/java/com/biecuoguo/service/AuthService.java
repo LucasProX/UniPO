@@ -10,8 +10,10 @@ import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.mapper.UserPreferenceMapper;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.security.JwtService;
+import com.biecuoguo.security.TokenBlacklistService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,15 +38,17 @@ public class AuthService implements CommandLineRunner {
     private final VerificationService verificationService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final TokenBlacklistService tokenBlacklistService;
     private final PresenceService presenceService;
 
-    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, PresenceService presenceService) {
+    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService) {
         this.properties = properties;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.verificationService = verificationService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.tokenBlacklistService = tokenBlacklistService;
         this.presenceService = presenceService;
     }
 
@@ -97,9 +101,48 @@ public class AuthService implements CommandLineRunner {
         user.setLastLoginAt(now);
         userMapper.insert(user);
         UserPreference preference = createDefaultPreference(user.getId(), now);
-        String token = jwtService.createToken(new CurrentUser(user.getId(), user.getEmail(), user.getRole()));
         presenceService.markOnline(user.getId());
-        return new AuthDtos.AuthResponse(token, UserProfile.from(user, preference, true));
+        return issueTokens(user, preference);
+    }
+
+    /**
+     * 用 refresh token 换一对新 token。
+     *
+     * <p>刻意**不做轮换**（旧 refresh token 换完仍然有效，直到过期或退出登录被拉黑）。
+     * 轮换需要「旧 token 立刻作废」，而拉黑表是进程内 ConcurrentHashMap（见 ISSUES Q-4），
+     * 于是多标签页并发刷新、或多实例部署时会出现「A 刚刷新成功，B 拿刚被作废的旧 token 刷新失败」，
+     * 用户莫名其妙被踢下线。而 refresh token 的安全边界本来就等价于「已登录」，
+     * 轮换带来的收益要等有共享存储（Redis）之后才值得。
+     */
+    public AuthDtos.AuthResponse refresh(String refreshToken) {
+        // 退出登录会把 refresh token 也写进拉黑表，这里必须先查——否则「退出登录」只是本地清了个 key，
+        // 手里留着 refresh token 的人还能一直换出新的 access token。
+        if (tokenBlacklistService.isRevoked(refreshToken)) {
+            throw new InsufficientAuthenticationException("refresh token 已失效");
+        }
+        CurrentUser claims;
+        try {
+            claims = jwtService.parseRefresh(refreshToken);
+        } catch (RuntimeException ex) {
+            // 过期 / 签名不对 / 拿 access token 来冒充，一律当成「未登录」。
+            throw new InsufficientAuthenticationException("refresh token 无效或已过期");
+        }
+        User user = userMapper.selectById(claims.id());
+        if (user == null || !"active".equals(user.getStatus())) {
+            throw new InsufficientAuthenticationException("账号不存在或已被禁用");
+        }
+        return issueTokens(user, preferenceFor(user.getId()));
+    }
+
+    /** 签发 access + refresh 并组装返回。登录、注册、刷新三条路径都走这里，别各写一遍。 */
+    private AuthDtos.AuthResponse issueTokens(User user, UserPreference preference) {
+        CurrentUser current = new CurrentUser(user.getId(), user.getEmail(), user.getRole());
+        return new AuthDtos.AuthResponse(
+                jwtService.createToken(current),
+                jwtService.createRefreshToken(current),
+                jwtService.accessExpiresInSeconds(),
+                UserProfile.from(user, preference, true)
+        );
     }
 
     /**
@@ -210,9 +253,8 @@ public class AuthService implements CommandLineRunner {
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
         UserPreference preference = preferenceFor(user.getId());
-        String token = jwtService.createToken(new CurrentUser(user.getId(), user.getEmail(), user.getRole()));
         presenceService.markOnline(user.getId());
-        return new AuthDtos.AuthResponse(token, UserProfile.from(user, preference, true));
+        return issueTokens(user, preference);
     }
 
     public UserProfile me(Long userId) {
