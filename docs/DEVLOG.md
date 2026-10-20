@@ -4228,6 +4228,27 @@ MVP 页面：概览（含近 7 天柱状 + 最近审计）、内容审核、轮�
 验证：后台 API 全部 200；PATCH 帖子置顶后 audit-logs 出现记录；报表返回 7 天补零序列；
 监控返回 UP + 堆内存 + 连接数；mvn test 43 绿；前端 lint/build 通过。
 
+## 2026-10-20 后台页面渲染了两遍：RouterView 深度踩坑
+
+后台做完后截图检查，发现整个 AdminShell 被渲染了两次：两个侧边栏、两个顶栏叠在一起。
+第一反应是 App.vue 里 v-if/v-else 写错、或者 HMR 没清干净，但 DOM 显示第二个 shell 在第一个的 `<main>` 里面——
+也就是「子路由渲染成了父组件」。
+
+原因：AdminShell 是 App.vue 直接渲染的，不在任何 RouterView 里。它内部的 `<RouterView>` 深度是 0，
+而 `/admin` 的 matched 记录是 [AdminShell, 子页面]，深度 0 取到的是 AdminShell 自己 → 无限嵌套。
+主站没这个问题，因为 AppShell 内部的 RouterView 虽然也是深度 0，但 `/` 的 matched[0] 是 HomeView，不是 AppShell。
+
+两个修法：把 App.vue 改成顶层 `<RouterView>` 并让布局也走路由（更正统，但要重排全部路由）；
+或者在 AdminShell 里直接渲染 matched 的最后一条：
+
+    const adminView = computed(() => route.matched.at(-1)?.components?.default);
+    <component :is="adminView" />
+
+选了后者，改动最小，而且后台子路由都没有 props。**注意**：如果以后子路由需要 props，
+要换成 RouterView 并保证深度正确，或者把布局也纳入路由层级。
+
+验证：1440×900 与 756 宽各截一次图，侧边栏/顶栏只出现一次；六个后台页面文本都能正常渲染。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

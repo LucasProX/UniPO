@@ -49,6 +49,15 @@ const navGroups = [
 ];
 
 const pageTitle = computed(() => (route.meta.title as string) || '管理后台');
+
+/**
+ * 直接渲染匹配到的子路由组件，而不是用 <RouterView />。
+ *
+ * 原因：AdminShell 由 App.vue 直接渲染，不在另一个 RouterView 里，
+ * 它内部的 RouterView 深度是 0，会再次渲染父记录（AdminShell 自己）导致无限嵌套。
+ * 取 matched 的最后一条就是当前子页面（lazy 组件在导航完成时已经解析好）。
+ */
+const adminView = computed(() => route.matched[route.matched.length - 1]?.components?.default);
 const roleLabel = computed(() => auth.currentUser.role || 'GUEST');
 
 onMounted(async () => {
@@ -136,7 +145,7 @@ onMounted(async () => {
         </header>
 
         <main class="mx-auto w-full max-w-[1240px] px-4 py-6 lg:px-8">
-          <RouterView />
+          <component :is="adminView" />
         </main>
       </div>
     </div>
