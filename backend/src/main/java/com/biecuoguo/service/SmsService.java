@@ -24,7 +24,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class SmsService {
 
     private static final Logger log = LoggerFactory.getLogger(SmsService.class);
-    private static final String MOCK_CODE = "123456";
+    private static final String MOCK_CODE = "1234";
     private static final int EXPIRE_MINUTES = 5;
 
     private final SmsCodeMapper smsCodeMapper;
@@ -58,17 +58,18 @@ public class SmsService {
         entity.setConsumed(false);
         entity.setCreatedAt(now);
         smsCodeMapper.insert(entity);
-        log.info("短信 mock 模式：phone={} code={}（仅本地，不会真的发送）", phone, code);
+        log.info("短信 mock 模式：phone={} code={}（仅本地，不会真的发送；任意 4 位数字都通过）", phone, code);
         return phone;
     }
 
     @Transactional
     public void verify(String rawPhone, String code) {
         String phone = normalize(rawPhone);
-        if (code == null || !code.matches("\\d{6}")) {
+        if (code == null || !code.matches("\\d{4}")) {
             throw new IllegalArgumentException("验证码格式不正确");
         }
-        if (mock && MOCK_CODE.equals(code)) {
+        // 本地 mock 模式：任意 4 位数字都通过，方便联调；真实模式走下面的哈希校验。
+        if (mock) {
             return;
         }
         SmsCode entity = smsCodeMapper.selectOne(new LambdaQueryWrapper<SmsCode>()

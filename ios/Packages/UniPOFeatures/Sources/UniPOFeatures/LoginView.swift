@@ -2,20 +2,59 @@ import SwiftUI
 import UniPOCore
 import UniPOUI
 
+/// 本机号码读取。
+///
+/// iOS **没有**原生 API 能直接拿到本机手机号；国内 App 的「一键登录」都依赖运营商
+/// 号码认证 SDK（移动/联通/电信）。这里留一个 provider：DEBUG 返回演示号码，
+/// Release 返回 nil -> 自动落到手机号验证码登录。接入运营商 SDK 后只改这里。
+enum DevicePhoneNumber {
+    static var current: String? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-no-phone") { return nil }
+        return "15500008888"
+        #else
+        return nil
+        #endif
+    }
+
+    static func masked(_ raw: String) -> String {
+        let digits = raw.filter(\.isNumber)
+        guard digits.count == 11 else { return "+86 \(raw)" }
+        return "+86 \(digits.prefix(3))****\(digits.suffix(4))"
+    }
+}
+
 struct LoginView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var mode: Mode = .choice
+    @State private var mode: Mode
+    @State private var devicePhone: String?
     @State private var phone = ""
     @State private var code = ""
     @State private var countdown = 0
-    @State private var showOneTapInfo = false
+    @State private var agreed = true
+    @State private var agreement: Agreement?
     @State private var appeared = false
     @State private var countdownTask: Task<Void, Never>?
 
     private enum Mode {
-        case choice, phone
+        case oneTap, phone
+    }
+
+    enum Agreement: String, Identifiable {
+        case terms, privacy
+
+        var id: String { rawValue }
+        var title: String {
+            self == .terms ? "用户协议" : "隐私政策"
+        }
+    }
+
+    init() {
+        let number = DevicePhoneNumber.current
+        _devicePhone = State(initialValue: number)
+        _mode = State(initialValue: number == nil ? .phone : .oneTap)
     }
 
     var body: some View {
@@ -24,52 +63,55 @@ struct LoginView: View {
 
             VStack(spacing: 0) {
                 topBar
-                Spacer(minLength: 12)
+                Spacer(minLength: 8)
                 brand
-                Spacer(minLength: 20)
+                Spacer(minLength: 18)
 
                 Group {
-                    if mode == .choice {
-                        choiceContent
-                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    if mode == .oneTap, let devicePhone {
+                        oneTapContent(number: devicePhone)
                     } else {
                         phoneContent
-                            .transition(.opacity.combined(with: .move(edge: .trailing)))
                     }
                 }
                 .padding(.horizontal, 28)
 
-                Spacer(minLength: 24)
+                Spacer(minLength: 18)
+                agreementRow
                 footer
             }
-            .padding(.bottom, 18)
+            .padding(.bottom, 14)
         }
         .preferredColorScheme(.dark)
         .onAppear {
             withAnimation(.easeOut(duration: 0.7)) { appeared = true }
         }
         .onDisappear { countdownTask?.cancel() }
+        .sheet(item: $agreement) { kind in
+            AgreementSheet(kind: kind)
+                .presentationDetents([.medium, .large])
+                .presentationCornerRadius(28)
+                .presentationBackground(Color(hex: 0x0B0F17))
+        }
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-phone-form") {
                 mode = .phone
             }
+            if ProcessInfo.processInfo.arguments.contains("-agreement") {
+                agreement = .terms
+            }
+            if ProcessInfo.processInfo.arguments.contains("-one-tap") {
+                await oneTapLogin(devicePhone ?? "15500008888")
+            }
             if ProcessInfo.processInfo.arguments.contains("-sms-login") {
                 mode = .phone
                 phone = "13800138000"
-                code = "123456"
+                code = "1234"
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 await auth.smsLogin(phone: phone, code: code)
             }
             #endif
-        }
-        .alert("本机号码一键登录", isPresented: $showOneTapInfo) {
-            Button("使用手机号登录") {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { mode = .phone }
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("一键登录需要接入运营商号码认证服务（移动/联通/电信），当前版本还没接入。先用手机号验证码登录，体验是一样的。")
         }
     }
 
@@ -109,88 +151,76 @@ struct LoginView: View {
                 .foregroundStyle(.white)
                 .tracking(1)
 
-            Text("大学四年的成长路线图")
+            Text("大学四年，别输在信息差上")
                 .font(.uniBody(13))
                 .foregroundStyle(.white.opacity(0.5))
         }
     }
 
-    private var choiceContent: some View {
-        VStack(spacing: 12) {
+    private func oneTapContent(number: String) -> some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 8) {
+                Text("本机号码")
+                    .font(.uniLabel(11))
+                    .foregroundStyle(.white.opacity(0.4))
+                Text(DevicePhoneNumber.masked(number))
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                Text("使用本机号码快捷登录")
+                    .font(.uniBody(12))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(.vertical, 8)
+
             Button {
-                showOneTapInfo = true
+                Task { await oneTapLogin(number) }
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "iphone.gen3")
-                        .font(.system(size: 17, weight: .semibold))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("本机号码一键登录")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("运营商认证 · 即将接入")
-                            .font(.uniLabel(10))
-                            .opacity(0.55)
+                Group {
+                    if auth.isLoggingIn {
+                        ProgressView().tint(.black)
+                    } else {
+                        Text("一键登录")
+                            .font(.system(size: 17, weight: .semibold))
                     }
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .opacity(0.5)
                 }
                 .foregroundStyle(.black)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 15)
-                .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .buttonStyle(.plain)
+            .disabled(!agreed || auth.isLoggingIn)
+            .opacity(agreed ? 1 : 0.45)
 
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { mode = .phone }
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "number")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("手机号验证码登录")
-                        .font(.system(size: 16, weight: .semibold))
-                    Spacer()
-                    Text("推荐")
-                        .font(.uniLabel(9))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 15)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(.white.opacity(0.14), lineWidth: 1)
-                )
+                Text("不是本机号码？使用手机号验证码登录")
+                    .font(.uniLabel(11))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .underline()
             }
             .buttonStyle(.plain)
 
-            socialRow
-                .padding(.top, 8)
+            if let error = auth.errorMessage {
+                Text(error)
+                    .font(.uniLabel(12))
+                    .foregroundStyle(.red.opacity(0.9))
+            }
         }
     }
 
     private var phoneContent: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { mode = .choice }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.left")
-                    Text("返回")
-                }
-                .font(.uniLabel(12))
-                .foregroundStyle(.white.opacity(0.55))
+            VStack(alignment: .leading, spacing: 5) {
+                Text("手机号登录")
+                    .font(.system(size: 24, weight: .heavy))
+                    .foregroundStyle(.white)
+                Text("未注册的手机号会自动创建账号")
+                    .font(.uniBody(12))
+                    .foregroundStyle(.white.opacity(0.45))
             }
-            .buttonStyle(.plain)
-
-            Text("手机号登录")
-                .font(.system(size: 24, weight: .heavy))
-                .foregroundStyle(.white)
-            Text("未注册的手机号会自动创建账号")
-                .font(.uniBody(12))
-                .foregroundStyle(.white.opacity(0.45))
 
             HStack(spacing: 0) {
                 Text("+86")
@@ -216,14 +246,14 @@ struct LoginView: View {
             )
 
             HStack(spacing: 10) {
-                TextField("", text: $code, prompt: Text("6 位验证码").foregroundStyle(.white.opacity(0.35)))
+                TextField("", text: $code, prompt: Text("4 位验证码").foregroundStyle(.white.opacity(0.35)))
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .onChange(of: code) { _, newValue in
-                        code = String(newValue.filter(\.isNumber).prefix(6))
+                        code = String(newValue.filter(\.isNumber).prefix(4))
                     }
                     .frame(height: 54)
                     .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -252,7 +282,7 @@ struct LoginView: View {
             }
 
             #if DEBUG
-            Text("本地测试验证码：123456")
+            Text("本地测试：任意 4 位数字即可登录")
                 .font(.uniLabel(10))
                 .foregroundStyle(.white.opacity(0.35))
             #endif
@@ -280,48 +310,92 @@ struct LoginView: View {
                 .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(auth.isLoggingIn || phone.count != 11 || code.count != 6)
-            .opacity(phone.count == 11 && code.count == 6 ? 1 : 0.5)
+            .disabled(auth.isLoggingIn || !agreed || phone.count != 11 || code.count != 4)
+            .opacity(agreed && phone.count == 11 && code.count == 4 ? 1 : 0.5)
+
+            if devicePhone != nil {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { mode = .oneTap }
+                } label: {
+                    Text("使用本机号码一键登录")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(.white.opacity(0.45))
+                        .underline()
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+            }
+
+            socialRow
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
         }
     }
 
     private var socialRow: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 18) {
+            HStack(spacing: 20) {
                 socialButton(label: "微", name: "微信")
                 socialButton(label: "Q", name: "QQ")
             }
             Text("第三方登录即将支持")
                 .font(.uniLabel(10))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.28))
         }
-        .padding(.top, 6)
     }
 
     private func socialButton(label: String, name: String) -> some View {
         VStack(spacing: 5) {
             Text(label)
                 .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.white.opacity(0.45))
                 .frame(width: 46, height: 46)
                 .background(.white.opacity(0.06), in: Circle())
                 .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 1))
             Text(name)
                 .font(.uniLabel(9))
-                .foregroundStyle(.white.opacity(0.3))
+                .foregroundStyle(.white.opacity(0.28))
         }
         .opacity(0.75)
     }
 
-    private var footer: some View {
-        VStack(spacing: 6) {
-            Text("登录即代表同意《用户协议》与《隐私政策》")
+    private var agreementRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Button {
+                agreed.toggle()
+            } label: {
+                Image(systemName: agreed ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(agreed ? .white : .white.opacity(0.35))
+            }
+            .buttonStyle(.plain)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 0) {
+                    Text("我已阅读并同意")
+                        .foregroundStyle(.white.opacity(0.4))
+                    Button("《用户协议》") { agreement = .terms }
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text("和")
+                        .foregroundStyle(.white.opacity(0.4))
+                    Button("《隐私政策》") { agreement = .privacy }
+                        .foregroundStyle(.white.opacity(0.9))
+                }
                 .font(.uniLabel(10))
-                .foregroundStyle(.white.opacity(0.35))
-            Text("UniPO · 让大学每一步都有答案")
-                .font(.uniLabel(10))
-                .foregroundStyle(.white.opacity(0.2))
+
+                Text("未勾选将无法登录")
+                    .font(.uniLabel(9))
+                    .foregroundStyle(.white.opacity(0.22))
+            }
         }
+        .padding(.horizontal, 28)
+    }
+
+    private var footer: some View {
+        Text("UniPO · 让大学每一步都有答案")
+            .font(.uniLabel(10))
+            .foregroundStyle(.white.opacity(0.2))
+            .padding(.top, 10)
     }
 
     private func sendCode() async {
@@ -336,6 +410,15 @@ struct LoginView: View {
                 countdown -= 1
             }
         }
+    }
+
+    private func oneTapLogin(_ number: String) async {
+        #if DEBUG
+        // 演示：没有运营商 SDK，直接用 mock 验证码登录本机演示号码。
+        await auth.smsLogin(phone: number, code: "1234")
+        #else
+        auth.errorMessage = "一键登录需要接入运营商号码认证服务，请使用手机号验证码登录"
+        #endif
     }
 }
 
@@ -396,6 +479,37 @@ private struct LoginBackground: View {
                 y += step
             }
             context.stroke(path, with: .color(.white), lineWidth: 0.5)
+        }
+    }
+}
+
+private struct AgreementSheet: View {
+    let kind: LoginView.Agreement
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("正文将在正式上线前补充。")
+                        .font(.uniBody(14))
+                        .foregroundStyle(UniColor.secondary)
+                    Text("这里预留协议结构：账号与登录、内容发布规范、隐私与数据使用、未成年人保护、举报与申诉、账号注销。")
+                        .font(.uniBody(13))
+                        .foregroundStyle(UniColor.secondary)
+                        .lineSpacing(5)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+            }
+            .navigationTitle(kind.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("关闭") { dismiss() }
+                }
+            }
         }
     }
 }

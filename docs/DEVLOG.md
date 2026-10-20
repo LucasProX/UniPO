@@ -4429,7 +4429,7 @@ Dock 是自定义的 5 个位置（首页/工具/发PO/成就/我的），中间
 - `users.phone` 加唯一索引；
 - `sms_codes` 存 BCrypt 哈希 + 5 分钟过期 + 消费标记；
 - `POST /auth/sms-code`、`POST /auth/sms-login`；未注册手机号自动建号；
-- 本地 `app.sms.mock-accept-any-code=true` 固定码 123456，不真的发短信；
+- 本地 `app.sms.mock-accept-any-code=true` 固定码 1234，且任意 4 位数字都通过，不真的发短信；
 - 非 local 打开会被 `StartupSafetyGuard` 拒绝启动；真实短信 provider 未接，非 mock 调用直接报「短信服务未配置」。
 
 **所有需要登录的入口统一走 `auth.requireLogin()`**：
@@ -4439,7 +4439,7 @@ Dock 是自定义的 5 个位置（首页/工具/发PO/成就/我的），中间
 **踩到的坑**：登录页的 `.task` 和 App 的会话恢复一样有竞态 —— 调试参数 `-sms-login` 可能在 `AuthStore`
 还没恢复完就调用，`.task(id: auth.isAuthenticated)` 之前已经踩过一次，这次直接沿用。
 
-验证：手机号 `13800138000` + 123456 登录成功并自动建号；个人主页显示「同学8000」；
+验证：手机号 `13800138000` + 任意 4 位数字登录成功并自动建号；个人主页显示「同学8000」；
 smoke 41/41（新增 sms-code / sms-login）；iOS BUILD SUCCEEDED。
 
 **上线前必须做**：接真实短信 provider（阿里云/腾讯云）+ 短信签名/模板审核 + 发送频率限制；

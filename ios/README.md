@@ -40,10 +40,12 @@ API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，默认 `http://1
 xcrun simctl launch booted com.unipo.app -tab achievements
 # 自动登录（避免每次手输）
 xcrun simctl launch booted com.unipo.app -email admin@biecuoguo.local -password Admin@123456
-# 登录页 / 手机号表单 / 手机号自动登录（本地验证码 123456）
+# 登录页 / 手机号表单 / 手机号自动登录（本地任意 4 位数字）
 xcrun simctl launch booted com.unipo.app -login
-xcrun simctl launch booted com.unipo.app -login -phone-form
+xcrun simctl launch booted com.unipo.app -login -no-phone
 xcrun simctl launch booted com.unipo.app -login -sms-login
+xcrun simctl launch booted com.unipo.app -login -one-tap
+xcrun simctl launch booted com.unipo.app -login -agreement
 ```
 
 ## 结构
@@ -79,7 +81,7 @@ ios/
 - [x] 工程骨架 + SPM 模块
 - [x] 黑白蓝设计 tokens
 - [x] Liquid Glass Dock（5 Tab：首页 / 工具 / 发PO / 成就 / 我的）
-- [x] 独立登录页（黑白 + 背景动画；手机号验证码登录；一键登录/微信/QQ 占位）
+- [x] 独立登录页（黑白 + 背景动画；一键登录/手机号验证码；协议勾选；微信/QQ 占位）
 - [x] 首页 feed（真实 `/api/v1`、游标分页、下拉刷新）
 - [x] 工具页入口（5 个工具，功能待接）
 - [x] 成就页（阶段地图、徽章墙、进度动效，预览数据）
