@@ -126,7 +126,7 @@ JWT 默认 secret 已删（见 **R-5**）。
 |---|---|---|---|
 | Q-1 | **无限流** | 登录、验证码、发帖、上传都没有任何限流或锁定 | 验证码接口可以拿来刷邮件、刷成本；登录可以无限次撞库 |
 | Q-2 | **JWT 无刷新令牌** | 有效期 10080 分钟（7 天），过期就是硬过期，客户端只能重新登录；token 存 `localStorage` | 7 天内 token 被偷就等于永久会话；到期体验差 |
-| Q-3 | **上传只校验 `Content-Type`** | `MediaService.java:46-49` 只看请求头是不是 `image/` 开头，不验文件头、不看尺寸、不限像素；`MAX_UPLOAD_FILE_SIZE` 默认 20MB | 改个请求头就能传任意文件；SVG 可以带脚本，MinIO 公开读 + 同源时就是 XSS |
+| Q-3 ✅ | ~~上传只校验 `Content-Type`~~ **已修（2026-10-20）** | 新增 `service/ImageSignature.java` 按文件头识别 JPEG/PNG/GIF/WebP，扩展名和 `Content-Type` 都由识别结果决定（不再采信客户端）；上限从 20MB 收到 **5MB**；`purpose` 只允许 `[A-Za-z0-9_-]{1,20}` | 实测：HTML/SVG 改请求头冒充 `image/png` 都是 400；6MB 图片 413；真 PNG 200 |
 | Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |
 | Q-5 | **无测试、无 lint、无 CI** | 后端 0 个测试；前端没有 eslint/prettier；没有 `.github/workflows` | 唯一的回归防线是 `scripts/smoke.ps1`（34 项） |
 | Q-6 | 类型手写，与后端 DTO 已漂移 | `frontend/src/lib/types.ts` 手写，无 OpenAPI 生成 | 接口改了两边容易漏改 |

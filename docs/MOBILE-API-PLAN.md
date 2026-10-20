@@ -116,7 +116,7 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 
 ## 8. 上传
 
-现状：App 图片经后端转发（`MediaController`），20MB 上限，无压缩。
+现状：App 图片经后端转发（`MediaController`），5MB 上限，按文件头识别格式，无压缩。
 
 目标：`POST /api/v1/media/presign` 返回 MinIO 预签名 PUT URL + 对象 key，客户端直传，完成后回调 `POST /api/v1/media/confirm` 落库。后端只做签名与校验，带宽成本归零。
 

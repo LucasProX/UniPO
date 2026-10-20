@@ -80,7 +80,7 @@
 | `CONVERSATION_NOT_FOUND` | 404 | 会话不存在 |
 | `MSG_EMPTY` | 400 | 消息内容为空 |
 | `MEDIA_UPLOAD_FAILED` | 500 | 上传失败 |
-| `MEDIA_TOO_LARGE` | 413 | 超过 20MB |
+| `MEDIA_TOO_LARGE` | 413 | 超过 5MB |
 | `VALIDATION_FAILED` | 400 | 参数不完整/格式错（含非法分页游标） |
 | `DUPLICATE` | 400 | 名称或账号已被占用 |
 | `NOT_FOUND` | 404 | 通用资源不存在 |
@@ -159,7 +159,7 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| POST | `/upload` (multipart: `file`, `purpose`) | 登录 | 只校验 Content-Type 前缀 `image/`；上限 20MB |
+| POST | `/upload` (multipart: `file`, `purpose`) | 登录 | **按文件头**识别 JPEG/PNG/GIF/WebP（改扩展名或 Content-Type 都会被拒）；上限 5MB |
 | GET | `/{id}/content? v=` | 公开 | 经后端流式转发 MinIO；带 `v` 时 30 天强缓存 |
 
 ## 7. 选项与分类（全部公开）

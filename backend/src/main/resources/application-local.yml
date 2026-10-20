@@ -8,8 +8,8 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   servlet:
     multipart:
-      max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
-      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:5MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:12MB}
   flyway:
     locations: classpath:db/migration
 

@@ -8,8 +8,8 @@ spring:
     name: biecuoguo-backend
   servlet:
     multipart:
-      max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
-      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
+      max-file-size: ${MAX_UPLOAD_FILE_SIZE:5MB}
+      max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:12MB}
   # 验证码「真实模式」用的 SMTP。默认全空。
   # host 为空时 Spring 不会创建 JavaMailSender，config/StartupSafetyGuard.java 会因此拒绝启动 ——
   # 因为真实模式下没有 SMTP，验证码永远发不出去，等于新用户永远注册不了。

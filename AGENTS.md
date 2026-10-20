@@ -86,6 +86,10 @@ docker compose up -d --build
     **两种模式下都调用 `verifyCode()`**，不要再写 `if (mock) skip` —— 那样本地和线上的调用链不一致。
   - **密码上限是 72 字节，不是 72 个字符**：BCrypt 的有效输入只有 72 字节，超出会被静默忽略（两个不同的长密码可能算出同一个哈希）。`AuthService.assertPasswordAcceptable()` 显式拒绝超长，不要改成截断。
 - **「默认学校」只有一个来源**：`app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 `1`）。未登录访客看 feed、新注册用户还没选学校、演示账号初始化，全都读它。**不要再在代码里写 `1L`**，也不要再写「随便挑一个用户代表访客」那种兜底（那正是 D-3）。该值必须存在于 `schools` 表，否则建号时会撞 `fk_users_school`。
+- **上传只信文件头，不信 `Content-Type` 和扩展名**：`service/ImageSignature.java` 按 magic bytes 识别 JPEG/PNG/GIF/WebP，
+  存进 MinIO 的扩展名和 `Content-Type` 都由识别结果决定。以前只看请求头是不是 `image/` 开头，
+  一个 HTML 或带 `<script>` 的 SVG 改个请求头就能存进来，再被 `/api/media/{id}/content` 原样吐回浏览器。
+  **故意不支持 SVG**（它是 XML，能带脚本），也不要把校验降级成「看后缀」。上限由 `MAX_UPLOAD_FILE_SIZE` 控制，默认 5MB。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。

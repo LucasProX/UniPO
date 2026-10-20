@@ -38,7 +38,7 @@ public enum ErrorCode {
 
     // ---- 媒体 ----
     MEDIA_UPLOAD_FAILED("上传失败，请重试"),
-    MEDIA_TOO_LARGE("图片太大了，请换一张 20MB 以内的图片"),
+    MEDIA_TOO_LARGE("图片太大了，请换一张 5MB 以内的图片"),
 
     // ---- 通用 ----
     VALIDATION_FAILED("请求参数不完整或格式不正确"),

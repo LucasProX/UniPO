@@ -821,6 +821,70 @@ docker-compose.yml     JWT_SECRET: ${JWT_SECRET:?...必须显式配置}   # 缺�
 `docker compose` 直接报 unknown command。`:?` 的语义是 Compose 规范里写死的，
 但「确实会拦下」这件事得等有 compose 的环境再确认一次。
 
+## 2026-10-20 上传接口说「只支持图片」，其实只信了客户端那句话
+
+`MediaService` 原来的校验是这样的：
+
+```java
+String contentType = file.getContentType() == null ? "application/octet-stream" : file.getContentType();
+if (!contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+    throw new IllegalArgumentException("目前只支持图片上传");
+}
+```
+
+`MultipartFile.getContentType()` 返回的是**请求头里的 Content-Type**，一个客户端随便写的值。
+所以这段代码的实际含义不是「只接受图片」，而是「只接受请求头里写了 image/ 的东西」。
+
+具体能干嘛：把一个 `.html` 或者带 `<script>` 的 `.svg` 用 `curl -F 'file=@x.html;type=image/png'` 传上来，
+校验通过，文件原样进 MinIO，`media.content_type` 也存成 `image/png`，
+然后 `/api/media/{id}/content` 用这个 Content-Type 把它吐回浏览器。
+浏览器遇到 `image/png` 不会执行里面的脚本，所以这一步还不至于立刻 XSS；
+但只要哪天为了「支持 SVG 图标」把类型放宽到 `image/svg+xml`，同源打开就是执行任意 JS。
+更别提还顺便变成了一个任意文件的免费图床。
+
+### 改法：认文件头，然后所有东西都以识别结果为准
+
+加了 `service/ImageSignature.java`，读头 12 个字节，只认四种真实图片：
+
+```text
+JPEG  FF D8 FF
+PNG   89 50 4E 47 0D 0A 1A 0A
+GIF   "GIF8"
+WebP  "RIFF" + 4 字节长度 + "WEBP"
+```
+
+认出来之后，**扩展名和 Content-Type 都用识别结果**，不再用 `file.getOriginalFilename()` 和请求头。
+这样「文件名是 a.png、内容是 HTML」这种情况根本进不了下一步，因为它压根认不出来。
+
+### 顺手砍掉的两个东西
+
+**上限 20MB → 5MB。** 手机上随手拍的照片三四 MB，再大就该客户端压缩了；
+20MB 更像是「懒得想」填的数字。`MEDIA_TOO_LARGE` 的文案也跟着改了。
+
+**`purpose` 是拼进对象 key 的。** 之前直接 `firstNonBlank(purpose, "post")`，
+客户端传什么就拼什么。对象存储没有路径穿越问题（key 是扁平字符串），
+但传个超长或者带斜杠的值能把目录结构搞得很脏。现在只允许 `[A-Za-z0-9_-]{1,20}`，不合格一律当 `post`。
+
+### 验证
+
+四条一起测，因为「真图片能传」和「假图片被拒」必须同时成立，只测拒绝那一侧可能是校验写死了一律拒绝：
+
+```text
+真 PNG                    → 200  url 结尾 .png，contentType image/png
+HTML 冒充 image/png        → 400  只支持 JPEG / PNG / GIF / WebP 图片（按文件内容识别，改扩展名没用）
+SVG 冒充 image/png         → 400  同上
+6MB PNG（头是真的）        → 413  图片太大了，请换一张 5MB 以内的图片
+```
+
+最后一条是 Spring 的 multipart 上限先拦的（`max-file-size: 5MB`），
+不是 `MediaService` 里那个字节数检查——两个都在，前者是实际生效的那道，后者是纵深防御。
+
+### 还没做的
+
+没有校验像素尺寸，所以「5MB 的解压炸弹」理论上还是能传上来。
+服务器自己不解码，炸弹炸的是浏览器，所以优先级不高；真要防得按格式读 IHDR/帧头，
+而 WebP 没有内置的 ImageIO reader，得手写解析——现在不值得。
+
 ---
 
 ## 怎么写这篇文档
