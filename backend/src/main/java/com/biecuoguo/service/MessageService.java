@@ -28,12 +28,15 @@ public class MessageService {
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
     private final PresenceService presenceService;
+    private final RealtimeHub realtimeHub;
 
-    public MessageService(ConversationMapper conversationMapper, MessageMapper messageMapper, UserMapper userMapper, PresenceService presenceService) {
+    public MessageService(ConversationMapper conversationMapper, MessageMapper messageMapper, UserMapper userMapper,
+                          PresenceService presenceService, RealtimeHub realtimeHub) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.userMapper = userMapper;
         this.presenceService = presenceService;
+        this.realtimeHub = realtimeHub;
     }
 
     public List<MessageDtos.ConversationView> conversations(CurrentUser currentUser) {
@@ -141,7 +144,10 @@ public class MessageService {
         conversation.setLastMessageAt(now);
         conversation.setUpdatedAt(now);
         conversationMapper.updateById(conversation);
-        return messageView(message);
+        MessageDtos.MessageView view = messageView(message);
+        // 推给收件人：没有在线连接就静默返回，不影响发消息本身（推送是加速通道，轮询仍是兜底）。
+        realtimeHub.publish(receiverId, "message", Map.of("conversationId", conversation.getId(), "message", view));
+        return view;
     }
 
     public long unreadCount(CurrentUser currentUser) {

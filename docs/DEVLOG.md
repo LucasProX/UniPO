@@ -3589,6 +3589,53 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项
 
 ---
 
+## 2026-10-20 把私信轮询换成 SSE（以及为什么既不是 WebSocket 也不是 EventSource）
+
+清单最后一项 D-6 是「轮询过密」：会话列表 3s、当前会话 1.8s。开会话的时候浏览器每 1.8 秒问一次
+「有没有新消息」，服务端每次都要查一遍会话、批量补作者和未读数。两个标签页就是两套定时器。
+
+### 选 SSE 而不是 WebSocket
+
+这里只有一种需求：**服务端单向推**「你收到一条新私信」。WebSocket 能给的是双向通道 + 自定义子协议，
+代价是多一条 upgrade 链路：现有的 JWT 拦截、限流、requestId 日志都得在握手阶段重写一遍。
+SSE 是普通 HTTP 长响应，`SecurityConfig` 那套原样复用，nginx/Caddy 也不用额外配 upgrade。
+
+### 坑：EventSource 带不了 Authorization 头
+
+浏览器原生 `EventSource` 不能设请求头，社区做法是把 token 拼进 query（`?token=...`）。
+那条 URL 会进访问日志、进浏览器历史、可能通过 Referer 带出去——这个项目已经为「不要把凭证放进 URL」
+改过一次（R-5），不想为了实时化再破一次规矩。
+所以前端用 `fetch` + `ReadableStream` 读同一条 SSE 流，手写三十行解析（空行分帧、`event:` / `data:` 两个字段）。
+代价是没有原生重连，得自己写指数退避：1s → 2s → … → 30s 封顶。
+
+### 坑：SseEmitter 的三个回调少一个就是内存泄漏
+
+`onCompletion`（正常结束）、`onTimeout`（30 分钟到点）、`onError`（连接异常）都要摘 emitter。
+只挂 `onCompletion` 的话，用户切网络、关标签页、代理掐连接这些情况都不会触发它，
+`emitters` 里会一直挂着再也发不出去的连接——而且表现为「越用越慢」，很难联想到是这里。
+
+另外 `send()` 失败要当成正常路径（客户端断开是常态），不能往上抛，否则一次断连会污染整个 publish 循环。
+
+### 验证
+
+```text
+B 登录 → curl -N -H "Authorization: Bearer $B_TOKEN" /api/v1/realtime/stream
+  → event:ready  data:{"userId":59}
+A 发消息 → SSE 流里立刻出现 event:message data:{"conversationId":36,"message":{...}}
+未登录连流 → 401 {"code":"AUTH_UNAUTHENTICATED"}（不是一条假连接）
+```
+
+前端这边 **没有把轮询删掉**：SSE 连着的时候 `realtimeOpen = true`，两个定时器进去第一件事就是 return；
+流断了（退避重连期间）轮询自动接管。删掉轮询看着更「干净」，但那样服务端一抖动前端就没有兜底了——
+推送是加速通道，不是唯一通道。
+
+### 已知限制
+
+`RealtimeHub` 的 emitter 在进程内存里，多实例部署时 A 实例发的消息推不到连在 B 实例的客户端。
+这跟 `STATE_BACKEND=memory` 是同一类问题（Q-4 已经踩过一次）。真要上多副本，第一步是给 `publish` 接 Redis 频道，
+而不是把连接改成粘性会话。
+---
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

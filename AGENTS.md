@@ -161,7 +161,10 @@ docker compose up -d --build
 - **`smoke.ps1` 必须把控制台输出编码设成 UTF-8**（2026-10-20 实测）：PowerShell 5.1 捕获 `curl.exe` 输出用的是 `[Console]::OutputEncoding`，中文 Windows 下默认 OEM 936。UTF-8 的响应体被按 GBK 解码时，尾部字节会被吃掉，**连后面那个 JSON 引号一起吞**，`ConvertFrom-Json` 直接报「无效的 JSON 格式」。表现极具误导性：注册返回 200，但 token 取不到，后面所有带 token 的检查全 401。脚本开头已加 `$OutputEncoding` / `[Console]::OutputEncoding = $utf8`，别删。
 - **匿名访客的 feed 曾经是随机的**（D-3，2026-10-20 已修，别再改回去）：`PostService.defaultViewer()` 以前会随便挑一个 active 用户借人家的 `school_id`，`baseVisibleWrapper()` 再用硬编码 `1L` 兜底——同一个匿名请求两次可能返回不同内容，那个随机用户被禁用后 feed 还会突然变样。现在访客就是 `viewer = null`，学校隔离统一走 `app.default-school-id`；同一个值也用于新注册用户和演示账号的初始学校（以前 `AuthService` 里四处各写一遍 `1L`）。**这个值必须指向 `schools` 表里真实存在的行**，否则建号会撞 `fk_users_school` 外键、启动直接失败。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
-- 前端轮询（2026-10-20 已随组件化搬进 store）：会话列表 3s（`stores/messages.ts` 的 `startConversationListPolling`）、当前会话 1.8s（`startActiveConversationPolling`）、在线心跳 10s（`stores/auth.ts` 的 `startPresenceHeartbeat`）。实时化之前别再加轮询。
+- **消息是推的，不是轮的（2026-10-20，D-6）**：新私信走 SSE `GET /api/v1/realtime/stream`（`service/RealtimeHub.java`），
+  前端 `lib/realtime.ts` 用 fetch + ReadableStream 读流（`EventSource` 不能带 Authorization 头，**别把 token 塞 query**）。
+  会话列表 3s / 当前会话 1.8s 的轮询**还在**，只是 SSE 连着时直接 return，当兜底用（`stores/messages.ts` 的 `realtimeOpen`）。
+  `RealtimeHub` 的 emitter 是进程内内存，多副本推不到别的实例——要多副本先给它接 Redis 频道（和 `STATE_BACKEND` 同一类坑）。
 - **数据库默认值曾经指向一台已停用的服务器**（R-4，2026-10-20 已修，别再改回去）：那时候 `application.yml` / `application-local.yml` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，一旦那个端口被放开，照默认启动就会对着一台陌生库跑 Flyway + 触发 `AuthService` 启动逻辑。现在的默认值全是「本机」或「compose 服务名」：`application.yml` → `127.0.0.1:3306`，`application-local.yml` → `127.0.0.1:12306`，`docker-compose.yml` → `mysql:3306`。`deploy-app.sh` / `deploy-ip.sh` **没有默认值**，`SPRING_DATASOURCE_URL` 缺失直接退出。
 - **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。判断真实可达性要用外部节点（check-host.net），或先关代理。
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖已于 2026-10-20 删除（D-8）。别再往 `db/` 下加第二套 migration，只认 `db/migration`。

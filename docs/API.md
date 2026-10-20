@@ -226,10 +226,25 @@
 | `authApi.login / me / heartbeat / logout` | `/api/auth/**` |
 | `userApi.profile / stats / checkIn` | `/api/users/me/**` |
 | `mediaApi.upload` | `POST /api/media/upload` |
-| 会话轮询 | `GET /api/messages/conversations`（3s） |
-| 当前会话轮询 | `GET /api/messages/conversations/{id}/messages`（1.8s） |
+| 消息推送长连接 | `GET /api/v1/realtime/stream`（SSE；连上先收 `event: ready`，新私信是 `event: message`） |
+| 会话兜底轮询 | `GET /api/messages/conversations`（3s，SSE 连上后不发请求） |
+| 当前会话兜底轮询 | `GET /api/messages/conversations/{id}/messages`（1.8s，同上） |
 
 > `api.ts` 里的 `localApi` 在 DEV 且同源请求失败时直连 `http://127.0.0.1:8080/api`，仅用于本地调试。
+
+### 10.1 消息推送（SSE）
+
+`GET /api/v1/realtime/stream`，`Accept: text/event-stream`，**要登录**（未登录是 401 JSON，不会给一条假连接）。
+
+| 事件 | 时机 | data |
+|---|---|---|
+| `ready` | 连接建立 | `{"userId":59}` |
+| `message` | 收到新私信 | `{"conversationId":36,"message":{...MessageView}}` |
+
+- 每 20 秒一条 `:` 注释心跳（代理不会把空闲连接回收），连接 30 分钟由服务端关闭、前端指数退避重连（1s → 30s 封顶）。
+- 浏览器原生 `EventSource` 不能带 `Authorization`，前端用 fetch + ReadableStream 读同一条流（`frontend/src/lib/realtime.ts`），**不要把 token 塞进 query**。
+- 推送只是加速通道：SSE 断开时前端自动退回原有轮询，离线消息仍靠 `/messages/unread-count` 拉。
+- 多实例限制：emitter 存在本进程内存，A 实例发的消息推不到连在 B 实例的客户端（同 `STATE_BACKEND=memory` 那类问题）。多副本要先给 `RealtimeHub.publish` 接 Redis 频道。
 
 ## 11. 已知不一致
 

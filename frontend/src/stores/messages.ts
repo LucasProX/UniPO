@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import dayjs from 'dayjs';
 import { campusApi } from '../lib/api';
+import { openRealtimeStream } from '../lib/realtime';
 import { useAuthStore } from './auth';
 import type { ConversationView, InteractionNoticeView, MessageView } from '../types';
 
@@ -27,6 +28,9 @@ export const useMessagesStore = defineStore('messages', () => {
 
   let conversationListTimer: number | undefined;
   let activeConversationTimer: number | undefined;
+  /** SSE 连接句柄与状态：连上时轮询退让（只当兜底），断开时轮询自动接管。 */
+  let realtimeStop: (() => void) | undefined;
+  let realtimeOpen = false;
   let refreshingConversations = false;
   let refreshingActiveConversation = false;
 
@@ -129,6 +133,7 @@ export const useMessagesStore = defineStore('messages', () => {
         ? unread
         : Math.max(0, unread - (messageList.find((conversation) => conversation.id === activeId)?.unreadCount || 0));
       syncActiveConversation();
+      startRealtime();
     } catch (error) {
       // 轮询遇上网关抖动时保留本地状态，不打扰用户
       if (await auth.handleAuthSensitiveError(error, '登录状态失效，请重新登录')) {
@@ -139,9 +144,13 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
+  /** 3 秒一次的兜底轮询：SSE 活着时它什么都不做（D-6 之后正常路径是推送）。 */
   function startConversationListPolling() {
     stopConversationListPolling();
-    conversationListTimer = window.setInterval(() => { refreshConversations(); }, 3000);
+    conversationListTimer = window.setInterval(() => {
+      if (realtimeOpen) return;
+      refreshConversations();
+    }, 3000);
   }
 
   function stopConversationListPolling() {
@@ -176,12 +185,41 @@ export const useMessagesStore = defineStore('messages', () => {
 
   function startActiveConversationPolling() {
     stopActiveConversationPolling();
-    activeConversationTimer = window.setInterval(() => { refreshActiveConversation(); }, 1800);
+    activeConversationTimer = window.setInterval(() => {
+      if (realtimeOpen) return;
+      refreshActiveConversation();
+    }, 1800);
   }
 
   function stopActiveConversationPolling() {
     if (activeConversationTimer) window.clearInterval(activeConversationTimer);
     activeConversationTimer = undefined;
+  }
+
+  /** 收到一条推送：当前会话直接拉增量，其他会话只刷新列表/未读。 */
+  function handleRealtimeEvent(name: string, data: unknown) {
+    if (name !== 'message') return;
+    const payload = data as { conversationId?: number } | null;
+    if (payload?.conversationId != null && payload.conversationId === activeConversationId.value) {
+      // refreshActiveConversation 内部会顺带刷新会话列表，不必再调一次
+      void refreshActiveConversation();
+      return;
+    }
+    void refreshConversations();
+  }
+
+  function startRealtime() {
+    if (realtimeStop || !auth.isAuthenticated) return;
+    realtimeStop = openRealtimeStream({
+      onState: (state) => { realtimeOpen = state === 'open'; },
+      onEvent: handleRealtimeEvent,
+    });
+  }
+
+  function stopRealtime() {
+    realtimeStop?.();
+    realtimeStop = undefined;
+    realtimeOpen = false;
   }
 
   function scrollThreadToBottom() {
@@ -283,6 +321,7 @@ export const useMessagesStore = defineStore('messages', () => {
     activeConversationId.value = null;
     stopConversationListPolling();
     stopActiveConversationPolling();
+    stopRealtime();
     syncActiveConversation();
   }
 
@@ -301,6 +340,8 @@ export const useMessagesStore = defineStore('messages', () => {
     refreshConversations,
     startConversationListPolling,
     stopConversationListPolling,
+    startRealtime,
+    stopRealtime,
     refreshActiveConversation,
     startActiveConversationPolling,
     stopActiveConversationPolling,

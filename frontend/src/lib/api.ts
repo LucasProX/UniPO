@@ -13,7 +13,7 @@ import type { ApiErrorBody, ApiResponse, AuthSessionView, BoardView, CheckInView
  * 所以 SecurityConfig 的白名单只需维护一份；v1 独有端点（如 /posts/page）
  * 已单独加白，不会被改写。
  */
-const API_PREFIX = '/api/v1';
+export const API_PREFIX = '/api/v1';
 
 const api = axios.create({ baseURL: API_PREFIX });
 const publicApi = axios.create({ baseURL: API_PREFIX });

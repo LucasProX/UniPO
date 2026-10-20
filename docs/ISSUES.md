@@ -110,7 +110,7 @@ Docker Desktop 29.8.2 + WSL 2.7.13 起得来、MySQL 8.4（`127.0.0.1:12306`）�
 | D-3 | ~~匿名视角取随机用户~~ ✅ **已修复（2026-10-20）** | 未登录现在就是 `viewer = null`，学校隔离统一走 `app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 1）；`defaultViewer()` 已删除，`AuthService` 里四处硬编码的 `1L` 也收进同一个配置 | 匿名 feed 确定且可配置 |
 | D-4 ✅ | ~~前端 4207 行单文件~~ **已组件化（2026-10-20）** | `App.vue` 降到 61 行外壳，拆出 `layouts/AppShell.vue` + 6 个 `views/` + `components/{layout,modals,post,ui}` + 6 个 Pinia store + `vue-router` | Web/App 共用同一批 store 与 `lib/*.ts` 纯函数 |
 | D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
-| D-6 | 轮询过密（**仍在**） | 已随组件化挪进 store：会话列表 3s（`stores/messages.ts`）、当前会话 1.8s、在线心跳 10s | 实时化（SSE/WebSocket）之前先别再加轮询 |
+| D-6 ✅ | ~~轮询过密~~ **已上 SSE 推送（2026-10-20）** | 新私信走 `GET /api/v1/realtime/stream`（`service/RealtimeHub.java` + `web/RealtimeController.java`，发送时在 `MessageService.send` 里 publish）；前端 `lib/realtime.ts` 用 fetch 读流（`EventSource` 带不了 Authorization 头），连上就把 3s/1.8s 轮询**停掉**，断开自动退回。实测：B 连流 → A 发消息 → B 立刻收到 `event:message`，未登录连流是 401 | 仍是单实例内存广播，多副本要接 Redis 频道；在线心跳 10s 未动 |
 | D-7 ✅ | ~~notices 遗留域~~ **已删除（2026-10-20）** | 删掉 19 个 Java 文件（`NoticeController` / `CommentController` / `InteractionController` / `NoticeService` / `InteractionService` / `CommentService` / 5 个 domain / 5 个 mapper / 3 个 DTO）+ `V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 和 `comments.notice_id`；`AdminService` 概览改按 posts 口径 | 只剩一套内容模型，`comments` 只认 `post_id` |
 | D-8 ✅ | ~~db/local 与 H2 是死代码~~ **已删（2026-10-20）** | `backend/src/main/resources/db/local/`（10 个文件）连目录一起删了，`pom.xml` 里的 `com.h2database:h2` 也去掉，`mvn package` 仍然绿 | — |
 
