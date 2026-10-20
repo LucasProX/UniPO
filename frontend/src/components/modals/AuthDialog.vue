@@ -139,7 +139,7 @@ function close() {
                         v-model="authForms.register.verificationCode"
                         class="field auth-field__input"
                         :class="authErrors.register.verificationCode ? 'field--error' : ''"
-                        placeholder="开发环境可留空"
+                        placeholder="4 位数字，开发环境随便填"
                         inputmode="numeric"
                         maxlength="4"
                         type="text"

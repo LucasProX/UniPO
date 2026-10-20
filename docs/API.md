@@ -91,13 +91,13 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| POST | `/register` | 公开 | 注册。只需 `email`（账号，任意字符串）+ `password`；`nickname` / `confirmPassword` / `verificationCode` 均可选 |
+| POST | `/register` | 公开 | 注册。必填 `email`（账号，任意字符串）+ `password` + `verificationCode`；`nickname` / `confirmPassword` 可选 |
 | POST | `/login` | 公开 | 邮箱或用户名。`good` / `xiaoba` / `yuanhua` 三个别名只在本地 `seed-demo-data=true` 时有意义 |
 | POST | `/logout` | 登录 | 把 jti 加入内存黑名单 |
 | POST | `/heartbeat` | 登录 | 在线心跳（内存 Map） |
 | GET | `/me` | 登录 | 当前用户 |
-| POST | `/verification-code` | 公开 | 发邮箱验证码（当前 mock 模式不真发，只打日志） |
-| POST | `/verification-code/verify` | 公开 | 校验验证码 |
+| POST | `/verification-code` | 公开 | 发验证码。真实模式走 SMTP 真发信；`mock-accept-any-code=true`（本地）时不发信、不落库，任意 4 位数字可用 |
+| POST | `/verification-code/verify` | 公开 | 单独校验验证码（注册/重置密码内部也会校验） |
 | POST | `/reset-password` | 公开 | 重置密码；**mock 模式下任意 4 位数字通过** |
 | GET | `/email-availability?email=&purpose=` | 公开 | 邮箱是否可用；`purpose=reset-password` 时等价于"该邮箱是否已注册" |
 | GET | `/nickname-availability?nickname=` | 公开 | 昵称是否可用 |
@@ -173,31 +173,25 @@
 | GET | `/api/options/majors?schoolId=&collegeId=` | 专业选项 |
 | GET | `/api/options/grades` | 年级选项 |
 
-## 8. 遗留域（前端零调用）
+## 8. 已删除的遗留域
 
-| 组 | 端点 | 鉴权 |
-|---|---|---|
-| notices | `GET /api/notices`、`/recommended`、`/calendar`、`/{id}` | 公开 |
-| notices | `POST /api/notices/{id}/feedback` | 登录 |
-| comments | `GET\|POST /api/notices/{id}/comments` | GET 公开 / POST 登录 |
-| comments | `POST\|DELETE /api/comments/{id}/like`、`POST /api/comments/{id}/report` | 登录 |
-| interactions | `GET /api/favorites`、`POST\|DELETE /api/notices/{id}/favorite` | 登录 |
-| interactions | `GET /api/reminders`、`POST /api/notices/{id}/reminders`、`PUT\|DELETE /api/reminders/{id}` | 登录 |
-| interactions | `POST /api/notices/{id}/complete`、`/ignore` | 登录 |
-| admin | `/api/admin/notices` CRUD、`/publish`、`/unpublish`、`/comments`、`/hide`、`/feature`、`/users`、`/status`、`/role`、`/analytics/overview` | 角色 |
+`notices` / `notices/{id}/comments` / `favorites` / `reminders` / `comments/{id}/like` 这一整套端点
+已于 2026-10-20 随 notices 域清理整体下线（`NoticeController`、`InteractionController`、
+`CommentController` 三个文件删除，`V11__drop_notices_domain.sql` 删表）。现在再调这些路径会得到
+**404**，不是 401/403。
 
-> `/api/comments/{id}/like`（遗留）与 `/api/posts/comments/{id}/like`（新）是两套路径、同一张 `comments` 表。
+保留的相邻端点：`GET /api/categories`、`GET /api/tags`、`GET /api/schools`（campus taxonomy，与 notices 无关），
+以及 `GET|POST /api/posts/{id}/comments`、`POST|DELETE /api/posts/comments/{id}/like`（帖子评论，在 `PostController` 里）。
 
-## 9. 鉴权白名单（`SecurityConfig.java:51-58`）
+## 9. 鉴权白名单（`security/SecurityConfig.java`）
 
 公开：
 - `/actuator/health`、`/swagger-ui/**`、`/v3/api-docs/**`
 - `/api/auth/register`、`/login`、`/verification-code`、`/verification-code/verify`、`/reset-password`、`/email-availability`、`/nickname-availability`
-- `GET /api/notices/**`、`GET /api/categories`、`/api/tags`、`/api/schools`
+- `GET /api/categories`、`/api/tags`、`/api/schools`
 - `GET /api/posts/**`、`GET /api/options/**`
 - `GET /api/media/*/content`
 - `GET /api/users/*`、`/api/users/*/posts`、`/likes`、`/post-favorites`
-- `GET /api/notices/*/comments`
 
 其余需登录；` /api/admin/**` 需要 `OPERATOR / SCHOOL_OPERATOR / COLLEGE_OPERATOR / MAJOR_OPERATOR / ADMIN` 之一。
 

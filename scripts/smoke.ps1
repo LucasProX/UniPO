@@ -1,7 +1,7 @@
 # UniPO 后端冒烟测试（Windows PowerShell 5.1 / curl.exe）
 # 用法：powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
 # 前置：后端已在 http://127.0.0.1:8080 运行，本地 MySQL 已初始化（Flyway 建表）
-# 说明：本脚本只往本地库写测试数据，跑完可手动清理；全部用 ASCII，避免 PS 5.1 编码问题。
+# 说明：本脚本只往本地库写测试数据，跑完可手动清理。注释可中文，断言与字符串保持 ASCII。
 
 param(
   [string]$Base = 'http://127.0.0.1:8080',
@@ -10,6 +10,12 @@ param(
 
 $ErrorActionPreference = 'Continue'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
+# 强制按 UTF-8 解码 curl.exe 的输出。中文 Windows 默认 OEM 代码页是 936(GBK)，
+# PowerShell 会按 GBK 去解 UTF-8 的响应体，尾部字节被当非法字符吃掉 —— 不只是显示乱码，
+# 它会把后面的引号一起吞掉，让整个 JSON 变成非法结构，ConvertFrom-Json 直接抛错。
+# 这个坑只在响应体里出现中文时才炸（比如 user.major = 未设置专业），很难一眼看出来。
+$OutputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
 $script:fail = 0
 
 function CallApi([string]$method, [string]$url, $obj, [string]$token) {
@@ -179,9 +185,9 @@ try {
 if ($tz_ok) { 'PASS time-offset              ' + $tz_sample }
 else { $script:fail++; 'FAIL time-offset              ' + $tz_sample }
 
-# ---- 开发期随手注册：账号 + 密码即可，不要验证码、不要昵称 ----
+# ---- 开发期随手注册：账号 + 密码 + 任意 4 位验证码（mock 模式放行） ----
 $bare = 'bare' + (Get-Random -Maximum 99999)
-$r = CallApi 'POST' "$v1/auth/register" @{ email = $bare; password = '1' } $null
+$r = CallApi 'POST' "$v1/auth/register" @{ email = $bare; password = '1'; verificationCode = '1234' } $null
 $bare_ok = $false; $bare_nick = ''
 try {
   $b = $r.body | ConvertFrom-Json
@@ -198,13 +204,18 @@ try { $login_ok = ($r.code -eq '200') -and (($r.body | ConvertFrom-Json).code -e
 if ($login_ok) { 'PASS register-minimal-login  ' + $bare }
 else { $script:fail++; 'FAIL register-minimal-login  http=' + $r.code }
 
-# 重名必须被拒（这是唯一的约束）
-$r = CallApi 'POST' "$v1/auth/register" @{ account = $bare; password = 'other' } $null
+# 重名必须被拒
+$r = CallApi 'POST' "$v1/auth/register" @{ account = $bare; password = 'other'; verificationCode = '1234' } $null
 if ($r.code -eq '400') { 'PASS register-duplicate      http=400' }
 else { $script:fail++; 'FAIL register-duplicate      http=' + $r.code }
 
+# 验证码必填：不填必须 400。开发模式是「任意 4 位数字都行」，不是「可以不填」。
+$r = CallApi 'POST' "$v1/auth/register" @{ email = ('nocode' + (Get-Random -Maximum 99999)); password = '1' } $null
+if ($r.code -eq '400') { 'PASS register-nocode         http=400' }
+else { $script:fail++; 'FAIL register-nocode         http=' + $r.code }
+
 # 密码超过 BCrypt 的 72 字节要明确拒绝，不能静默截断
-$r = CallApi 'POST' "$v1/auth/register" @{ account = ('long' + (Get-Random -Maximum 99999)); password = ('a' * 73) } $null
+$r = CallApi 'POST' "$v1/auth/register" @{ account = ('long' + (Get-Random -Maximum 99999)); password = ('a' * 73); verificationCode = '1234' } $null
 if ($r.code -eq '400') { 'PASS register-longpassword   http=400' }
 else { $script:fail++; 'FAIL register-longpassword   http=' + $r.code }
 

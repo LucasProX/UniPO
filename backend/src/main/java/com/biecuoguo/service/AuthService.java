@@ -72,9 +72,9 @@ public class AuthService implements CommandLineRunner {
         if (findByNickname(nickname) != null) {
             throw new IllegalArgumentException("该用户名已被占用");
         }
-        if (verificationRequired()) {
-            verificationService.verifyCode(email, "register", request.verificationCode());
-        }
+        // 验证码始终必填。开发模式只是让任意 4 位数字通过，流程本身不跳过 ——
+        // 这样本地和线上的调用链一致，不会出现「本地能过、上线才发现漏了校验」。
+        verificationService.verifyCode(email, "register", request.verificationCode());
         LocalDateTime now = LocalDateTime.now();
         User user = new User();
         user.setEmail(email);
@@ -103,10 +103,14 @@ public class AuthService implements CommandLineRunner {
     }
 
     /**
-     * 验证码是不是真的需要校验。mock 模式（本地开发）下为 false —— 注册不必先去收验证码。
+     * 是不是开发模式（验证码放行）。
+     *
+     * <p>只用于决定“开发便利”类行为（比如密码长度下限），
+     * **不再**用来决定要不要校验验证码 —— 那件事现在由 {@link VerificationService#mockMode()} 内部区分，
+     * 两种模式下都调用 {@code verifyCode}。
      */
-    private boolean verificationRequired() {
-        return properties.verification() != null && !properties.verification().mockAcceptAnyCode();
+    private boolean mockVerification() {
+        return verificationService.mockMode();
     }
 
     /**
@@ -121,7 +125,7 @@ public class AuthService implements CommandLineRunner {
         if (password == null || password.isEmpty()) {
             throw new IllegalArgumentException("请输入密码");
         }
-        int min = verificationRequired() ? 6 : 1;
+        int min = mockVerification() ? 1 : 6;
         if (password.length() < min) {
             throw new IllegalArgumentException("密码至少 " + min + " 位");
         }
@@ -176,9 +180,8 @@ public class AuthService implements CommandLineRunner {
         if (user == null) {
             throw new IllegalArgumentException("该账号尚未注册");
         }
-        if (verificationRequired()) {
-            verificationService.verifyCode(email, "reset-password", request.verificationCode());
-        }
+        // 同上：验证码必填，开发模式下任意 4 位数字可过。
+        verificationService.verifyCode(email, "reset-password", request.verificationCode());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);

@@ -1,5 +1,6 @@
 package com.biecuoguo.config;
 
+import com.biecuoguo.service.VerificationMailer;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,6 +17,9 @@ import java.util.List;
  * 不会报错、不会有异常日志、监控面板一片绿，只有等你发现某个陌生邮箱注册进来了才知道。
  * 打一条 WARN 挡不住任何人（没人看启动日志），所以选择让进程起不来。
  *
+ * <p>同类静默故障还有一种反向的：验证码配成真实模式却没配 SMTP。这时候进程起得来、
+ * 接口也返回 200，但验证码永远发不出去，新用户注册不了 —— 同样没人会发现，所以一并拦。
+ *
  * <p>为什么用 {@code @PostConstruct} 而不是 {@code ApplicationRunner}：
  * ApplicationRunner 在容器初始化完之后才跑，那时候 {@code AuthService} 已经把演示账号
  * 和重置过的管理员密码写进库了。要在写库之前拦住，就必须在 bean 初始化阶段完成。
@@ -30,10 +34,12 @@ public class StartupSafetyGuard {
 
     private final AppProperties properties;
     private final Environment environment;
+    private final VerificationMailer mailer;
 
-    public StartupSafetyGuard(AppProperties properties, Environment environment) {
+    public StartupSafetyGuard(AppProperties properties, Environment environment, VerificationMailer mailer) {
         this.properties = properties;
         this.environment = environment;
+        this.mailer = mailer;
     }
 
     @PostConstruct
@@ -45,6 +51,17 @@ public class StartupSafetyGuard {
                 && properties.verification().mockAcceptAnyCode();
         boolean seedDemo = properties.bootstrap() != null && properties.bootstrap().seedDemoData();
 
+        // 1) 真实模式下必须有可用的 SMTP。这条不区分 profile：只要验证码是真实模式，
+        //    没有 SMTP 就一定发不出码，注册和找回密码整条链路是断的。
+        if (!mockVerification && !mailer.available()) {
+            throw new IllegalStateException("拒绝启动：验证码处于真实模式"
+                    + "（app.verification.mock-accept-any-code=false），但没有配置 SMTP。\n"
+                    + "这样注册和找回密码都发不出验证码，新用户永远注册不了。\n"
+                    + "请配置 SMTP_HOST / SMTP_PORT / SMTP_USERNAME / SMTP_PASSWORD（见 .env.example）；\n"
+                    + "本地开发请加 --spring.profiles.active=local 走 mock 模式（任意 4 位数字放行）。");
+        }
+
+        // 2) 危险开关在开发环境放行，只打警告。
         if (devLike) {
             if (mockVerification) {
                 log.warn("⚠ 验证码处于 mock 模式：任意 4 位数字都能通过校验，任何人可以注册任意邮箱。"
@@ -57,6 +74,7 @@ public class StartupSafetyGuard {
             return;
         }
 
+        // 3) 非开发环境下一律拒绝。
         if (mockVerification || seedDemo) {
             String detail = (mockVerification ? "app.verification.mock-accept-any-code=true" : "")
                     + (mockVerification && seedDemo ? "，" : "")

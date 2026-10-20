@@ -73,6 +73,11 @@ check_tcp() {
 required_vars=(
   JWT_SECRET
   BOOTSTRAP_ADMIN_PASSWORD
+  # 验证码真实模式必需。没配的话后端会直接拒绝启动（config/StartupSafetyGuard.java），
+  # 因为没有 SMTP 就等于注册和找回密码整条链路是断的。
+  SMTP_HOST
+  SMTP_USERNAME
+  SMTP_PASSWORD
   APP_CORS_ALLOWED_ORIGINS
   MINIO_ENDPOINT
   MINIO_PUBLIC_ENDPOINT

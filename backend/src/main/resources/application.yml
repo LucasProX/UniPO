@@ -10,6 +10,25 @@ spring:
     multipart:
       max-file-size: ${MAX_UPLOAD_FILE_SIZE:20MB}
       max-request-size: ${MAX_UPLOAD_REQUEST_SIZE:24MB}
+  # 验证码「真实模式」用的 SMTP。默认全空。
+  # host 为空时 Spring 不会创建 JavaMailSender，config/StartupSafetyGuard.java 会因此拒绝启动 ——
+  # 因为真实模式下没有 SMTP，验证码永远发不出去，等于新用户永远注册不了。
+  # 本地开发走 application-local.yml 的 mock 模式（任意 4 位数字放行），不需要配这些。
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:465}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    default-encoding: UTF-8
+    properties:
+      mail:
+        smtp:
+          auth: true
+          # 465 端口走 SMTPS，开 ssl；用 587 则把 ssl 关掉、starttls 打开。
+          ssl:
+            enable: ${SMTP_SSL_ENABLE:true}
+          starttls:
+            enable: ${SMTP_STARTTLS_ENABLE:false}
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
     username: ${SPRING_DATASOURCE_USERNAME:${MYSQL_USER:biecuoguo}}
@@ -31,6 +50,13 @@ management:
     web:
       exposure:
         include: health,info
+  # 关掉 mail 健康检查。只要 spring.mail.host 这个键存在（哪怕值是空串），
+  # Spring 就会创建 JavaMailSender 并注册 MailHealthIndicator；没配 SMTP 时它连不上，
+  # 会把 /actuator/health 拖成 DOWN —— 容器健康检查和部署全挂。
+  # 「有没有配 SMTP」由 config/StartupSafetyGuard.java 在启动时判断，不靠这个探针。
+  health:
+    mail:
+      enabled: false
 
 springdoc:
   api-docs:

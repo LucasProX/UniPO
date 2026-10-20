@@ -409,6 +409,224 @@ smoke 从 29 项加到 33 项，新增 4 项专门盯这个：
 
 ---
 
+## 2026-10-20 把 notices 那一整套删了——先搞清谁在用，再动刀
+
+项目里一直有两套内容模型：`posts`（新，前端在用）和 `notices`（最开始的「校园通知」版本）。
+前端早就只调 posts 了，但 notices 从表到 Controller 全都还留着，19 个 Java 文件、5 张表。
+每次改内容相关的东西我都要先花几分钟确认「这个类是干嘛的、还有没有人调」，成本高得离谱。
+
+### 一开始想「直接删文件不就行了」
+
+试了一下，编译不过。因为 notices 不是一个独立模块，它像藤蔓一样缠在 posts 那边：
+
+- `AdminService.overview()` 统计的是 notices 的发布数；
+- `UserService.stats()` 里的「已完成 / 临近截止 / 避坑」全是从 `user_notice_status` 和 `reminders` 来的；
+- `CommentController` 的评论接口是挂在 `/api/notices/{id}/comments` 上的；
+- `SecurityConfig` 白名单里有 `/api/notices/**`；
+- `NoticeDtos` 里还藏着 `TagView` / `CategoryView`，而这两个被 `TaxonomyService` 用着。
+
+所以第一件事不是删，是**查清楚引用关系**。我按类名一个个 grep，把「只有 notices 内部互相引用」
+和「被 posts 侧共用」分成两类：
+
+只有 notices 用 -> 删；被 posts 共用 -> 改。
+
+具体到最有迷惑性的两个：
+
+**`comments` 是两套共用的。** V1 建表时 `notice_id` 是 NOT NULL，V3 才 `MODIFY notice_id BIGINT NULL`
+并加了 `post_id`。也就是说同一张表里躺着两种评论。这个必须保留，只把 `notice_id` 列摘掉。
+
+**`NoticeDtos` 里有不属于 notices 的东西。** `TagView` / `CategoryView` 只是恰好写在这个文件里，
+`/api/categories` 和 `/api/tags` 还在用。所以先把它们搬去新建的 `dto/TaxonomyDtos.java`，
+再删 `NoticeDtos`——不然 taxonomy 那边会连坐编译不过。
+
+### 删之前先数一下数据
+
+删表是不可逆的，所以先查了行数：
+
+```
+notices 4 | notice_tags 13 | user_notice_status 0 | posts 31 | comments 26
+```
+
+notices 那 4 条就是 V2 种下去的演示数据，`user_notice_status` 一行都没有——说明「完成/避坑」
+这两个功能**从来没人用过**，前端展示的永远是 0。确认没有真实数据，才敢 DROP。
+删之前还是 `mysqldump --single-transaction --routines` 备份了一份（87 KB，几分钟的事，别省）。
+
+### 外键的顺序坑
+
+第一版 V11 写的是直接 `DROP TABLE notices`，报错：
+
+```
+ERROR 1217 (23000): Cannot drop table 'notices' referenced by a foreign key constraint
+```
+
+`comments.notice_id` 上有 `fk_comments_notice` 指向 notices。必须先摘外键、再删列、最后删表：
+
+```sql
+ALTER TABLE comments DROP FOREIGN KEY fk_comments_notice;
+ALTER TABLE comments DROP INDEX idx_comments_notice;
+ALTER TABLE comments DROP COLUMN notice_id;
+DROP TABLE IF EXISTS notice_tags;   -- 这些也都有指向 notices 的外键
+DROP TABLE IF EXISTS user_notice_status;
+DROP TABLE IF EXISTS favorites;
+DROP TABLE IF EXISTS reminders;
+DROP TABLE IF EXISTS notices;       -- 最后才轮到它
+```
+
+顺带记一个：`DROP INDEX` 也要单独写。`idx_comments_notice` 是 `(notice_id, status, created_at)` 的
+联合索引，删了列索引还留着会变成无效引用。
+
+### 那三个恒为 0 的字段为什么没删
+
+`UserDtos.UserStats` 里有 `completed` / `upcoming` / `avoidedRisks`，notices 没了它们就是摆设。
+本来打算直接删字段，但停了一下——`AGENTS.md` 里自己立的规矩是 `/api/v1` **只做加法**，
+删字段要升 v2。为了三个没人看的数字升一个大版本，不值。
+
+所以留字段、置 0、在 Javadoc 里写清「因 notices 删除恒为 0，v2 时去掉」。
+这样 Web/App 端的键名不用动，等真升 v2 的时候一起收拾。
+
+**`favorites` 的处理不一样**：它原来是「通知收藏 + 帖子收藏」相加，现在只剩帖子收藏。
+这个改法是**变准了**，不是变假了——`feed.ts` 里点赞/收藏时前端本来就在对这个数做 ±1，
+以前那个 ±1 加在一个混合值上，其实一直差着通知收藏的基数。
+
+### 验证
+
+启动日志：`Migrating schema 'biecuoguo' to version "11 - drop notices domain"` ->
+`Successfully applied 1 migration, now at v11`。清理后 23 张表，`comments` 只剩 11 列。
+
+`mvn compile` 绿。smoke 33 项全过——注意这 33 项**一项都没覆盖 notices**（因为前端从来没用过），
+所以「smoke 全绿」不能证明删对了，只能证明没删坏 posts 那边。真正的证据是编译通过 + 表结构对。
+
+### 教训
+
+1. **删旧东西之前，先把「谁在用」画出来**，别凭印象。这次有两个坑（comments 共用、
+   NoticeDtos 里混着 taxonomy），全靠 grep 引用关系才提前发现。
+2. **删表之前先数行数**。如果是「演示数据 4 条」和「真实用户数据 4 万条」，同样的代码，
+   风险差五个数量级。
+3. **`SecurityConfig` 白名单要跟着删**。白名单留着死路径不会报错，但会让人以为那个接口还活着。
+4. smoke 覆盖不到的地方，「全绿」是假的安全感。得靠编译 + 看表结构。
+
+---
+
+## 2026-10-20 验证码：开关该管「怎么校验」，不该管「要不要校验」
+
+上一轮为了自己建测试号方便，我把注册改成不用验证码了 —— 账号 + 密码两栏，一按就进。
+当时觉得挺爽，测了几天发现不对劲：本地和线上跑的根本不是同一条调用链。
+
+具体会漏什么：注册接口里原来有一步 `verifyCode(...)`，我给它包了个 `if (verificationRequired())`。
+本地这个分支永远不进去，也就是说**本地从来没跑过「验码失败会怎么样」这条分支**。
+等上线打开真实校验，报错文案、错误码、前端怎么显示这个错——全都没测过。
+这种漏不叫「没测到细节」，叫「本地环境比线上少了一整个分支」。
+
+### 改法：开关只管「怎么校验」
+
+字段永远必填，`verifyCode()` 永远被调用，两种模式的差别全部收进 `VerificationService` 里：
+
+```java
+public void verifyCode(String email, String purpose, String code) {
+    String normalizedCode = normalizeCode(code);   // 空值在这里就被拒，两种模式都一样
+    if (mockMode()) {
+        if (!normalizedCode.matches("\\d{4}")) { throw new IllegalArgumentException(...); }
+        return;
+    }
+    // 真实模式：查库 -> 判过期 -> 比对 hash -> 标记 consumed
+}
+```
+
+调用方（`AuthService.register` / `resetPassword`）现在只有一行，没有 if：
+
+```java
+verificationService.verifyCode(email, "register", request.verificationCode());
+```
+
+开发模式下 `requestCode()` 也直接 return，不写库不发信 —— 之前是「照常写一条随机码进库，
+然后校验时无视它」，留下堆没用的行，还容易让人以为那行能用来登录。
+
+### 接真 SMTP 时踩到的两个点
+
+**第一个：`@ConditionalOnProperty` 对空字符串的行为。**
+`spring.mail.host: ${SMTP_HOST:}` 这种写法，在 `SMTP_HOST` 没设的时候解析出来是空串。
+我原以为 `MailSenderAutoConfiguration` 会因为 host 是空而不创建 bean，结果它照样创建了 ——
+`@ConditionalOnProperty` 只判断「键存在不存在」，空串也算存在。
+所以不能靠 `ObjectProvider.getIfAvailable()` 判断「有没有配 SMTP」，必须连 host 一起判：
+
+```java
+public boolean available() {
+    return host != null && !host.isBlank() && mailSenders.getIfAvailable() != null;
+}
+```
+
+要是只判 bean 在不在，就会得到一个「available() 返回 true、真发信时炸连接」的假阳性。
+
+**第二个：反向的静默故障也要拦。**
+之前 `StartupSafetyGuard` 拦的是「开发开关漏到生产」。这次多了一种方向相反的坑：
+生产配成真实模式、但忘了配 SMTP。这时候进程起得来、接口返回 200、监控一片绿，
+只有新用户发现验证码永远收不到——注册链路断了，没人知道。
+
+所以 guard 里加了第二条：真实模式 + 没有 SMTP = 直接拒绝启动。
+注意这条**不区分 profile**，因为它不是「开发开关」，是纯粹的配置缺失。
+
+### 为什么把验证码规则写死成 4 位数字
+
+开发模式也要求是 4 位数字（`\d{4}`），不放过空串、不放过 'abc'。
+理由很实在：如果本地允许乱填，前端 `maxlength="4"`、`inputmode="numeric"` 这些东西就没人验证了。
+限制成和线上一样，UI 上的坑才会在本地暴露出来。
+
+### 顺带
+
+smoke 加了第 34 项 `register-nocode`：不传验证码必须 400。
+这一条是这次改动的**核心断言**——它钉住的不是「验证码能过」，而是「不能不填」。
+（另外三项老的注册检查也都补了 `verificationCode = '1234'`，否则它们的 400 会来自
+「缺验证码」而不是它们本来要测的东西，变成假通过。）
+
+### 加个 mail 依赖，顺手把 /actuator/health 弄挂了
+
+编译通过、启动也正常，`/actuator/health` 却一直 503。日志里翻到：
+
+```
+WARN o.s.b.actuate.mail.MailHealthIndicator : Mail health check failed
+jakarta.mail.AuthenticationFailedException: failed to connect, no password specified?
+```
+
+`spring-boot-starter-mail` 一进来，Spring 就自动注册了 `MailHealthIndicator`，
+每打一次 health 它就去连一次 SMTP。而我 `application.yml` 里写的是
+`host: ${SMTP_HOST:}` —— 没配的时候这个键**仍然存在**，值是空串，
+所以 `@ConditionalOnProperty` 照样成立，`JavaMailSender` 被创建，健康检查也被注册了。
+
+杀伤力不在本地：容器 healthcheck 打的就是 `/actuator/health`，它一 DOWN 部署就判活失败，
+可应用本身明明在跑 —— 排查方向会被带偏好一阵。
+
+改法：`management.health.mail.enabled: false`。
+「有没有配 SMTP」该由 `StartupSafetyGuard` 在启动时判一次，
+不需要一个每次请求都去连 SMTP 的探针。
+
+### smoke 全红，其实是 PowerShell 按 GBK 解了 curl 的输出
+
+34 项里 15 项 FAIL。诡异的是 `register` 明明是 200，紧接着 `me` 就是 401 —— 说明 token 没拿到。
+手动 curl 注册接口，body 完全正常，token 就在里面；用 Node 直接打也是 200 + token。
+所以问题在 PowerShell 这一侧。
+
+写了个最小复现，把 `$r.body` 的长度和内容打出来：
+
+```
+bodylen=994
+PARSE-FAIL: 无效的 JSON 格式... (462): {"code":"OK",...,"major":"未设置专
+```
+
+打出来是 `未设置专` 后面跟一个被吃掉的字符。"专业"的"业"是 E4 B8 9A，
+按 GBK 解码时 E4B8 算一个字符、剩下的 9A 是非法单字节被吃成 `?` —— 
+而且它**连后面那个引号一起吞了**，JSON 字符串没闭合，整段直接非法。
+
+根因：PowerShell 5.1 捕获原生程序（curl.exe）的输出时用的是 `[Console]::OutputEncoding`，
+中文 Windows 下默认是 OEM 代码页 936。UTF-8 的响应体被当 GBK 解，不只是显示乱码，会破坏结构。
+
+为什么之前一直没炸：之前那次是在 UTF-8 代码页的终端里跑的。这个 bug 一直在，
+只要响应体里出现中文（`user.major = 未设置专业` 就够）就会中招。
+
+修法：脚本开头把 `$OutputEncoding` 和 `[Console]::OutputEncoding` 都设成 UTF-8，
+不再依赖当前控制台的代码页。
+
+---
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

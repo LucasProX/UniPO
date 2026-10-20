@@ -105,7 +105,10 @@ MINIO_PUBLIC_READ=false
 
 - **MinIO 用的是 Bitnami 打包镜像**（官方 `minio/minio` 在国内网络拉不动）。功能等价，但版本冻结在 2025-05，长期建议换官方镜像或自建 registry。
 - **图片走 `/api/media/{id}/content` 代理**（`MINIO_PUBLIC_READ=false`），流量过后端，本地无所谓，生产要评估。
-- **验证码是 mock**：任意 4 位数字通过（本地图方便，生产严禁，见 `docs/ISSUES.md` R-1）。
+- **验证码是 mock**：`application-local.yml` 里 `app.verification.mock-accept-any-code: true`。
+  验证码这一栏**仍然要填**，但填任意 4 位数字都能过，而且后端不会真的发邮件（不写库、不发信，只打一条 WARN）。
+  生产环境必须关掉（见 `docs/ISSUES.md` R-1）；关掉后需要配 `SMTP_HOST` 等，否则后端会**拒绝启动**——
+  因为真实模式下没有 SMTP 就等于注册链路是断的。
 - **管理员密码每次启动被重置**为 `BOOTSTRAP_ADMIN_PASSWORD`（R-3，本地无害，上线前必须改）。
 - 数据库数据在 Docker volume `unipo_unipo_mysql_data`，删了重来：
   `docker compose --profile local-db down -v`。

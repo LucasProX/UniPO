@@ -39,7 +39,20 @@
 
 修复（有顺序依赖）：**先接邮件通道**（SMTP / Resend / SES；现在 `mock=false` 时验证码只打日志，用户收不到），再把默认值改 `false`、本地 profile 显式 `true`，最后补齐三处配置。
 
-> **✅ 已修复（2026-10-20，commit 见 git log）**：`application.yml` 默认值已改为 `false`，本地由 `application-local.yml` 显式打开；新增 `config/StartupSafetyGuard.java`，非 `local/dev/test` profile 下打开该开关会**直接拒绝启动**（实测：无 profile + `VERIFICATION_MOCK_ACCEPT_ANY_CODE=true` → `IllegalStateException: 拒绝启动...`）。**仍待做**：接真实 SMTP 通道，否则生产环境验证码只会打日志。
+> **✅ 已修复（2026-10-20）**：
+>
+> 1. `application.yml` 默认值改为 `false`，本地由 `application-local.yml` 显式打开；
+> 2. 新增 `config/StartupSafetyGuard.java`：非 `local/dev/test` profile 下打开该开关会**直接拒绝启动**
+>    （实测：无 profile + `VERIFICATION_MOCK_ACCEPT_ANY_CODE=true` → `IllegalStateException: 拒绝启动...`）；
+> 3. **真实 SMTP 通道已接**：`service/VerificationMailer.java` 走 `spring-boot-starter-mail`，
+>    配置来自 `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD`（见 `.env.example`）；
+> 4. `StartupSafetyGuard` 追加一条：`mock=false` 但没有 SMTP 时也**拒绝启动** ——
+>    否则注册/找回密码永远发不出码，而进程起得来、接口返回 200，是个彻底静默的故障。
+>
+> **验证码字段现在是必填的**（两种模式下都必填）：开发模式只是让任意 4 位数字通过，不再允许留空。
+>
+> **仍待做**：拿一个真实邮箱（QQ / 163 / Gmail + 应用专用密码）跑一遍完整注册，确认邮件能收到、
+> 码能通过、10 分钟过期生效。代码路径已通，但没对真实 SMTP 服务器实测过。
 
 ### R-2 内置后门账号
 证据：`AuthService.java:22-31` 常量 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua`；`AuthService.java:176-178` 启动即创建（`CommandLineRunner`）；`AuthService.java:226-243`、`263-274` 存在即重置密码；`login()` 对这三个用户名做邮箱特判。
@@ -70,7 +83,7 @@
 | D-4 | 前端 4207 行单文件 | `frontend/src/App.vue`，6 个 `ViewKey` 手写状态机，无 vue-router | 无法多人协作，也无法复用到 App |
 | D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
 | D-6 | 轮询过密 | `App.vue:1987` 3s、`:3205` 1.8s、`:2208` 10s | 放大 D-1/D-2 |
-| D-7 | notices 遗留域 | `NoticeController` / `CommentController` / `InteractionController` / `AdminController` + 12 张表，前端零调用 | 阅读与维护成本翻倍 |
+| D-7 ✅ | ~~notices 遗留域~~ **已删除（2026-10-20）** | 删掉 19 个 Java 文件（`NoticeController` / `CommentController` / `InteractionController` / `NoticeService` / `InteractionService` / `CommentService` / 5 个 domain / 5 个 mapper / 3 个 DTO）+ `V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 和 `comments.notice_id`；`AdminService` 概览改按 posts 口径 | 只剩一套内容模型，`comments` 只认 `post_id` |
 | D-8 | db/local 与 H2 是死代码 | 无任何 profile 引用 `db/local`，H2 未被使用 | 误导后来者 |
 
 ## 4. Q — 质量项（长期）
@@ -90,8 +103,8 @@
 2. **建 `.env`**，把 datasource 指向本地，顺手把 `R-4` 的坑封死。
 3. **D-5 去假数据 + D-4 拆前端**：这是后续所有 Web/App 工作的地基。
 4. **D-1 / D-2 分页与批量查询**：App 上线前必须做，趁数据量小改代价最低。
-5. ~~**R-1 / R-2 / R-3**~~ ✅ **已完成（2026-10-20）**：默认值全部翻成安全的一侧 + `StartupSafetyGuard` 启动拦截。**R-1 仍欠真实 SMTP 通道**，部署前必须补。
-6. **D-7 清理 notices 域**：可与 3 并行，纯删除。
+5. ~~**R-1 / R-2 / R-3**~~ ✅ **已完成（2026-10-20）**：默认值翻到安全侧 + `StartupSafetyGuard` 启动拦截 + `VerificationMailer` 接上真实 SMTP。**部署前仍需**拿真实邮箱跑一遍注册，确认邮件能收到。
+6. ~~**D-7 清理 notices 域**~~ ✅ **已完成（2026-10-20）**。
 7. **Q 项**：随功能迭代逐步补，优先"时区"与"错误码"（App 契约依赖）。
 
 ## 5.1 清理存量演示账号（已部署过旧版本的库要手工做一次）

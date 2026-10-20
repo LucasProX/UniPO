@@ -174,16 +174,15 @@ export const useAuthStore = defineStore('auth', () => {
     let hasError = false;
     // 账号必须填；不校验邮箱格式——开发阶段可以用任意字符串当账号。
     if (!payload.email) { authErrors.value.register.email = '请输入账号'; hasError = true; }
-    // 用户名可选：留空时后端会用账号本身作为显示名。
     if (!payload.password) { authErrors.value.register.password = '请输入密码'; hasError = true; }
     // 确认密码在界面上仍要求填，但后端允许省略（给 App 端留余地）。
     if (!payload.confirmPassword) { authErrors.value.register.confirmPassword = '请再次输入密码'; hasError = true; }
     else if (payload.password !== payload.confirmPassword) { authErrors.value.register.confirmPassword = '两次密码不一致'; hasError = true; }
-    // 验证码可选：后端在 mock 模式下不校验；填了才检查格式。
-    if (payload.verificationCode && !/^\d{4}$/.test(payload.verificationCode)) {
-      authErrors.value.register.verificationCode = '验证码必须是 4 位数字';
-      hasError = true;
-    }
+    // 验证码必填。开发模式下后端放行任意 4 位数字（app.verification.mock-accept-any-code），
+    // 但字段本身照样要填 —— 保证本地和线上是同一条调用链，
+    // 不会出现「本地随便点能过、上线才发现漏了校验」。
+    if (!payload.verificationCode) { authErrors.value.register.verificationCode = '请输入验证码'; hasError = true; }
+    else if (!/^\d{4}$/.test(payload.verificationCode)) { authErrors.value.register.verificationCode = '验证码必须是 4 位数字'; hasError = true; }
     return hasError;
   }
 
