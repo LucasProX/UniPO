@@ -116,6 +116,33 @@ domain / mapper 包里，没有一起搬。原因：PostService 直接用 School
 
 验证：mvn test 40 绿；/api/schools、/api/categories、/api/tags 均 200；smoke 37/37；CI 全绿。
 
+### message（2026-10-20，第三个模块）
+
+结构：
+
+    com.biecuoguo.message
+      api/MessageDtos.java
+      internal/MessageController.java
+      internal/MessageService.java
+      internal/Conversation.java
+      internal/Message.java
+      internal/ConversationMapper.java
+      internal/MessageMapper.java
+
+这次是完整搬走（实体 + Mapper 都进了 internal），因为 Conversation/Message 只被
+MessageService 使用，没有其他模块直接读这两张表。
+
+遗留耦合（写在注释和 AGENTS 里，别当没看见）：
+
+- MessageService 还在用共享的 UserMapper / User（拼对方资料）；
+- MessageDtos 依赖共享的 PostDtos（会话里会带一条帖子预览）；
+- 还要 import com.biecuoguo.service.PresenceService（在线状态，也是共享服务）。
+
+这些等 user / post 模块迁移时一起收口。@MapperScan 第三次扩包：
+com.biecuoguo.mapper + media.internal + message.internal。
+
+验证：mvn test 41 绿；smoke 的会话/发信/未读全部 200；WebSocket 实测仍能收到 event:message；CI 全绿。
+
 ## 8. 代价
 
 - 迁移期间会出现「两套写法并存」（旧层分包 + 新模块分包），持续几周。

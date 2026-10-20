@@ -1,4 +1,6 @@
-package com.biecuoguo.dto;
+package com.biecuoguo.message.api;
+
+import com.biecuoguo.dto.PostDtos;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

@@ -1,6 +1,5 @@
-package com.biecuoguo.mapper;
+package com.biecuoguo.message.internal;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.biecuoguo.domain.Conversation;
 
 public interface ConversationMapper extends BaseMapper<Conversation> {}

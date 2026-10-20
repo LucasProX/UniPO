@@ -1,8 +1,9 @@
-package com.biecuoguo.web;
+package com.biecuoguo.message.internal;
 
-import com.biecuoguo.dto.MessageDtos;
+import com.biecuoguo.web.ApiResponse;
+
+import com.biecuoguo.message.api.MessageDtos;
 import com.biecuoguo.security.SecurityUtils;
-import com.biecuoguo.service.MessageService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 

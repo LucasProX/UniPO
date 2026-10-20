@@ -82,6 +82,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void messageInternalsAreNotAccessedFromOutside() {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("com.biecuoguo.message..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.message.internal..")
+                .because("message 内部实现对其他模块不可见，跨模块只能依赖 api（ADR-0002）");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void taxonomyInternalsAreNotAccessedFromOutside() {
         ArchRule rule = noClasses()
                 .that().resideOutsideOfPackage("com.biecuoguo.taxonomy..")

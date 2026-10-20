@@ -1,14 +1,12 @@
-package com.biecuoguo.service;
+package com.biecuoguo.message.internal;
+
+import com.biecuoguo.service.PresenceService;
 
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.biecuoguo.domain.Conversation;
-import com.biecuoguo.domain.Message;
 import com.biecuoguo.domain.User;
-import com.biecuoguo.dto.MessageDtos;
+import com.biecuoguo.message.api.MessageDtos;
 import com.biecuoguo.dto.PostDtos;
-import com.biecuoguo.mapper.ConversationMapper;
-import com.biecuoguo.mapper.MessageMapper;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;

@@ -3995,6 +3995,29 @@ post 模块就会反过来依赖 taxonomy.internal —— 正好踩中刚立的�
 验证：Controller/Service/DTO 搬走后，/api/schools、/api/categories、/api/tags 都 200，
 smoke 37/37，mvn test 40 绿。
 
+## 2026-10-20 搬 message：完整搬走的第一个「有实体」模块
+
+media 和 taxonomy 的经验是「实体往往搬不动」，但 message 不一样：Conversation / Message
+只被 MessageService 使用，没有别的模块直接读这两张表，所以可以连实体带 Mapper 一起进 internal。
+
+搬的过程暴露了另一类坑：**同包 import 比想象的多**。
+
+MessageService 原来在 com.biecuoguo.service，里面有：
+- PresenceService：同包，没有 import；
+- Conversation / Message：同 domain 包，有 import；
+- UserMapper：同 mapper 包，有 import。
+
+搬到 message.internal 之后，前两类要分开处理：domain/mapper 的 import 要删（同包了），
+PresenceService 反而要加 import（现在跨包了）。批量 sed 很容易搞反，编译一次就暴露了三条。
+
+另一个是 MessageDtos 依赖 PostDtos（会话列表里带帖子预览）。DTO 跨模块依赖共享 DTO，
+短期能接受，但它说明「消息」和「帖子」在展示层本来就耦合——等 post 模块迁移时，
+要么让 message.api 定义自己的 PostPreview，要么让 post 提供一个精简的 view。
+现在先记着，别让它变成永久债。
+
+结果：mvn test 41 绿，smoke 的 conversation/send-message/unread 全 200，
+WebSocket 实测仍能收到 event:message（这条最容易被忽略：推送链路的代码被搬过，必须重测）。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：
