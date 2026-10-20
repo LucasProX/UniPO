@@ -4468,6 +4468,35 @@ smoke 41/41（新增 sms-code / sms-login）；iOS BUILD SUCCEEDED。
 
 验证：一键登录 15500008888 + 任意 4 位成功；验证码登录成功；smoke 41/41；iOS BUILD SUCCEEDED。
 
+## 2026-10-20 登录弹层被帖子窗口挡住 + 3 步新手引导
+
+**现象**：未登录打开帖子，点评论/收藏/点赞，登录页不出现；把帖子关掉才弹出来。
+
+原因不是 `requireLogin()` 没调用，而是 SwiftUI 的 `fullScreenCover` 挂在 `RootView` 上，
+当时帖子是另一个 sheet，RootView 的 cover 会被排到 sheet 后面，等 sheet 关闭才展示。
+
+修法：在 **PostDetailView / MessagesView 自己身上**也挂一份同样的 `fullScreenCover`，
+谁在最上层谁负责弹。RootView 那份保留给首页/我的。登录成功/关闭后 `loginRequested=false`，各层一起收起。
+验证：`-logout -post-detail -like-test`，登录页立刻盖在帖子上面。
+
+**新手引导**：
+
+- V17 给 users 加 gender / birth_year / zodiac / mbti / 展示开关 / onboarding_completed；
+- 新注册（手机号、邮箱）写 false，已有用户迁移默认 true；
+- `PUT /users/me/onboarding` 一次性提交；
+- `AuthStore.persist` 在 onboarding 未完成时**不关登录容器**，LoginView 直接切成 OnboardingView；
+- 完成后再把 loginRequested 置 false，整体收起。
+
+3 步用 `TabView(.page)`，点下一步改 selection，页面横向滑；顶部 3 段进度条。
+第 1 步用户名/性别/出生年份/年级 + 三个展示开关；第 2 步星座/MBTI/签名；第 3 步 6 个 emoji 头像。
+头像不是外链，而是本地 `UIGraphicsImageRenderer` 画好 PNG 再走 `/media/upload`，断网也能选。
+
+顺手修了：年份 Picker 显示成 `2,006 年`（Int 插值带分组符，改成 String）；
+自定义黑白开关，避免系统 Toggle 白轨道 + 白圆点看不见。
+
+验证：新手机号 13900003333 登录 -> 3 步引导 -> 完成后头像变狐狸、进入首页；
+`mvn test` 43 绿，smoke 41/41，iOS BUILD SUCCEEDED。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

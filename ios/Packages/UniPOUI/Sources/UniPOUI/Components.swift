@@ -13,7 +13,7 @@ public struct UniAvatar: View {
 
     public var body: some View {
         Group {
-            if let url, let parsed = URL(string: url) {
+            if let url, let parsed = AvatarURL.resolve(url) {
                 AsyncImage(url: parsed) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
@@ -37,6 +37,20 @@ public struct UniAvatar: View {
                 .font(.system(size: size * 0.4, weight: .bold))
                 .foregroundStyle(.white)
         }
+    }
+}
+
+private enum AvatarURL {
+    static func resolve(_ raw: String?) -> URL? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let url = URL(string: raw), url.scheme != nil { return url }
+        let base = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String
+            ?? "http://127.0.0.1:8080/api/v1"
+        guard var origin = URLComponents(string: base) else { return nil }
+        origin.path = ""
+        origin.query = nil
+        guard let root = origin.url else { return nil }
+        return URL(string: raw, relativeTo: root)?.absoluteURL
     }
 }
 

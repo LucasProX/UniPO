@@ -343,6 +343,32 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
   App 里用 `DevicePhoneNumber` 抽象：DEBUG 返回演示号码 `15500008888`，Release 返回 nil（自动落到手机号验证码页）；
   接入运营商 SDK 后只替换这个 provider。
 
+### 9.7 新用户资料完善（onboarding）
+
+`PUT /api/users/me/onboarding`（需登录），3 步引导最后一次性提交：
+
+```json
+{
+  "nickname": "林小满",
+  "gender": "female",
+  "birthYear": 2006,
+  "grade": "大一",
+  "zodiac": "天秤",
+  "mbti": "INFJ",
+  "signature": "慢一点也没关系",
+  "showGender": true,
+  "showAge": false,
+  "showGrade": true,
+  "avatarUrl": "/api/media/27/content?v=..."
+}
+```
+
+- `gender`：`male` / `female` / `other`；
+- `birthYear`：1950 到当前年份 -10；
+- `showGender/showAge/showGrade`：控制主页是否展示；
+- 完成后 `onboardingCompleted=true`；新注册用户默认 false，已有用户默认 true；
+- 头像先由 App 本地生成 PNG，再走 `/media/upload` 得到 URL。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

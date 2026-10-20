@@ -69,6 +69,23 @@ public actor APIClient {
         return try await request(path: "auth/sms-login", method: "POST", body: body)
     }
 
+    public func completeOnboarding(_ input: OnboardingInput) async throws -> UserProfile {
+        var body: [String: Any] = [
+            "nickname": input.nickname,
+            "showGender": input.showGender,
+            "showAge": input.showAge,
+            "showGrade": input.showGrade
+        ]
+        if let gender = input.gender { body["gender"] = gender }
+        if let birthYear = input.birthYear { body["birthYear"] = birthYear }
+        if let grade = input.grade { body["grade"] = grade }
+        if let zodiac = input.zodiac { body["zodiac"] = zodiac }
+        if let mbti = input.mbti { body["mbti"] = mbti }
+        if let signature = input.signature { body["signature"] = signature }
+        if let avatarUrl = input.avatarUrl { body["avatarUrl"] = avatarUrl }
+        return try await request(path: "users/me/onboarding", method: "PUT", body: body)
+    }
+
     public func me() async throws -> UserProfile {
         try await request(path: "auth/me")
     }

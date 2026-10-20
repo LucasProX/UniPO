@@ -36,6 +36,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["onboarding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users/{id}/status": {
         parameters: {
             query?: never;
@@ -1188,6 +1204,15 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             lastLoginAt?: string;
+            gender?: string;
+            /** Format: int32 */
+            birthYear?: number;
+            zodiac?: string;
+            mbti?: string;
+            showGender?: boolean;
+            showAge?: boolean;
+            showGrade?: boolean;
+            onboardingCompleted?: boolean;
         };
         UpdatePreferencesRequest: {
             goalTags?: string;
@@ -1199,6 +1224,20 @@ export interface components {
             browserNotificationEnabled?: boolean;
             /** Format: int32 */
             remindBeforeHours?: number;
+        };
+        OnboardingRequest: {
+            nickname?: string;
+            gender?: string;
+            /** Format: int32 */
+            birthYear?: number;
+            grade?: string;
+            zodiac?: string;
+            mbti?: string;
+            signature?: string;
+            showGender?: boolean;
+            showAge?: boolean;
+            showGrade?: boolean;
+            avatarUrl?: string;
         };
         UserStatusRequest: {
             status?: string;
@@ -1245,6 +1284,15 @@ export interface components {
             lastLoginAt?: string;
             /** Format: date-time */
             followersSeenAt?: string;
+            gender?: string;
+            /** Format: int32 */
+            birthYear?: number;
+            zodiac?: string;
+            mbti?: string;
+            showGender?: boolean;
+            showAge?: boolean;
+            showGrade?: boolean;
+            onboardingCompleted?: boolean;
         };
         UserRoleRequest: {
             role?: string;
@@ -2048,6 +2096,30 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdatePreferencesRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseUserProfile"];
+                };
+            };
+        };
+    };
+    onboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OnboardingRequest"];
             };
         };
         responses: {

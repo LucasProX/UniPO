@@ -101,6 +101,7 @@ public class AuthService implements CommandLineRunner {
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         user.setLastLoginAt(now);
+        user.setOnboardingCompleted(false);
         userMapper.insert(user);
         UserPreference preference = createDefaultPreference(user.getId(), now);
         presenceService.markOnline(user.getId());
@@ -201,6 +202,7 @@ public class AuthService implements CommandLineRunner {
         user.setCreatedAt(now);
         user.setUpdatedAt(now);
         user.setLastLoginAt(now);
+        user.setOnboardingCompleted(false);
         userMapper.insert(user);
         createDefaultPreference(user.getId(), now);
         return user;

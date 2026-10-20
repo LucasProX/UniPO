@@ -21,6 +21,21 @@ public final class UserDtos {
             @Size(max = 400) String bio
     ) {}
 
+    /** 3 步新手引导的最终提交；字段都可选，允许用户跳过部分信息。 */
+    public record OnboardingRequest(
+            @Size(max = 40) String nickname,
+            String gender,
+            Integer birthYear,
+            @Size(max = 30) String grade,
+            @Size(max = 10) String zodiac,
+            @Size(max = 8) String mbti,
+            @Size(max = 300) String signature,
+            Boolean showGender,
+            Boolean showAge,
+            Boolean showGrade,
+            @Size(max = 500) String avatarUrl
+    ) {}
+
     public record UpdatePreferencesRequest(
             String goalTags,
             String interestCategories,

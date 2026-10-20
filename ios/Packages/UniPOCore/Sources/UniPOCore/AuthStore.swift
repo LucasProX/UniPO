@@ -101,6 +101,14 @@ public final class AuthStore {
         }
     }
 
+    public func completeOnboarding(_ input: OnboardingInput) async throws {
+        let user = try await api.completeOnboarding(input)
+        guard let current = session else { return }
+        session = AuthSession(token: current.token, refreshToken: current.refreshToken,
+                              expiresInSeconds: current.expiresInSeconds, user: user)
+        loginRequested = false
+    }
+
     public func logout() async {
         let refresh = session?.refreshToken
         await api.logout(refreshToken: refresh)
@@ -113,7 +121,11 @@ public final class AuthStore {
         await api.setAccessToken(result.token)
         session = result
         errorMessage = nil
-        loginRequested = false
+        // 新用户 onboarding 未完成时保持登录页容器，由 LoginView 切到引导页；
+        // 已有用户直接关闭。
+        if result.user.onboardingCompleted != false {
+            loginRequested = false
+        }
     }
 
     private func clear() {

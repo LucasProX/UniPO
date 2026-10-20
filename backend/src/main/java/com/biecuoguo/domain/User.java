@@ -37,4 +37,12 @@ public class User {
     private LocalDateTime lastLoginAt;
     /** 上次查看粉丝列表的时间；用于个人主页的「+n 新粉丝」。 */
     private LocalDateTime followersSeenAt;
+    private String gender;
+    private Integer birthYear;
+    private String zodiac;
+    private String mbti;
+    private Boolean showGender;
+    private Boolean showAge;
+    private Boolean showGrade;
+    private Boolean onboardingCompleted;
 }

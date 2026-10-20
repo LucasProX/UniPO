@@ -98,7 +98,7 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 ### 4.2 用户与组织域
 | 表 | 说明 |
 |---|---|
-| `users` | 账号、资料、`public_uid`、`role`、`operator_scope`、等级 XP |
+| `users` | 账号、资料、`public_uid`、`role`、`operator_scope`、等级 XP；V17 增加 `gender` / `birth_year` / `zodiac` / `mbti` / 展示开关 / `onboarding_completed` |
 | `user_preferences` | 兴趣标签、推送偏好 |
 | `user_follows` | 关注关系 |
 | `user_checkins` | 每日签到 |

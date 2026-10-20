@@ -87,10 +87,18 @@ public struct RootView: View {
                 .presentationCornerRadius(30)
         }
         .tint(UniColor.blue)
+        .task(id: auth.isAuthenticated) {
+            if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
+                auth.loginRequested = true
+            }
+        }
         .task {
             #if DEBUG
             // 调试登录：xcrun simctl launch booted com.unipo.app -email a@b.com -password xxx
             let args = ProcessInfo.processInfo.arguments
+            if args.contains("-logout") {
+                await auth.logout()
+            }
             if args.contains("-login") {
                 auth.loginRequested = true
             }

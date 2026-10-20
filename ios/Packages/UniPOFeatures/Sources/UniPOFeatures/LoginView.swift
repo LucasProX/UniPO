@@ -63,6 +63,17 @@ struct LoginView: View {
     }
 
     var body: some View {
+        Group {
+            if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
+                OnboardingView()
+                    .environment(auth)
+            } else {
+                loginBody
+            }
+        }
+    }
+
+    private var loginBody: some View {
         ZStack {
             LoginBackground(reduceMotion: reduceMotion)
                 .onTapGesture { focusedField = nil }
@@ -117,7 +128,7 @@ struct LoginView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-sms-login") {
                 mode = .phone
-                phone = "13800138000"
+                phone = "13900003333"
                 code = "1234"
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 await auth.smsLogin(phone: phone, code: code)

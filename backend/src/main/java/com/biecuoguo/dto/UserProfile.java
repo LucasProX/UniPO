@@ -37,7 +37,15 @@ public record UserProfile(
         Boolean browserNotificationEnabled,
         Integer remindBeforeHours,
         OffsetDateTime createdAt,
-        OffsetDateTime lastLoginAt
+        OffsetDateTime lastLoginAt,
+        String gender,
+        Integer birthYear,
+        String zodiac,
+        String mbti,
+        Boolean showGender,
+        Boolean showAge,
+        Boolean showGrade,
+        Boolean onboardingCompleted
 ) {
     public static UserProfile from(User user, UserPreference preference) {
         return from(user, preference, false);
@@ -74,7 +82,15 @@ public record UserProfile(
                 preference != null && Boolean.TRUE.equals(preference.getBrowserNotificationEnabled()),
                 preference == null ? 24 : preference.getRemindBeforeHours(),
                 AppTime.toOffset(user.getCreatedAt()),
-                AppTime.toOffset(user.getLastLoginAt())
+                AppTime.toOffset(user.getLastLoginAt()),
+                user.getGender(),
+                user.getBirthYear(),
+                user.getZodiac(),
+                user.getMbti(),
+                Boolean.TRUE.equals(user.getShowGender()),
+                Boolean.TRUE.equals(user.getShowAge()),
+                Boolean.TRUE.equals(user.getShowGrade()),
+                Boolean.TRUE.equals(user.getOnboardingCompleted())
         );
     }
 }

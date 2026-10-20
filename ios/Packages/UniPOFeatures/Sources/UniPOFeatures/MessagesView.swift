@@ -54,6 +54,13 @@ struct MessagesView: View {
                 }
             }
             .onDisappear { RealtimeClient.shared.disconnect() }
+            .fullScreenCover(isPresented: Binding(
+                get: { auth.loginRequested },
+                set: { auth.loginRequested = $0 }
+            )) {
+                LoginView()
+                    .environment(auth)
+            }
         }
     }
 

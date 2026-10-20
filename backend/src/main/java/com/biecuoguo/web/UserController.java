@@ -35,6 +35,11 @@ public class UserController {
         return ApiResponse.ok(userService.updatePreferences(SecurityUtils.currentUser().id(), request));
     }
 
+    @PutMapping("/onboarding")
+    public ApiResponse<UserProfile> onboarding(@Valid @RequestBody UserDtos.OnboardingRequest request) {
+        return ApiResponse.ok(userService.completeOnboarding(SecurityUtils.currentUser().id(), request));
+    }
+
     @GetMapping("/stats")
     public ApiResponse<UserDtos.UserStats> stats() {
         return ApiResponse.ok(userService.stats(SecurityUtils.currentUser().id()));

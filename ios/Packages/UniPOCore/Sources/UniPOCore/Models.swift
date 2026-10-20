@@ -35,10 +35,21 @@ public struct UserProfile: Codable, Identifiable, Hashable {
     public let major: String?
     public let grade: String?
     public let online: Bool?
+    public let gender: String?
+    public let birthYear: Int?
+    public let zodiac: String?
+    public let mbti: String?
+    public let showGender: Bool?
+    public let showAge: Bool?
+    public let showGrade: Bool?
+    public let onboardingCompleted: Bool?
 
     public init(id: Int64, publicUid: String, nickname: String, avatarUrl: String?, role: String,
                 level: Int, levelTitle: String?, xp: Int?, bio: String?, college: String?,
-                major: String?, grade: String?, online: Bool?) {
+                major: String?, grade: String?, online: Bool?,
+                gender: String? = nil, birthYear: Int? = nil, zodiac: String? = nil, mbti: String? = nil,
+                showGender: Bool? = nil, showAge: Bool? = nil, showGrade: Bool? = nil,
+                onboardingCompleted: Bool? = nil) {
         self.id = id
         self.publicUid = publicUid
         self.nickname = nickname
@@ -52,6 +63,14 @@ public struct UserProfile: Codable, Identifiable, Hashable {
         self.major = major
         self.grade = grade
         self.online = online
+        self.gender = gender
+        self.birthYear = birthYear
+        self.zodiac = zodiac
+        self.mbti = mbti
+        self.showGender = showGender
+        self.showAge = showAge
+        self.showGrade = showGrade
+        self.onboardingCompleted = onboardingCompleted
     }
 }
 
@@ -138,6 +157,36 @@ public struct MessageView: Codable, Identifiable, Hashable {
     public let content: String
     public let read: Bool?
     public let createdAt: String?
+}
+
+public struct OnboardingInput {
+    public var nickname: String
+    public var gender: String?
+    public var birthYear: Int?
+    public var grade: String?
+    public var zodiac: String?
+    public var mbti: String?
+    public var signature: String?
+    public var showGender: Bool
+    public var showAge: Bool
+    public var showGrade: Bool
+    public var avatarUrl: String?
+
+    public init(nickname: String, gender: String?, birthYear: Int?, grade: String?,
+                zodiac: String?, mbti: String?, signature: String?,
+                showGender: Bool, showAge: Bool, showGrade: Bool, avatarUrl: String?) {
+        self.nickname = nickname
+        self.gender = gender
+        self.birthYear = birthYear
+        self.grade = grade
+        self.zodiac = zodiac
+        self.mbti = mbti
+        self.signature = signature
+        self.showGender = showGender
+        self.showAge = showAge
+        self.showGrade = showGrade
+        self.avatarUrl = avatarUrl
+    }
 }
 
 public struct SmsCodeResponse: Codable {

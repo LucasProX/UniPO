@@ -50,12 +50,27 @@ struct PostDetailView: View {
                     Button("关闭") { dismiss() }
                 }
             }
-            .task { await loadComments() }
+            .task {
+                await loadComments()
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("-like-test") {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    toggleLike()
+                }
+                #endif
+            }
             .sheet(item: $startedConversation) { conversation in
                 MessagesView(initialConversation: conversation)
                     .environment(auth)
                     .presentationDetents([.large])
                     .presentationCornerRadius(30)
+            }
+            .fullScreenCover(isPresented: Binding(
+                get: { auth.loginRequested },
+                set: { auth.loginRequested = $0 }
+            )) {
+                LoginView()
+                    .environment(auth)
             }
             .alert("提示", isPresented: Binding(
                 get: { errorMessage != nil },

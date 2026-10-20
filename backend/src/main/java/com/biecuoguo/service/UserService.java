@@ -152,6 +152,57 @@ public class UserService {
                 stats(user.getId()), following, mine, blocked, blockedBy);
     }
 
+    @Transactional
+    public UserProfile completeOnboarding(Long userId, UserDtos.OnboardingRequest request) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new NoSuchElementException("用户不存在");
+        }
+        if (request.nickname() != null && !request.nickname().isBlank()) {
+            String nickname = request.nickname().trim();
+            User same = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getNickname, nickname));
+            if (same != null && !same.getId().equals(userId)) {
+                throw new IllegalArgumentException("该用户名已被占用");
+            }
+            user.setNickname(nickname);
+        }
+        if (request.gender() != null && !request.gender().isBlank()) {
+            if (!java.util.Set.of("male", "female", "other").contains(request.gender())) {
+                throw new IllegalArgumentException("性别参数不正确");
+            }
+            user.setGender(request.gender());
+        }
+        if (request.birthYear() != null) {
+            int current = java.time.Year.now().getValue();
+            if (request.birthYear() < 1950 || request.birthYear() > current - 10) {
+                throw new IllegalArgumentException("出生年份不正确");
+            }
+            user.setBirthYear(request.birthYear());
+        }
+        if (request.grade() != null && !request.grade().isBlank()) {
+            user.setGrade(request.grade().trim());
+        }
+        if (request.zodiac() != null) {
+            user.setZodiac(request.zodiac().trim());
+        }
+        if (request.mbti() != null) {
+            user.setMbti(request.mbti().trim());
+        }
+        if (request.signature() != null) {
+            user.setBio(request.signature().trim());
+        }
+        if (request.avatarUrl() != null && !request.avatarUrl().isBlank()) {
+            user.setAvatarUrl(request.avatarUrl().trim());
+        }
+        user.setShowGender(request.showGender() == null || request.showGender());
+        user.setShowAge(request.showAge() == null || request.showAge());
+        user.setShowGrade(request.showGrade() == null || request.showGrade());
+        user.setOnboardingCompleted(true);
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+        return UserProfile.from(user, preference(user.getId()), presenceService.isOnline(userId));
+    }
+
     private UserDtos.CheckInView checkInView(User user, boolean checkedInToday, int streak, int xpGained, java.time.LocalDate checkinDate) {
         return new UserDtos.CheckInView(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())), checkedInToday, streak, xpGained, checkinDate);
     }

@@ -150,6 +150,14 @@ export interface UserProfile {
   remindBeforeHours?: number;
   createdAt?: string;
   lastLoginAt?: string;
+  gender?: string;
+  birthYear?: number;
+  zodiac?: string;
+  mbti?: string;
+  showGender?: boolean;
+  showAge?: boolean;
+  showGrade?: boolean;
+  onboardingCompleted?: boolean;
 }
 
 /** 登录 / 注册 / 刷新三处共用的返回包（后端 AuthResponse）。 */
