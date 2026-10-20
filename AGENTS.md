@@ -27,6 +27,7 @@ UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + Min
 | `backend/src/main/java/com/biecuoguo/media/` | **第一个按领域拆的模块**：`api/`（MediaDtos）+ `internal/`（Controller/Service/Mapper/实体/ImageSignature）。跨模块只能依赖 `api` |
 | `backend/src/main/java/com/biecuoguo/taxonomy/` | 分类字典模块（学校/学院/专业/标签/分类）：`api/`（TaxonomyDtos）+ `internal/`（Controller/Service）。**实体与 Mapper 暂时仍在共享的 domain/mapper 包**，等 post/user 模块迁移时再收进来 |
 | `backend/src/main/java/com/biecuoguo/message/` | 私信模块：`api/`（MessageDtos）+ `internal/`（Controller/Service/会话/消息实体/Mapper）。依赖共享的 `UserMapper` 与 `PostDtos`，等 user 模块迁移时收口 |
+| `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
 | `backend/src/main/resources/db/migration/` | Flyway V1–V11，**只增不改** |

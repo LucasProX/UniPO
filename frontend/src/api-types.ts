@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/spotlights/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update"];
+        post?: never;
+        delete: operations["delete_1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{uid}/follow": {
         parameters: {
             query?: never;
@@ -372,6 +388,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/spotlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_1"];
+        put?: never;
+        post: operations["create_2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/posts/page": {
         parameters: {
             query?: never;
@@ -524,6 +556,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["tags"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/spotlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["active"];
         put?: never;
         post?: never;
         delete?: never;
@@ -944,6 +992,48 @@ export interface components {
             role?: string;
             operatorScope?: string;
         };
+        UpsertRequest: {
+            title?: string;
+            subtitle?: string;
+            badge?: string;
+            imageUrl?: string;
+            linkUrl?: string;
+            source?: string;
+            /** Format: int64 */
+            referencePostId?: number;
+            /** Format: int32 */
+            weight?: number;
+            enabled?: boolean;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+        };
+        ApiResponseSpotlightView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["SpotlightView"];
+            requestId?: string;
+        };
+        SpotlightView: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+            subtitle?: string;
+            badge?: string;
+            imageUrl?: string;
+            linkUrl?: string;
+            source?: string;
+            /** Format: int32 */
+            weight?: number;
+            enabled?: boolean;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
         ApiResponseBoolean: {
             code?: string;
             message?: string;
@@ -1265,6 +1355,12 @@ export interface components {
             type?: string;
             color?: string;
         };
+        ApiResponseListSpotlightView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["SpotlightView"][];
+            requestId?: string;
+        };
         ApiResponseListSchool: {
             code?: string;
             message?: string;
@@ -1564,6 +1660,54 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseUser"];
+                };
+            };
+        };
+    };
+    update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSpotlightView"];
+                };
+            };
+        };
+    };
+    delete_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
         };
@@ -2209,6 +2353,50 @@ export interface operations {
             };
         };
     };
+    list_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListSpotlightView"];
+                };
+            };
+        };
+    };
+    create_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSpotlightView"];
+                };
+            };
+        };
+    };
     page: {
         parameters: {
             query?: {
@@ -2417,6 +2605,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseListTagView"];
+                };
+            };
+        };
+    };
+    active: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListSpotlightView"];
                 };
             };
         };

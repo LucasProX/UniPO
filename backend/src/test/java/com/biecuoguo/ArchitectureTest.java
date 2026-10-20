@@ -109,6 +109,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void spotlightInternalsAreNotAccessedFromOutside() {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("com.biecuoguo.spotlight..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.spotlight.internal..")
+                .because("spotlight 内部实现对外不可见，跨模块只能依赖 api（ADR-0002）");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void realtimeDoesNotDependOnBusinessServices() {
         ArchRule rule = noClasses()
                 .that().resideInAPackage(REALTIME)

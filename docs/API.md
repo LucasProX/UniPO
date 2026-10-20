@@ -219,6 +219,33 @@
 - `POST /api/auth/logout` 可选带 `{"refreshToken":"..."}`，把 access 与 refresh 一起拉黑；不带也能退出（只拉黑 access）。
 - 刷新**不轮换** refresh token：换出来的 refresh 还是原来那一个，直到过期或退出登录。原因见 DEVLOG 同名条目（拉黑表是进程内的，轮换会在多标签页/多实例下误踢人）。
 
+### 9.2 首页轮播位（spotlights）
+
+**公开只读**：`GET /api/spotlights`（`/api/v1/spotlights` 等价）。返回当前生效的条目：
+`enabled=true` 且处于 `startsAt/endsAt` 时间窗内，按 `weight` 倒序、同权重按 id 倒序，最多 5 条。
+没有数据返回空数组，前端不渲染——**不要在这里兜底默认文案**。
+
+| 字段 | 说明 |
+|---|---|
+| `title` / `subtitle` / `badge` | 文案，标题必填（≤80 字） |
+| `imageUrl` | 可为空；为空时前端用品牌渐变兜底，不依赖外链图片 |
+| `linkUrl` | 站内路径（`/...`）或外链；前端据此路由/新窗口打开 |
+| `source` | `MANUAL`（运营手动）或 `ALGORITHM`（算法位，预留） |
+| `referencePostId` | 算法位指回帖子；手动位为空 |
+| `weight` | 越大越靠前；运营置顶就调大 |
+| `startsAt` / `endsAt` | 投放时间窗，为空表示不限制 |
+
+**后台管理**（需要 `OPERATOR / SCHOOL_OPERATOR / COLLEGE_OPERATOR / MAJOR_OPERATOR / ADMIN`）：
+
+- `GET /api/admin/spotlights`：全部（含已下线）
+- `POST /api/admin/spotlights`：新建
+- `PUT /api/admin/spotlights/{id}`：编辑
+- `DELETE /api/admin/spotlights/{id}`：删除
+
+> 目前只有 API，还没有管理后台页面。算法推荐接进来时**不要改公开接口**：
+> 要么让算法任务写 `source='ALGORITHM'` 的行，要么在 `SpotlightService.active()` 里合并算法结果；
+> 两条路都保留 `weight` 作为运营置顶的优先级。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

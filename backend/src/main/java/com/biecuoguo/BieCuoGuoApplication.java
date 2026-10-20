@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
 @MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.media.internal", "com.biecuoguo.message.internal",
-        "com.biecuoguo.post.internal"})
+        "com.biecuoguo.post.internal", "com.biecuoguo.spotlight.internal"})
 @ConfigurationPropertiesScan
 public class BieCuoGuoApplication {
     public static void main(String[] args) {

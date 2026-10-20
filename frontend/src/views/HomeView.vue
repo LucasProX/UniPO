@@ -2,13 +2,16 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import dayjs from 'dayjs';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
 import PostCard from '../components/post/PostCard.vue';
+import SpotlightCarousel from '../components/layout/SpotlightCarousel.vue';
 import LoadingState from '../components/ui/LoadingState.vue';
 import ErrorState from '../components/ui/ErrorState.vue';
 import EmptyState from '../components/ui/EmptyState.vue';
+import { campusApi } from '../lib/api';
 import { useFeedStore } from '../stores/feed';
 import { recommendScore } from '../lib/postHelpers';
-import type { BoardCode, CampusPost } from '../types';
+import type { BoardCode, CampusPost, SpotlightView } from '../types';
 
 const props = defineProps<{
   board: BoardCode;
@@ -21,6 +24,8 @@ const emit = defineEmits<{
 }>();
 
 const feed = useFeedStore();
+const router = useRouter();
+const spotlights = ref<SpotlightView[]>([]);
 const feedPage = ref(1);
 const feedPageSize = 10;
 
@@ -66,10 +71,23 @@ watch(feedPageCount, (count) => {
   if (feedPage.value > count) feedPage.value = count;
 });
 
-onMounted(() => {
+// 首页大屏轮播只在「推荐 + 未按日期筛选」时出现，和原来的产品逻辑保持一致。
+const showSpotlight = computed(() => props.board === 'recommend' && !props.date && spotlights.value.length > 0);
+
+function openSpotlight(linkUrl: string) {
+  if (linkUrl.startsWith('/')) {
+    void router.push(linkUrl);
+  } else {
+    window.open(linkUrl, '_blank', 'noopener,noreferrer');
+  }
+}
+
+onMounted(async () => {
   // board 变化时重新拉第一页：服务端分页的游标是按 tab 的排序键编码的，
   // 换 tab 不重新加载会把另一个板块的游标混进来。
   if (!feed.posts.length || feed.feedTab !== props.board) feed.load(props.board);
+  // 轮播位失败不影响信息流；拿不到就当没有（不造假数据）。
+  spotlights.value = await campusApi.spotlights().catch(() => []);
 });
 
 watch(() => props.board, (board) => {
@@ -83,6 +101,7 @@ function reloadFeed() {
 
 <template>
   <div class="home-feed hide-scrollbar min-h-0 lg:h-full lg:overflow-y-auto lg:pr-1">
+    <SpotlightCarousel v-if="showSpotlight" :items="spotlights" @open="openSpotlight" />
     <LoadingState v-if="feed.feedLoading && !pagedPosts.length" text="正在加载校园动态…" />
     <ErrorState v-else-if="feed.feedError && !pagedPosts.length" :message="feed.feedError" @retry="reloadFeed" />
     <EmptyState v-else-if="!pagedPosts.length" text="这个版块还没有内容" />

@@ -4164,6 +4164,37 @@ AxiosError，兜底逻辑改看 cause。这个 bug 不会报错、只会多打�
 验证：stats 返回真实数字（followers/posts 都对），后台概览 users/posts/publishedPosts/comments 正确，
 smoke 37/37，mvn test 42 绿。
 
+## 2026-10-20 把首页大屏轮播找回来：这次做成数据驱动，不是一段写死的 JSX
+
+用户反馈「首页原来有个大屏滚动窗口，怎么没了」。翻历史确认：旧 App.vue 里有 spotlightItems（3 条外链 Unsplash 图），
+组件化提交 17f45f6 把整个 section 漏掉了，CSS 还留在 styles.css 里变成死代码。
+
+这次不打算把那段硬编码黏回来，原因有两个：
+
+1. 外链图片在国内网络经常白屏，不符合「不依赖外链资源」；
+2. 运营位迟早要后台可配，硬编码等于给以后埋一次迁移。
+
+所以做了 spotlight 模块：
+
+- V12 建 spotlights 表：title/subtitle/badge/imageUrl/linkUrl/source/referencePostId/weight/enabled/startsAt/endsAt；
+- 公开 GET /api/spotlights：enabled + 时间窗内，weight 倒序，最多 5 条，空数组时前端不渲染；
+- 后台 /api/admin/spotlights 四个 CRUD，权限走现有的 hasAnyRole；
+- 前端 SpotlightCarousel 组件：6s 自动轮播、悬停暂停、箭头/圆点、图片为空时品牌渐变兜底。
+
+关于「算法推荐 + 运营手动」：没有做两套接口。表里 source 区分 MANUAL / ALGORITHM，
+referencePostId 给算法位指回帖子，weight 让运营置顶。以后算法可以：
+
+- 离线任务往这张表写 ALGORITHM 行（简单，但有时效）；或
+- 读取时在 SpotlightService.active() 里合并算法结果（实时，但要处理去重和权重）。
+
+两条路都不用改 /api/spotlights，这是这次设计里最值钱的一点。
+
+一个产品上的观察：这个轮播原来只在「推荐 tab + 未按日期筛选」时出现，恢复时保留了同样的条件，
+否则切到校 PO/院 PO 还挂着大图会很怪。
+
+验证：GET /api/spotlights 返回 3 条种子数据；后台创建 weight=200 的测试位后排到第一，删除后恢复；
+mvn test 43 绿；前端 lint/build 通过。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

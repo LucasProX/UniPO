@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { api, localApi, publicApi, unwrap, apiErrorMessage, apiErrorCode } from './http';
-import type { AuthSessionView, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats, ApiResponse } from '../types';
+import type { AuthSessionView, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, SpotlightView, UserProfile, UserStats, ApiResponse } from '../types';
 
 /**
  * 业务端点。按领域分组，新增接口时只动对应分组的文件/段落。
@@ -54,6 +54,8 @@ export const campusApi = {
       params: { tab, ...(cursor ? { cursor } : {}), limit }
     })),
   boards: () => unwrap<BoardView[]>(api.get('/posts/boards')),
+  /** 首页轮播位；空数组时前端不渲染（不造假数据）。 */
+  spotlights: () => unwrap<SpotlightView[]>(api.get('/spotlights')),
   hotToday: () => unwrap<PostView>(api.get('/posts/hot-today')),
   dontMiss: () => unwrap<PostView[]>(api.get('/posts/dont-miss')),
   interactionNotices: () => unwrap<InteractionNoticeView[]>(api.get('/posts/interaction-notices')),

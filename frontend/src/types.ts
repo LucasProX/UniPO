@@ -222,15 +222,25 @@ export interface CampusMessage extends MessageView {
   optimistic?: boolean;
 }
 
-/** 首页重点事件轮播位（后续由管理后台维护） */
-export interface SpotlightItem {
+/**
+ * 首页轮播位（后端 /api/spotlights）。
+ *
+ * source 区分运营手动位（MANUAL）与未来的算法推荐位（ALGORITHM）；
+ * imageUrl 为空时前端用品牌渐变兜底，不依赖外链图片。
+ */
+export interface SpotlightView {
   id: number;
   title: string;
-  kicker: string;
-  summary: string;
-  badge: string;
-  imageUrl: string;
-  adminOnly: boolean;
+  subtitle: string | null;
+  badge: string | null;
+  imageUrl: string | null;
+  linkUrl: string | null;
+  source: 'MANUAL' | 'ALGORITHM' | string;
+  weight: number;
+  enabled: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
 }
 
 /** 课程表条目（本地创建，暂无后端接口） */
