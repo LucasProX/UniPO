@@ -1,9 +1,10 @@
-package com.biecuoguo.web;
+package com.biecuoguo.taxonomy.internal;
+
+import com.biecuoguo.web.ApiResponse;
 
 import com.biecuoguo.domain.School;
-import com.biecuoguo.dto.TaxonomyDtos;
+import com.biecuoguo.taxonomy.api.TaxonomyDtos;
 import com.biecuoguo.dto.OptionDtos;
-import com.biecuoguo.service.TaxonomyService;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;

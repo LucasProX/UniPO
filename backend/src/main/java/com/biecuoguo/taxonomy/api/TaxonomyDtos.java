@@ -1,4 +1,4 @@
-package com.biecuoguo.dto;
+package com.biecuoguo.taxonomy.api;
 
 import com.biecuoguo.domain.Category;
 import com.biecuoguo.domain.Tag;

@@ -1,4 +1,4 @@
-package com.biecuoguo.service;
+package com.biecuoguo.taxonomy.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.Category;
@@ -7,7 +7,7 @@ import com.biecuoguo.domain.Major;
 import com.biecuoguo.domain.School;
 import com.biecuoguo.domain.Tag;
 import com.biecuoguo.dto.OptionDtos;
-import com.biecuoguo.dto.TaxonomyDtos;
+import com.biecuoguo.taxonomy.api.TaxonomyDtos;
 import com.biecuoguo.mapper.CategoryMapper;
 import com.biecuoguo.mapper.CollegeMapper;
 import com.biecuoguo.mapper.MajorMapper;

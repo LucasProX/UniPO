@@ -82,6 +82,15 @@ class ArchitectureTest {
     }
 
     @Test
+    void taxonomyInternalsAreNotAccessedFromOutside() {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("com.biecuoguo.taxonomy..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.taxonomy.internal..")
+                .because("taxonomy 内部实现对其他模块不可见，跨模块只能依赖 api（ADR-0002）");
+        rule.check(CLASSES);
+    }
+
+    @Test
     void realtimeDoesNotDependOnBusinessServices() {
         ArchRule rule = noClasses()
                 .that().resideInAPackage(REALTIME)

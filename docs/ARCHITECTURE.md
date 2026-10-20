@@ -25,7 +25,7 @@
 | Web httpOnly Cookie 会话 + CSRF 双提交 | ✅ 后端完成（前端仍走 Bearer，切换待前端改造） |
 | 会话滑动过期 / 退出所有设备 | ✅ 已完成（`SessionStore` memory / redis 双实现） |
 | WebSocket 实时通道 | ✅ 已完成（auth / resume / 心跳；Redis Stream + Pub/Sub） |
-| 模块化拆包 + ArchUnit | 🔄 规则已立（6 条边界测试）；**media 模块已迁移**做样板，其余按 ADR-0002 继续 |
+| 模块化拆包 + ArchUnit | 🔄 规则已立（7 条边界测试）；**media、taxonomy 已迁移**，其余按 ADR-0002 继续 |
 | 可观测性（metrics / 告警） | ⏳ 只做到 requestId + 健康检查 |
 
 ## 1. 拓扑

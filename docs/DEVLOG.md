@@ -3971,6 +3971,30 @@ com.biecuoguo.media.internal 之后，@MapperScan("com.biecuoguo.mapper") 就扫
 验证：mvn test 39 绿（ImageSignatureTest 跟着搬到 media.internal）；smoke.sh 37/37，上传那项 200；
 CI 4/4 绿。
 
+## 2026-10-20 搬 taxonomy 时发现：有些模块不能整个搬，只能搬一半
+
+media 搬得很顺，于是按计划搬 taxonomy。但刚列完依赖就发现搬不动：
+
+PostService 直接注入 SchoolMapper / CollegeMapper / MajorMapper，用来给作者资料拼
+「学校/学院/专业」名称。这几个 Mapper 和实体一旦跟着 taxonomy 进 internal，
+post 模块就会反过来依赖 taxonomy.internal —— 正好踩中刚立的规则。
+
+两个选择：
+
+1. 给 taxonomy 加一个查询 api（比如 Map<Long, School> schoolsByIds(...)），
+   让 PostService 改用它，然后再把 Mapper/实体收进 taxonomy.internal。
+2. 先只搬 taxonomy 自己的 Controller/Service/DTO，实体和 Mapper 留在共享包。
+
+选了 2，因为选 1 要动 PostService 的批量查询逻辑（正好是之前刚清理过 N+1 的地方），
+风险不匹配收益。**但这意味着「模块迁移」不是均匀的**：有的模块能整包搬，
+有的只能先搬一半，等下游模块也迁完再收口。
+
+这也说明 ADR-0002 里「每步一个模块」的顺序不是随便定的：taxonomy 排在 post 前面，
+但真正收口要等 post 迁移时一起做。迁移记录里写清楚了，免得下次有人以为漏搬。
+
+验证：Controller/Service/DTO 搬走后，/api/schools、/api/categories、/api/tags 都 200，
+smoke 37/37，mvn test 40 绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

@@ -25,6 +25,7 @@ UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + Min
 | `backend/src/main/java/com/biecuoguo/service/` | 业务逻辑（10 个），N+1 与手写权限判断都在这一层 |
 | `backend/src/main/java/com/biecuoguo/security/` | Spring Security + JWT + Cookie 会话 + `CurrentUser` |
 | `backend/src/main/java/com/biecuoguo/media/` | **第一个按领域拆的模块**：`api/`（MediaDtos）+ `internal/`（Controller/Service/Mapper/实体/ImageSignature）。跨模块只能依赖 `api` |
+| `backend/src/main/java/com/biecuoguo/taxonomy/` | 分类字典模块（学校/学院/专业/标签/分类）：`api/`（TaxonomyDtos）+ `internal/`（Controller/Service）。**实体与 Mapper 暂时仍在共享的 domain/mapper 包**，等 post/user 模块迁移时再收进来 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
 | `backend/src/main/resources/db/migration/` | Flyway V1–V11，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |

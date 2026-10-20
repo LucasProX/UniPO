@@ -95,6 +95,27 @@ PostService 可以随手调 MessageMapper，AdminService 可以读任意表，�
 
 验证：mvn test 39 绿；smoke.sh 37/37（含图片上传）；CI 全绿。
 
+### taxonomy（2026-10-20，第二个模块）
+
+结构：
+
+    com.biecuoguo.taxonomy
+      api/TaxonomyDtos.java
+      internal/TaxonomyController.java
+      internal/TaxonomyService.java
+
+**刻意的妥协**：School / College / Major / Tag / Category 的实体与 Mapper 还留在共享的
+domain / mapper 包里，没有一起搬。原因：PostService 直接用 SchoolMapper/CollegeMapper/MajorMapper
+拼作者资料，直接搬走会让 post 模块瞬间依赖 taxonomy.internal。
+
+正确做法是给 taxonomy 加一个查询 api（批量取学校/学院/专业名称），等 post 模块迁移时一起改。
+在那之前，taxonomy 模块只收「自己的 Controller/Service/DTO」，边界仍然成立：
+外部不能碰 taxonomy.internal。
+
+新增 ArchUnit 规则：taxonomy.internal 不能被模块外访问。
+
+验证：mvn test 40 绿；/api/schools、/api/categories、/api/tags 均 200；smoke 37/37；CI 全绿。
+
 ## 8. 代价
 
 - 迁移期间会出现「两套写法并存」（旧层分包 + 新模块分包），持续几周。
