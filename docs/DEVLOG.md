@@ -3913,6 +3913,37 @@ replayed event seq 2 event message
 前端 `lib/realtime.ts` 从 fetch 流改成原生 WebSocket，保留指数退避与 25s/60s 心跳；
 Vite 代理加了 `ws: true`，否则开发环境升级请求会 404。
 
+## 2026-10-20 给模块边界装上 ArchUnit：第一版规则把 Spring 自己拦了
+
+决定按 ADR-0002 迁移模块，但先做一件更划算的事：把「依赖方向」写成会失败的测试。
+第一版规则：
+
+```java
+noClasses().that().resideInAPackage("..service..")
+    .should().dependOnClassesThat().resideInAPackage("..web..")
+```
+
+跑出来 7 条 service → web 违规，但 grep 了一遍 import，Service 里根本没有 com.biecuoguo.web。
+再跑 realtime 的规则，29 条违规，点开全是 `org.springframework.web.socket.*`。
+
+原因：ArchUnit 的 `..web..` 是**包片段**匹配，不是前缀匹配。
+`org.springframework.web.socket` 里也有一个叫 web 的包段，于是被当成「web 层」。
+这次是 false positive，但如果反过来——规则放得太宽、真违规混在里面——就会被忽略。
+教训：**包名一律写全限定前缀**（com.biecuoguo.web..），别用 ..xxx.. 图省事。
+
+改完之后 5 条规则全绿：
+
+- web 不直接依赖 mapper
+- service 不依赖 web
+- domain 不依赖 Spring / 上层
+- mapper 只依赖 domain
+- realtime 不依赖 service / web
+
+**为什么不一次性把 124 个文件搬成模块包**：那会是一个「除了 import 什么都没变」的巨型 diff，
+review 不了、出问题没法二分，而且模块边界不是搬出来的，是先理清依赖再切。
+所以 ADR-0002 定了每步一个模块的顺序：media → taxonomy → message → post → user/auth → admin，
+每步都必须 CI 绿 + smoke 37/37。realtime / state / config 已经是独立包，先算 infra。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：
