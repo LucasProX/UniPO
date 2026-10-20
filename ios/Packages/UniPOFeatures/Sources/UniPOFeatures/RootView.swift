@@ -12,6 +12,7 @@ public struct RootView: View {
     @State private var showCompose = false
     @State private var showMessages = false
     @State private var pendingConversationId: Int64?
+    @State private var pendingProfileTab = false
 
     public init() {
         // 调试用：xcrun simctl launch booted com.unipo.app -tab achievements
@@ -49,7 +50,7 @@ public struct RootView: View {
                 case .achievements:
                     AchievementsView()
                 case .profile:
-                    ProfileView(onRequestAuth: { auth.requireLogin() })
+                    ProfileView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -62,8 +63,11 @@ public struct RootView: View {
             .frame(height: 150)
             .allowsHitTesting(false)
 
-            DockBar(tab: $tab, onCompose: {
+            DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, onCompose: {
                 if auth.isAuthenticated { showCompose = true } else { auth.requireLogin() }
+            }, onRequestAuth: {
+                pendingProfileTab = true
+                auth.requireLogin()
             })
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
@@ -77,7 +81,9 @@ public struct RootView: View {
         .fullScreenCover(isPresented: Binding(
             get: { auth.loginRequested },
             set: { auth.loginRequested = $0 }
-        )) {
+        ), onDismiss: {
+            if !auth.isAuthenticated { pendingProfileTab = false }
+        }) {
             LoginView()
                 .environment(auth)
         }
@@ -88,7 +94,20 @@ public struct RootView: View {
                 .presentationCornerRadius(30)
         }
         .tint(UniColor.blue)
+        .onChange(of: auth.profile?.onboardingCompleted) { _, completed in
+            if auth.isAuthenticated, pendingProfileTab, completed == true {
+                pendingProfileTab = false
+                tab = .profile
+            }
+        }
         .task(id: auth.isAuthenticated) {
+            if auth.isAuthenticated, pendingProfileTab, auth.profile?.onboardingCompleted == true {
+                pendingProfileTab = false
+                tab = .profile
+            }
+            if !auth.isAuthenticated, tab == .profile {
+                tab = .home
+            }
             if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
                 auth.loginRequested = true
             }

@@ -220,6 +220,8 @@ xcrun simctl launch booted com.unipo.app
   不物理删用户行，因为帖子/评论还在引用。
 - **头像**：新手引导和「我的」头像都走 `AvatarCropView`（相册选图 -> 圆形裁剪/缩放 -> 800x800 PNG -> 上传 MinIO -> `PUT /users/me`）。
   主页资料行顺序是性别符号（♂ 蓝 / ♀ 粉）-> 星座 -> MBTI -> 年龄；年龄由 `birthYear` 计算，`showAge/showGender` 为 false 时不展示。
+- **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
+  登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。
 
 ## 7. 硬性禁止（安全红线）
 > 2026-10-20 更新：R-1 / R-2 / R-3 / R-4 / R-5 五条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。

@@ -4554,6 +4554,20 @@ smoke 41/41（新增 sms-code / sms-login）；iOS BUILD SUCCEEDED。
 
 验证：主页资料行显示 ♂ 天秤 INFP 18岁；发一条帖子后作品栏出现网格；iOS BUILD SUCCEEDED。
 
+## 2026-10-21 未登录的「我的」直接跳登录，不留游客主页
+
+之前 ProfileView 自带一个 signedOut 登录卡片，未登录点「我的」会先看到「登录 UniPO」的页面。
+这和「我的」是个人资产入口的直觉不符，也容易让人以为这里还有东西可看。
+
+改法：
+
+- DockBar 增加 isAuthenticated，点「我的」时先判断，未登录只调 requireLogin，不切 tab；
+- ProfileView 删掉游客态和登录按钮，未登录渲染空；
+- RootView 记住 pendingProfileTab，登录（含新手引导完成）后自动切回「我的」；
+- 登录弹层取消时清掉 pending，避免下一次无关登录被带到这里。
+
+验证：未登录点「我的」出现登录页；一键登录成功后直接落在个人主页。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

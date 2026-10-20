@@ -4,7 +4,6 @@ import UniPOUI
 
 struct ProfileView: View {
     @Environment(AuthStore.self) private var auth
-    let onRequestAuth: () -> Void
 
     @State private var stats: UserStatsView?
     @State private var myPosts: [PostView] = []
@@ -25,7 +24,8 @@ struct ProfileView: View {
             if let profile = auth.profile {
                 signedIn(profile)
             } else {
-                signedOut
+                // 未登录不渲染任何「我的」内容；入口在 RootView 已被拦到登录页。
+                EmptyView()
             }
         }
         .scrollIndicators(.hidden)
@@ -314,42 +314,6 @@ struct ProfileView: View {
                 }
             }
         }
-    }
-
-    private var signedOut: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 40)
-            ZStack {
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(UniColor.ink)
-                    .frame(width: 88, height: 88)
-                Text("PO")
-                    .font(.system(size: 28, weight: .heavy))
-                    .foregroundStyle(.white)
-            }
-            Text("登录 UniPO")
-                .font(.system(size: 26, weight: .heavy))
-                .foregroundStyle(UniColor.ink)
-            Text("同步你的成就、关注和校园动态")
-                .font(.uniBody(14))
-                .foregroundStyle(UniColor.secondary)
-            if let error = auth.errorMessage {
-                Text(error)
-                    .font(.uniLabel(12))
-                    .foregroundStyle(UniColor.danger)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            Button {
-                onRequestAuth()
-            } label: {
-                Text("登录 / 注册")
-            }
-            .buttonStyle(UniPrimaryButtonStyle())
-            .padding(.horizontal, 30)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 60)
     }
 
     private func load() async {

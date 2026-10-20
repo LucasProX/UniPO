@@ -3,7 +3,9 @@ import UniPOUI
 
 struct DockBar: View {
     @Binding var tab: AppTab
+    let isAuthenticated: Bool
     let onCompose: () -> Void
+    let onRequestAuth: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -35,6 +37,11 @@ struct DockBar: View {
 
     private func dockItem(_ item: AppTab, icon: String, label: String) -> some View {
         Button {
+            // 「我的」是登录后才存在的地方；未登录先跳登录，不展示游客态主页。
+            if item == .profile && !isAuthenticated {
+                onRequestAuth()
+                return
+            }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                 tab = item
             }
