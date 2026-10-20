@@ -2,14 +2,10 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import dayjs from 'dayjs';
-import { CalendarDays, CheckCircle2 } from 'lucide-vue-next';
-import { campusApi } from '../../lib/api';
-import { useAuthStore } from '../../stores/auth';
+import { CalendarDays } from 'lucide-vue-next';
 import { useFeedStore } from '../../stores/feed';
-import { levelTitleFor } from '../../lib/postHelpers';
 
 const route = useRoute();
-const auth = useAuthStore();
 const feed = useFeedStore();
 
 const props = defineProps<{
@@ -68,39 +64,6 @@ const calendarDays = computed(() => {
   });
 });
 
-const dailyQuotes = [
-  { text: '今天先把最小的一件事做完，心里会亮一点。', source: '校园治愈推送' },
-  { text: '不需要一直满格电量，低电量也可以慢慢往前。', source: 'UniPO' },
-  { text: '你已经在路上了，慢一点也不算掉队。', source: 'UniPO' }
-];
-const dailyQuote = computed(() => dailyQuotes[new Date().getDate() % dailyQuotes.length]);
-
-const maxLevel = 100;
-const currentLevelNeed = computed(() => {
-  const level = auth.currentUser.level;
-  if (level >= maxLevel) return 0;
-  const completed = Math.max(0, level - 1);
-  const total = (level: number) => Math.round((level - 1) * (level - 1) * 28 + (level - 1) * 520);
-  return total(level + 1) - total(level) || 520 + completed;
-});
-
-const levelProgress = computed(() => {
-  const level = auth.currentUser.level;
-  const completed = Math.max(0, level - 1);
-  const total = (lv: number) => Math.round((lv - 1) * (lv - 1) * 28 + (lv - 1) * 520);
-  const base = total(level);
-  const need = total(level + 1) - total(level);
-  if (!need) return 100;
-  return Math.min(100, Math.max(0, ((auth.currentUser.xp - base) / need) * 100));
-});
-
-const checkinButtonText = computed(() => {
-  if (!auth.isAuthenticated) return '登录后签到';
-  if (auth.checkingIn) return '签到中…';
-  if (auth.checkedInToday) return `今日已签到 · 连签 ${auth.checkinStreak} 天`;
-  return '签到领经验';
-});
-
 onMounted(() => {
   announcementCarouselTimer = window.setInterval(() => {
     announcementCarouselTransition.value = true;
@@ -114,27 +77,6 @@ onUnmounted(() => {
 
 function selectDate(dateKey: string) {
   emit('select-date', props.selectedDate === dateKey ? null : dateKey);
-}
-
-async function doCheckIn() {
-  if (!auth.hasSession) {
-    auth.openDialog('请先登录后签到，经验会写入后端账号');
-    return;
-  }
-  if (auth.checkedInToday) return;
-  auth.checkingIn = true;
-  try {
-    const result = await campusApi.checkIn();
-    auth.applyCheckInView(result);
-    if (result.xpGained) {
-      auth.checkinCelebrating = true;
-      window.setTimeout(() => { auth.checkinCelebrating = false; }, 1150);
-    }
-  } catch (error) {
-    if (await auth.handleAuthSensitiveError(error, '登录状态失效，签到没有写入后端')) return;
-  } finally {
-    auth.checkingIn = false;
-  }
 }
 </script>
 
@@ -192,43 +134,5 @@ async function doCheckIn() {
       </div>
     </section>
 
-    <section class="glass-panel rounded-[30px] p-5 checkin-card" :class="auth.checkinCelebrating ? 'checkin-card--celebrating' : ''">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="text-sm font-black text-[#718097]">签到</p>
-          <h2 class="mt-1 text-2xl font-black text-[#19202f]">{{ auth.isAuthenticated ? `Lv.${auth.currentUser.level} ${levelTitleFor(auth.currentUser.level)}` : '登录后查看等级' }}</h2>
-        </div>
-        <span class="relative grid h-12 w-12 place-items-center rounded-[18px] bg-[#19202f] text-white">
-          <CheckCircle2 :size="23" />
-          <span v-if="auth.checkinCelebrating" class="xp-pop">+{{ auth.lastCheckinXp }}</span>
-        </span>
-      </div>
-
-      <div class="mt-4">
-        <div class="flex items-center justify-between text-xs font-black text-[#718097]">
-          <span>{{ auth.isAuthenticated ? `${auth.currentUser.xp} XP` : '登录后同步' }}</span>
-          <span>{{ auth.isAuthenticated ? `${currentLevelNeed} XP` : '-- XP' }}</span>
-        </div>
-        <div class="mt-2 h-3 overflow-hidden rounded-full bg-white/72">
-          <span class="block h-full rounded-full bg-[#007aff]" :style="{ width: `${auth.isAuthenticated ? levelProgress : 0}%` }"></span>
-        </div>
-      </div>
-
-      <blockquote class="daily-quote mt-4">
-        <p>{{ dailyQuote.text }}</p>
-        <cite>{{ dailyQuote.source }}</cite>
-      </blockquote>
-
-      <p class="mt-4 text-xs leading-5 text-[#718097]">签到是稳定入口，连签会加成；日活经验上限 900 XP，重度用户约 1 年满级。</p>
-      <button
-        class="mt-4 w-full rounded-full px-5 py-3 text-sm font-black transition"
-        :class="auth.checkedInToday ? 'bg-white text-[#718097]' : 'bg-[#19202f] text-white hover:-translate-y-0.5'"
-        :disabled="auth.checkingIn"
-        data-testid="checkin"
-        @click="doCheckIn"
-      >
-        {{ checkinButtonText }}
-      </button>
-    </section>
   </aside>
 </template>
