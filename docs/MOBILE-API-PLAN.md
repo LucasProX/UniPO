@@ -143,11 +143,18 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 
 ## 11. 需要你拍板的 5 件事
 
-1. **路径**：接受 `/api/v1` 单一契约（推荐），还是坚持 `/app` 拆分？
-2. **App 技术栈**：Flutter / React Native(Expo) / 原生？后端方案不受影响，但影响 SDK 生成与团队学习成本。
-3. **Web 认证**：是否接受从 `localStorage` 迁到 `httpOnly cookie`？（更安全，但要改前端与 CORS 配置）
-4. **实时**：SSE 够用（推荐），还是一步到位 WebSocket？
+1. ~~**路径**：接受 `/api/v1` 单一契约，还是坚持 `/app` 拆分？~~
+   ✅ **已定（2026-10-20）：单一 `/api/v1` 契约**。按端裁剪只允许加薄 BFF，不复制业务 API。见 ADR-0001 D1。
+2. ~~**App 技术栈**：Flutter / React Native(Expo) / 原生？~~
+   ✅ **已定（2026-10-20）：iOS 先用 SwiftUI 原生**；Android 后置，优先 Kotlin/Compose 或 KMP 共享领域层，
+   不为复用 UI 选跨端框架。见 ADR-0001 D2。
+3. ~~**Web 认证**：是否接受从 `localStorage` 迁到 `httpOnly cookie`？~~
+   ✅ **已定（2026-10-20）：Web 改 httpOnly Cookie + CSRF**；App 用 Bearer + Keychain。见 ADR-0001 D3。
+4. ~~**实时**：SSE 够用，还是一步到位 WebSocket？~~
+   ✅ **已定（2026-10-20）：WebSocket**，自定 JSON 信封 + ack + 断线续传。见 ADR-0001 D4。
 5. ~~**notices 遗留域**：删除还是保留？~~ ✅ **已定：删除（2026-10-20 执行完毕）**。19 个 Java 文件 + 5 张表下线，见 `V11__drop_notices_domain.sql`。
+
+> 以上决策的完整理由、代价与演进路线见 [`docs/adr/0001-platform-baseline.md`](adr/0001-platform-baseline.md)。
 
 ## 12. 风险
 

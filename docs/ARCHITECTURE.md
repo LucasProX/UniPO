@@ -1,6 +1,21 @@
 # 系统架构
 
-> 快照日期 2026-10-19，对应 commit `05a265d`。
+> 快照日期 2026-10-19，对应 commit `05a265d`。**目标形态见 [ADR-0001](adr/0001-platform-baseline.md)（2026-10-20）**，
+> 下文描述的是「现在实际长什么样」，两者之间的差距就是演进路线。
+
+## 0. 目标形态（2026-10-20 起）
+
+按百万日活设计、但单机必须能完整跑。四条基线：
+
+1. **模块化单体**：内部按 auth / user / post / media / message / realtime / admin / infra 划边界，
+   跨模块只走 facade + 领域事件；不提前拆微服务。
+2. **单一 /api/v1 契约**：Web/iOS/未来 Android 共用；按端裁剪只加薄 BFF。
+3. **认证双载体**：Web 用 httpOnly Cookie + CSRF，App 用 Bearer + Keychain，共用同一个会话/令牌服务。
+4. **状态外部化**：会话、限流、在线态、撤销名单、实时广播都进 Redis；对象存储进 MinIO/S3；
+   应用实例保持无状态 —— 这是「一台机器能跑、十台也能跑」的前提。
+
+实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）；消息的可靠投递用 Outbox + Redis Streams。
+详见 ADR-0001。
 
 ## 1. 拓扑
 

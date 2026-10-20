@@ -5,8 +5,18 @@
 > **收工前必看 §11：踩过的坑要写进 [`docs/DEVLOG.md`](docs/DEVLOG.md)。**
 
 ## 0. 一句话
-校园 PO（Persistent Online）信息流应用：Vue 3 Web 端 + Spring Boot 3 后端 + MySQL 8 + MinIO。
+UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + MinIO，iOS 原生 App 在规划中。
 正在从「AI 生成的单文件 MVP」走向「Web / App 双端共用的正式产品」。
+
+**北极星（2026-10-20 确立，改之前先看 [ADR-0001](docs/adr/0001-platform-baseline.md)）**：
+
+- **按百万日活设计**，不是「先跑起来再说」；但**单台服务器必须能完整跑起来**。
+- **模块化单体**，不是微服务；按领域划边界（auth / user / post / media / message / realtime / admin / infra），
+  跨模块只走 facade + 领域事件，不跨模块直接调 Mapper。
+- **单一 /api/v1 契约**，Web/iOS/未来 Android 共用；按端裁剪只能加薄 BFF。
+- **Web 用 httpOnly Cookie + CSRF，App 用 Bearer + Keychain**；实时统一 WebSocket。
+- **状态外部化**（Redis/MySQL/S3），应用实例无状态 —— 这是「一台机器能跑、十台也能跑」的前提。
+- 基础设施该上的都上（Redis、对象存储、可观测性、备份），但每一层都要能在单机上跑。
 
 ## 1. 目录地图
 | 路径 | 说明 |
@@ -206,6 +216,7 @@ docker compose up -d --build
 - `docs/ISSUES.md` — 问题分级、证据、修复建议
 - `docs/MOBILE-API-PLAN.md` — Web/App 双端接口方案（**有 5 个决策待拍板**）
 - `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障
+- [`docs/adr/`](docs/adr/) — 架构决策记录（ADR）。**改架构前先读，改完补一条新 ADR**
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
 
 ## 11. 开发手记必须同步（硬规矩）
