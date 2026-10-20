@@ -40,6 +40,14 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  # 只有 app.state.backend=redis 才会真的连它。默认 memory 模式下这个配置不会被用到，
+  # Lettuce 也是懒连接，所以本地不起 Redis 也能正常跑。
+  data:
+    redis:
+      host: ${REDIS_HOST:127.0.0.1}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
 
 mybatis-plus:
   configuration:
@@ -60,6 +68,10 @@ management:
   health:
     mail:
       enabled: false
+    # 同理：memory 模式下没有任何 redis 连接，探针会把 /actuator/health 拖成 DOWN。
+    # redis 模式下的连通性由 state/RedisStateGuard.java 在启动时验证（连不上直接起不来）。
+    redis:
+      enabled: false
 
 springdoc:
   api-docs:
@@ -68,6 +80,12 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # 撤销名单（退出登录）/ 在线状态 / 限流计数 放哪：
+  #   memory = 进程内（默认，单实例足够，重启即清空）
+  #   redis  = 多实例共享，必须设 REDIS_HOST/REDIS_PORT；连不上会启动失败
+  # 部署多副本时务必改成 redis，否则「A 退出登录、B 还认这个 token」（ISSUES Q-4）。
+  state:
+    backend: ${STATE_BACKEND:memory}
   # 数据库 DATETIME（无时区）按这个时区解释，出参统一转成带偏移的 OffsetDateTime。
   # 显式配置而不是依赖 JVM 默认时区：换服务器时区不会改变接口语义。
   time-zone: ${APP_TIME_ZONE:Asia/Shanghai}

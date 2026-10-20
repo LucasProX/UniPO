@@ -1,42 +1,26 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.state.PresenceStore;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
+/** 在线状态：心跳来自 {@code POST /api/auth/heartbeat}，判定窗口见 {@link PresenceStore#ONLINE_WINDOW}。 */
 @Service
 public class PresenceService {
-    private static final Duration ONLINE_WINDOW = Duration.ofSeconds(25);
+    private final PresenceStore store;
 
-    private final Map<Long, Instant> lastSeen = new ConcurrentHashMap<>();
+    public PresenceService(PresenceStore store) {
+        this.store = store;
+    }
 
     public void markOnline(Long userId) {
-        if (userId != null) {
-            lastSeen.put(userId, Instant.now());
-        }
+        store.touch(userId);
     }
 
     public void markOffline(Long userId) {
-        if (userId != null) {
-            lastSeen.remove(userId);
-        }
+        store.clear(userId);
     }
 
     public boolean isOnline(Long userId) {
-        if (userId == null) {
-            return false;
-        }
-        Instant seenAt = lastSeen.get(userId);
-        if (seenAt == null) {
-            return false;
-        }
-        boolean online = seenAt.plus(ONLINE_WINDOW).isAfter(Instant.now());
-        if (!online) {
-            lastSeen.remove(userId, seenAt);
-        }
-        return online;
+        return store.isOnline(userId);
     }
 }

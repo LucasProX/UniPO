@@ -126,12 +126,16 @@ JWT 默认 secret 已删（见 **R-5**）。
 |---|---|---|---|
 | Q-1 ✅ | ~~无限流~~ **已修（2026-10-20）** | `web/RateLimitFilter.java` 按「来源 IP + 接口」限流，命中回 429 + `Retry-After`：
 登录 30/5min、验证码 20/10min、注册 20/1h、改密 20/10min、上传 30/5min、发帖 20/5min。
-实现是进程内固定窗口（`service/RateLimitService.java`） | 脚本刷不动了；**仍待做**：按账号锁定（防单账号慢速撞库）、多实例后要换 Redis（Q-4）、私信发送还没限 |
+固定窗口，计数存在 `RateLimitStore`（默认进程内，`STATE_BACKEND=redis` 时共享） | 脚本刷不动了；**仍待做**：按账号锁定（防单账号慢速撞库）、私信发送还没限 |
 | Q-2 ✅ | ~~JWT 无刷新令牌~~ **已加（2026-10-20）** | access 120 分钟（`JWT_EXPIRATION_MINUTES`）+ refresh 20160 分钟（`JWT_REFRESH_EXPIRATION_MINUTES`），靠 JWT 的 `typ` 声明区分，混用直接 401；
 `POST /api/auth/refresh` 换新 access；`POST /api/auth/logout` 把两者一起拉黑；前端 401 自动单飞刷新并重放原请求。
 **仍待做**：refresh 轮换（要等 Q-4 的共享存储）、`httpOnly` cookie、`refresh_tokens` 落库以便「踢掉所有设备」 | — |
 | Q-3 ✅ | ~~上传只校验 `Content-Type`~~ **已修（2026-10-20）** | 新增 `service/ImageSignature.java` 按文件头识别 JPEG/PNG/GIF/WebP，扩展名和 `Content-Type` 都由识别结果决定（不再采信客户端）；上限从 20MB 收到 **5MB**；`purpose` 只允许 `[A-Za-z0-9_-]{1,20}` | 实测：HTML/SVG 改请求头冒充 `image/png` 都是 400；6MB 图片 413；真 PNG 200 |
-| Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |
+| Q-4 ✅ | ~~单机状态~~ **已做成可切换（2026-10-20）** | 撤销名单 / 在线状态 / 限流计数 统一走 `com.biecuoguo.state` 下的
+`RevocationStore` / `PresenceStore` / `RateLimitStore`，由 `STATE_BACKEND=memory|redis` 选实现；
+`redis` 模式下启动就 ping，连不上直接拒绝启动；三个接口调用点（`TokenBlacklistService` / `PresenceService` / `RateLimitService`）签名未变。
+**实测**：两个实例（8080/8081）共用 Redis 时，A 退出登录后同一 token 在 B 上 401；memory 模式下是 200（这就是原来的 bug）。
+**仍待做**：默认还是 memory（单实例够用），起多副本要显式 `STATE_BACKEND=redis` + `--profile redis`；Redis 挂了限流放行、拉黑失败按未登录处理 | — |
 | Q-5 🔶 | ~~无 CI~~ **CI 已加并跑绿（2026-10-20）** | `.github/workflows/ci.yml` 四个 job，GitHub Actions run `39360886056` **4/4 全绿**：
 `后端编译`（mvn package）/ `前端类型检查与构建`（npm ci + npm run build，vue-tsc 抓类型错）/ `脚本与换行自查`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
 `启动 + 接口冒烟`（真 MySQL 8.4 service + 起 jar + health/feed 游标/登录拿 token/带 token 调用/405/404 六条断言）。

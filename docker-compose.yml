@@ -51,6 +51,26 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: ${DOCKER_REGISTRY:-}redis:7-alpine
+    container_name: unipo-redis
+    # 两个 profile 都能拉起它：local-db（本地想试 redis 模式）和 redis（多实例部署必备）。
+    profiles:
+      - local-db
+      - redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes:
+      - unipo_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      # 默认只绑本机：生产用的 redis 不该暴露到公网。
+      - "${REDIS_PUBLIC_BIND:-127.0.0.1}:${REDIS_PUBLIC_PORT:-6379}:6379"
+
   backend:
     build:
       context: ./backend
@@ -89,6 +109,20 @@ services:
       APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173}
       # 数据库 DATETIME 的解释时区；有安全默认值，不设也能跑
       APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Shanghai}
+      # 撤销名单 / 在线状态 / 限流计数存哪。单实例 memory 够用；
+      # 起多副本（或加网关后要多实例）必须换成 redis，否则各实例状态不共享（ISSUES Q-4）。
+      # 换 redis 时记得同时带上 --profile redis 把上面的 redis 服务拉起来。
+      STATE_BACKEND: ${STATE_BACKEND:-memory}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # 撤销名单 / 在线状态 / 限流计数存哪。单实例 memory 够用；
+      # 起多副本（或加网关后要多实例）必须换成 redis，否则各实例状态不共享（ISSUES Q-4）。
+      # 换成 redis 时记得同时带上 --profile redis 把上面的 redis 服务拉起来。
+      STATE_BACKEND: ${STATE_BACKEND:-memory}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:?MINIO_ENDPOINT is required in .env}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT is required in .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required in .env}
@@ -136,6 +170,7 @@ services:
 
 volumes:
   unipo_mysql_data:
+  unipo_redis_data:
   unipo_minio_data:
   caddy_data:
   caddy_config:

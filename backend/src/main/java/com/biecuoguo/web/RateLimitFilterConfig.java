@@ -1,6 +1,7 @@
 package com.biecuoguo.web;
 
 import com.biecuoguo.service.RateLimitService;
+import com.biecuoguo.state.RateLimitStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -21,8 +22,8 @@ import org.springframework.core.Ordered;
 public class RateLimitFilterConfig {
 
     @Bean
-    RateLimitService rateLimitService() {
-        return new RateLimitService();
+    RateLimitService rateLimitService(RateLimitStore rateLimitStore) {
+        return new RateLimitService(rateLimitStore);
     }
 
     @Bean

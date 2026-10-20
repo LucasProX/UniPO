@@ -27,7 +27,10 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 - MySQL 默认走 compose 网络里的 `mysql` 服务；要连外部库就把 `SPRING_DATASOURCE_URL` 显式设成那个地址——代码里**没有任何远端默认值**（见 `docs/ISSUES.md` R-4）。
 - 本地开发时后端跑在宿主机、MySQL 用 `docker compose --profile local-db` 起在 `127.0.0.1:12306`。
 - 所有前端请求都走同源 `/api`，由 `frontend/nginx.conf` 反代到 `backend:8080`；Caddy 只负责 TLS 与透传 `Authorization`。
-- 没有 Redis、没有消息队列、没有 CDN；媒体走 MinIO，但**上传下载都经后端转发**（`MediaController`）。
+- **默认没有任何外部有状态服务**：撤销名单（退出登录拉黑）、在线状态、限流计数都存在进程内，
+  重启即清空。多实例部署时把 `STATE_BACKEND` 设成 `redis`，这三样会改存 Redis
+  （`com.biecuoguo.state` 下各有一对 memory / redis 实现），代码调用方不用改。
+  仍然**没有消息队列、没有 CDN**；媒体走 MinIO，但上传下载都经后端转发（`MediaController`）。
 
 ## 2. 一次请求的链路
 

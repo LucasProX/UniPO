@@ -30,8 +30,12 @@ docker info
 
 # 2) 起本地 MySQL + MinIO（首次会建 volume；Flyway 建表靠后端）
 cd D:\Projects\unipo
-docker compose --profile local-db up -d mysql minio
-docker compose --profile local-db ps      # 等到两个都 healthy
+docker compose --profile local-db up -d mysql minio redis
+docker compose --profile local-db ps      # 等到都 healthy
+
+# Redis 是可选的：只有 `STATE_BACKEND=redis` 时后端才会连它。
+# 想验证多实例行为（A 退出登录后 B 是否认这个 token）就把它和两个后端实例一起拉起来。
+# 默认 memory 模式完全不需要 Redis，甚至可以只起 mysql minio。
 
 # 3) 起后端（会自动读仓库根 .env）
 cd backend
@@ -124,6 +128,7 @@ MINIO_PUBLIC_READ=false
 | 后端连到了远端库 | 仓库根没有 `.env`，或 `SPRING_DATASOURCE_URL` 拼错 |
 | 端口 12306 被占用 | 本机已有别的 MySQL 或容器，改 `.env` 的 `MYSQL_PUBLIC_PORT` |
 | 拉 `minio/minio` 报 `denied` / `not found` | MinIO 官方镜像在当前网络不可拉。用默认的 `bitnamilegacy/minio:latest`，或设 `MINIO_IMAGE` 指向可用的 registry |
+| 后端启动报 `app.state.backend=redis，但连不上 Redis` | `STATE_BACKEND=redis` 但 redis 容器没起：`docker compose --profile local-db up -d redis`；或者干脆改回 `memory`（单实例够用） |
 | 上传报 `无法连接 MinIO 服务` | `unipo-minio` 没起：`docker compose --profile local-db up -d minio`；或 `.env` 的 `MINIO_ENDPOINT` 不是 `http://127.0.0.1:9000` |
 | 图片 403 | 把 `MINIO_PUBLIC_READ` 改成了 `true` 但没给桶配匿名读策略，见 §2 MinIO 说明 |
 | 上传成功但前端不显示 | 检查返回的 `url` 是否以 `/api/` 开头；`MINIO_PUBLIC_READ=true` 时是 `http://127.0.0.1:9000/...`，需要桶策略 |

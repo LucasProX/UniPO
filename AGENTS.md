@@ -103,7 +103,15 @@ docker compose up -d --build
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
-- 新增环境变量：`APP_TIME_ZONE`、`APP_DEFAULT_SCHOOL_ID`、`RATE_LIMIT_ENABLED`、`RATE_LIMIT_TRUST_FORWARDED_FOR` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值，强制必填会让老部署直接起不来。
+- 新增环境变量：`APP_TIME_ZONE`、`APP_DEFAULT_SCHOOL_ID`、`RATE_LIMIT_ENABLED`、`RATE_LIMIT_TRUST_FORWARDED_FOR`、
+  `STATE_BACKEND`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 只加在 `.env.example` 与 `docker-compose.yml`，
+  **故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值，强制必填会让老部署直接起不来。
+- **有状态的东西都走 `com.biecuoguo.state` 的三个接口**（`RevocationStore` / `PresenceStore` / `RateLimitStore`）：
+  各有一对 memory / redis 实现，由 `app.state.backend`（`STATE_BACKEND`）选，默认 `memory`。
+  **不要在业务代码里直接 new 一个 Map 存这类状态**——那样多实例部署时「A 退出登录 B 还认」的坑会再出现一次（Q-4）。
+  三个接口的失败语义是刻意分开的：拉黑查询抛异常 -> 按「已撤销」处理（宁可多踢一次）；
+  限流计数抛异常 -> **放行**（fail-open，限流是挡脚本不是安全边界，不能让 Redis 抖动变成全站 429）；
+  在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
 - Flyway 管 schema：已发布的 V1–V11 禁止修改，新增 `V12__xxx.sql`。
@@ -148,6 +156,10 @@ docker compose up -d --build
 - **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。判断真实可达性要用外部节点（check-host.net），或先关代理。
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖已于 2026-10-20 删除（D-8）。别再往 `db/` 下加第二套 migration，只认 `db/migration`。
 - **真实模式下没有 SMTP 会启动失败**（2026-10-20 加）：`StartupSafetyGuard` 会查 `spring.mail.host`（`SMTP_HOST`），空就抛 `IllegalStateException`。这是刻意的——注册和找回密码全靠邮件，配不上就是断链，而且断得很静默（进程起得来、接口返回 200）。本地开发用 `--spring.profiles.active=local` 走 mock 模式即可，不需要 SMTP。
+- **`STATE_BACKEND` 默认是 `memory`，多副本部署会静默出问题**（2026-10-20）：进程起得来、接口全 200，
+  只有「A 实例退出登录，B 实例还认这个 token」「A 限流拦住了，B 还在放行」这种表现。
+  起多副本时必须 `STATE_BACKEND=redis` + `docker compose --profile redis up -d`；
+  本地也实测过一遍：两个实例共用 Redis 时 401 / 429 都能跨实例生效，memory 模式下不能。
 - **CI 有了，测试和 lint 还没有**：`.github/workflows/ci.yml` 跑 mvn package / npm ci + build / 脚本换行自查 / 真 MySQL 起服务的接口冒烟。
   但它**不能代替本地 `smoke.ps1`**——34 项全链路检查（含上传、游标分页、时区、注册验证码）只有 Windows 上那一份，CI 里没跑。
   提交前仍然要：`npm.cmd run build` 绿 + `mvn -DskipTests package` 绿 + `smoke.ps1` 34/34。
