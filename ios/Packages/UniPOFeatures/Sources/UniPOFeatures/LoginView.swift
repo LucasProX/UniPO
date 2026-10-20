@@ -37,6 +37,11 @@ struct LoginView: View {
     @State private var agreement: Agreement?
     @State private var appeared = false
     @State private var countdownTask: Task<Void, Never>?
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case phone, code
+    }
 
     private enum Mode {
         case oneTap, phone
@@ -60,6 +65,7 @@ struct LoginView: View {
     var body: some View {
         ZStack {
             LoginBackground(reduceMotion: reduceMotion)
+                .onTapGesture { focusedField = nil }
 
             VStack(spacing: 0) {
                 topBar
@@ -98,6 +104,11 @@ struct LoginView: View {
             if ProcessInfo.processInfo.arguments.contains("-phone-form") {
                 mode = .phone
             }
+            if ProcessInfo.processInfo.arguments.contains("-focus-phone") {
+                mode = .phone
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                focusedField = .phone
+            }
             if ProcessInfo.processInfo.arguments.contains("-agreement") {
                 agreement = .terms
             }
@@ -117,17 +128,27 @@ struct LoginView: View {
 
     private var topBar: some View {
         HStack {
-            Spacer()
             Button {
                 auth.loginRequested = false
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.72))
-                    .frame(width: 34, height: 34)
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .frame(width: 36, height: 36)
                     .background(.white.opacity(0.08), in: Circle())
             }
             .buttonStyle(.plain)
+            Spacer()
+            if focusedField != nil {
+                Button("完成") {
+                    focusedField = nil
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.08), in: Capsule())
+            }
         }
         .padding(.horizontal, 18)
         .padding(.top, 8)
@@ -229,6 +250,7 @@ struct LoginView: View {
                     .padding(.horizontal, 14)
                 Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 22)
                 TextField("", text: $phone, prompt: Text("请输入手机号").foregroundStyle(.white.opacity(0.35)))
+                    .focused($focusedField, equals: .phone)
                     .keyboardType(.numberPad)
                     .textContentType(.telephoneNumber)
                     .font(.system(size: 17, weight: .semibold))
@@ -247,6 +269,7 @@ struct LoginView: View {
 
             HStack(spacing: 10) {
                 TextField("", text: $code, prompt: Text("4 位验证码").foregroundStyle(.white.opacity(0.35)))
+                    .focused($focusedField, equals: .code)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .font(.system(size: 17, weight: .semibold))
@@ -280,12 +303,6 @@ struct LoginView: View {
                 .buttonStyle(.plain)
                 .disabled(countdown > 0 || auth.isSendingCode || phone.count != 11)
             }
-
-            #if DEBUG
-            Text("本地测试：任意 4 位数字即可登录")
-                .font(.uniLabel(10))
-                .foregroundStyle(.white.opacity(0.35))
-            #endif
 
             if let error = auth.errorMessage {
                 Text(error)
@@ -338,9 +355,6 @@ struct LoginView: View {
                 socialButton(label: "微", name: "微信")
                 socialButton(label: "Q", name: "QQ")
             }
-            Text("第三方登录即将支持")
-                .font(.uniLabel(10))
-                .foregroundStyle(.white.opacity(0.28))
         }
     }
 
@@ -383,9 +397,6 @@ struct LoginView: View {
                 }
                 .font(.uniLabel(10))
 
-                Text("未勾选将无法登录")
-                    .font(.uniLabel(9))
-                    .foregroundStyle(.white.opacity(0.22))
             }
         }
         .padding(.horizontal, 28)

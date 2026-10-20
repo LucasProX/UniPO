@@ -76,6 +76,13 @@ ios/
 - **iOS 17 兼容**：新增 API 必须先查 `#available`，不能因为本机是 iOS 26 就只用新 API。
 - **不要手改 `UniPO.xcodeproj`**：改 `project.yml` 后跑 `xcodegen generate`。
 
+## 登录页说明
+
+- DEBUG 的 `DevicePhoneNumber` 返回演示号码 `15500008888`，用于展示一键登录页；Release 返回 nil，
+  自动落到手机号验证码页。正式接入运营商号码认证 SDK 后只替换这个 provider。
+- 本地 mock 短信：任意合规手机号点「获取验证码」即可，任意 4 位数字都能登录。
+- 协议默认勾选；协议正文目前是占位。
+
 ## 当前进度
 
 - [x] 工程骨架 + SPM 模块
