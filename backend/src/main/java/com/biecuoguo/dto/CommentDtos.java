@@ -5,7 +5,9 @@ import com.biecuoguo.domain.User;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-import java.time.LocalDateTime;
+import com.biecuoguo.config.AppTime;
+
+import java.time.OffsetDateTime;
 
 public final class CommentDtos {
     private CommentDtos() {}
@@ -28,7 +30,7 @@ public final class CommentDtos {
             Integer replyCount,
             Boolean featured,
             String status,
-            LocalDateTime createdAt
+            OffsetDateTime createdAt
     ) {
         public static CommentView from(Comment comment, User user) {
             String identity = user.getVerifiedStatus() != null && !user.getVerifiedStatus().equals("none")
@@ -50,7 +52,7 @@ public final class CommentDtos {
                     comment.getReplyCount(),
                     comment.getFeatured(),
                     comment.getStatus(),
-                    comment.getCreatedAt()
+                    AppTime.toOffset(comment.getCreatedAt())
             );
         }
     }

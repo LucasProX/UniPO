@@ -133,5 +133,51 @@ if ($dupes -eq 0 -and $seen.Count -gt 0) {
 $r = CallApi 'GET' "$v1/posts/page?tab=recommend&cursor=not-a-cursor" $null $tok
 Check 'v1-page-bad-cursor' $r '400'
 
+# ---- 统一响应包 / 时区契约 ----
+# 这些是 App 端契约的地基，改动会静默影响所有接口，单独钉死。
+$r = CallApi 'GET' "$v1/posts?tab=recommend" $null $tok
+$env_ok = $false; $env_code = ''; $env_rid = ''
+try {
+  $body = $r.body | ConvertFrom-Json
+  $env_code = [string]$body.code
+  $env_rid = [string]$body.requestId
+  $env_ok = ($env_code -eq 'OK') -and ($env_rid.Length -ge 8) -and ($r.body -match '"message"')
+} catch {}
+if ($env_ok) { 'PASS envelope-success         code=OK requestId=' + $env_rid.Substring(0,8) }
+else { $script:fail++; 'FAIL envelope-success         code=' + $env_code + ' requestId=' + $env_rid }
+
+# 错误包必须有业务码（不能只有中文 message）
+$r = CallApi 'GET' "$v1/posts/page?cursor=not-a-cursor" $null $tok
+$err_ok = $false; $err_code = ''
+try {
+  $body = $r.body | ConvertFrom-Json
+  $err_code = [string]$body.code
+  $err_ok = ($r.code -eq '400') -and ($err_code -eq 'VALIDATION_FAILED') -and ([string]$body.requestId).Length -ge 8
+} catch {}
+if ($err_ok) { 'PASS envelope-error           code=' + $err_code }
+else { $script:fail++; 'FAIL envelope-error           http=' + $r.code + ' code=' + $err_code }
+
+# 未登录 401 也要走同一套错误包（Security 过滤器链里手写的那份）
+$r = CallApi 'GET' "$v1/auth/me" $null $null
+$auth_ok = $false; $auth_code = ''
+try {
+  $body = $r.body | ConvertFrom-Json
+  $auth_code = [string]$body.code
+  $auth_ok = ($r.code -eq '401') -and ($auth_code -eq 'AUTH_UNAUTHENTICATED')
+} catch {}
+if ($auth_ok) { 'PASS envelope-401             code=' + $auth_code }
+else { $script:fail++; 'FAIL envelope-401             http=' + $r.code + ' code=' + $auth_code }
+
+# 时间字段必须带时区偏移，否则 App 跨时区会显示错时间
+$r = CallApi 'GET' "$v1/posts?tab=recommend" $null $tok
+$tz_ok = $false; $tz_sample = ''
+try {
+  $first = ($r.body | ConvertFrom-Json).data[0]
+  $tz_sample = [string]$first.publishedAt
+  $tz_ok = ($tz_sample -match 'T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$')
+} catch {}
+if ($tz_ok) { 'PASS time-offset              ' + $tz_sample }
+else { $script:fail++; 'FAIL time-offset              ' + $tz_sample }
+
 "---- failed checks: $script:fail ----"
 if ($script:fail -gt 0) { exit 1 }

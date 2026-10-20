@@ -39,6 +39,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  # 数据库 DATETIME（无时区）按这个时区解释，出参统一转成带偏移的 OffsetDateTime。
+  # 显式配置而不是依赖 JVM 默认时区：换服务器时区不会改变接口语义。
+  time-zone: ${APP_TIME_ZONE:Asia/Shanghai}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
   jwt:

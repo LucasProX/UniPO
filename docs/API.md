@@ -7,12 +7,14 @@
 | 项 | 现状 |
 |---|---|
 | 认证 | `Authorization: Bearer <jwt>`；无状态、无刷新令牌、有效期 10080 分钟 |
-| 成功响应 | HTTP 200，body `{"data": <T>}` |
-| 错误响应 | 4xx，body `{"message": "中文提示", "timestamp": "ISO-8601 Instant"}` |
+| 成功响应 | HTTP 200，body `{"code":"OK","message":"","data": <T>, "requestId":"e2075084cb304be9"}` |
+| 错误响应 | 4xx/5xx，body `{"code":"AUTH_INVALID_CREDENTIALS","message":"中文提示","data":null,"requestId":"...","timestamp":"ISO-8601 Instant"}` |
+| 业务错误码 | 见 §1.3。**App 端 switch `code`，不要匹配中文 `message`**（文案随时会改） |
+| requestId | 每个请求分配一个，同时回写响应头 `X-Request-Id` 并进服务端日志 MDC；用户报障时拿它对日志 |
 | 版本前缀 | `/api` 与 `/api/v1` 等价，由 `security/ApiVersionPrefixFilterConfig.java` 把 `/api/v1/**` 改写为 `/api/**` 实现。`/api/v1` 下的 v1 独有端点（目前只有 `posts/page`）不会被改写，自己挂前缀 |
-| 分页 | **仅 `/api/v1/posts/page`**，游标分页（见 §3.1）。其余列表仍全量返回 |
-| 时间 | `LocalDateTime` 序列化为 `"2026-05-08T22:23:35"`，**无时区偏移**（`OffsetDateTime` 迁移见 `docs/MOBILE-API-PLAN.md` §4） |
-| 未登录访问受保护接口 | 401 `{"message":"请先登录"}` |
+| 分页 | **仅 `/api/v1/posts/page`**，游标分页（见 §1.2）。其余列表仍全量返回 |
+| 时间 | `OffsetDateTime`，ISO-8601 **带偏移**：`"2026-10-19T15:22:01+08:00"`。偏移由 `app.time-zone`（默认 `Asia/Shanghai`）决定 |
+| 未登录访问受保护接口 | 401 `{"code":"AUTH_UNAUTHENTICATED","message":"请先登录",...}` |
 | 富文本 | 帖子 `content` 直接是 HTML 片段，前端用 `sanitizeRichHtml` 清洗后 `v-html` |
 | Swagger | `/swagger-ui.html`、`/v3/api-docs` 已放行（springdoc） |
 
@@ -34,6 +36,9 @@
 
 ```json
 {
+  "code": "OK",
+  "message": "",
+  "requestId": "e2075084cb304be9",
   "data": {
     "items": ["...PostView..."],
     "nextCursor": "false|false|false|186|34|2026-10-19T15:22:01|5",
@@ -45,13 +50,42 @@
 
 - `nextCursor` 是上一页最后一条的**完整排序键**（`pinned|official|dontMiss|likeCount|commentCount|publishedAt|id`，全 DESC）。之所以不只编码 `id`：排序按热度/权重排，id 小的帖子可能排在 id 大的前面，只按 `id < cursor` 过滤会把排在前面的帖子重复吐出来。
 - `hasMore` 为 `false` 时 `nextCursor` 为 `null`，不要继续请求。
-- 游标非法返回 **400** `{"message":"分页游标无效"}`（不会静默降级成第一页）。
+- 游标非法返回 **400** `{"code":"VALIDATION_FAILED","message":"分页游标无效",...}`（不会静默降级成第一页）。
 - 同一 tab 内翻页；换 tab 必须重新从第一页开始，游标和排序键是按 tab 的过滤条件生成的。
 
 枚举值：
 - `board`：`recommend` / `school` / `college` / `major`
 - `role`：`USER` / `OPERATOR` / `SCHOOL_OPERATOR` / `COLLEGE_OPERATOR` / `MAJOR_OPERATOR` / `ADMIN`
 - `status`(post)：`published` / `deleted`
+
+### 1.3 业务错误码（`web/ErrorCode.java`）
+
+`code` 是**稳定契约**：只新增，不改名、不改含义。HTTP 状态码同时保留语义。
+
+| code | HTTP | 含义 |
+|---|---|---|
+| `AUTH_INVALID_CREDENTIALS` | 401 | 邮箱或密码不正确 |
+| `AUTH_UNAUTHENTICATED` | 401 | 未登录 / token 失效 |
+| `AUTH_FORBIDDEN` | 403 | 已登录但无权限 |
+| `AUTH_VERIFICATION_CODE_INVALID` | 400 | 验证码错或过期 |
+| `AUTH_EMAIL_TAKEN` | 400 | 邮箱已注册 |
+| `AUTH_NICKNAME_TAKEN` | 400 | 昵称被占用 |
+| `POST_NOT_FOUND` | 404 | 帖子不存在或已删除 |
+| `POST_DELETE_FORBIDDEN` | 403 | 只能删自己的帖子 |
+| `POST_SCHOOL_REQUIRED` | 400 | 发帖前必须先选学校 |
+| `COMMENT_NOT_FOUND` | 404 | 评论不存在或已删除 |
+| `USER_NOT_FOUND` | 404 | 用户不存在 |
+| `USER_ALREADY_FOLLOWED` | 400 | 重复关注 |
+| `USER_NOT_FOLLOWED` | 400 | 未关注就取关 |
+| `CONVERSATION_NOT_FOUND` | 404 | 会话不存在 |
+| `MSG_EMPTY` | 400 | 消息内容为空 |
+| `MEDIA_UPLOAD_FAILED` | 500 | 上传失败 |
+| `MEDIA_TOO_LARGE` | 413 | 超过 20MB |
+| `VALIDATION_FAILED` | 400 | 参数不完整/格式错（含非法分页游标） |
+| `DUPLICATE` | 400 | 名称或账号已被占用 |
+| `NOT_FOUND` | 404 | 通用资源不存在 |
+| `RATE_LIMITED` | 429 | 操作太频繁（限流尚未实现，码已预留） |
+| `INTERNAL` | 500 | 服务端未预期异常（不会回显异常详情，详情在日志） |
 
 ## 2. 认证 `/api/auth`
 

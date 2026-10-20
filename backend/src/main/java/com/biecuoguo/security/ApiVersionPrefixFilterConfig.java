@@ -42,7 +42,8 @@ public class ApiVersionPrefixFilterConfig {
         FilterRegistrationBean<ApiVersionPrefixFilter> registration =
                 new FilterRegistrationBean<>(new ApiVersionPrefixFilter());
         registration.addUrlPatterns("/api/v1/*");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        // 比 RequestIdFilter(HIGHEST_PRECEDENCE) 晚一位：先有 requestId 再改写 URI
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 1);
         return registration;
     }
 

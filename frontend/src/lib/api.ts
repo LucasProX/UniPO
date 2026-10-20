@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
+import type { ApiErrorBody, ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
 
 /**
  * API 版本前缀。
@@ -74,33 +74,57 @@ function attachToken(client: AxiosInstance) {
 attachToken(api);
 attachToken(localApi);
 
+/**
+ * 剥掉响应包取业务数据。
+ *
+ * 后端返回 {"code":"OK","message":"","data":...,"requestId":"..."}，
+ * 这里只取 data；code 在成功路径上恒为 OK，不需要判断。
+ */
 async function unwrap<T>(request: Promise<{ data: ApiResponse<T> }>) {
   const response = await request;
   return response.data.data;
 }
 
+/** 取错误包里的业务错误码（App 端 switch 这个，不要匹配中文文案）。 */
+export function apiErrorCode(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const body = error.response?.data as Partial<ApiErrorBody> | undefined;
+  return body?.code || null;
+}
+
+/** 取错误请求的 requestId，方便用户报障时对日志。 */
+export function apiErrorRequestId(error: unknown): string | null {
+  if (!axios.isAxiosError(error)) return null;
+  const body = error.response?.data as Partial<ApiErrorBody> | undefined;
+  return body?.requestId || error.response?.headers?.['x-request-id'] || null;
+}
+
 export function apiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试') {
-  return axios.isAxiosError(error)
-    ? error.response?.data?.message || error.message || fallback
-    : error instanceof Error
-      ? error.message
-      : fallback;
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error.message : fallback;
+  }
+  const body = error.response?.data as Partial<ApiErrorBody> | undefined;
+  return body?.message || error.message || fallback;
 }
 
 export function isAuthError(error: unknown) {
   return axios.isAxiosError(error) && error.response?.status === 401;
 }
 
+/**
+ * 登录专用：把 axios 错误转成带 code 的 Error，供视图层区分
+ * 「密码错」和「网络断了」——现在两者都只是 message 不一样，
+ * 而 message 是用来展示的，不该拿来做分支。
+ */
 async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; user: UserProfile }> }>) {
   try {
     return await unwrap(request);
   } catch (error) {
-    const message = axios.isAxiosError(error)
-      ? error.response?.data?.message || error.message
-      : error instanceof Error
-        ? error.message
-        : '登录失败';
-    throw new Error(message);
+    const code = apiErrorCode(error);
+    const message = apiErrorMessage(error, '登录失败');
+    const wrapped = new Error(message) as Error & { code?: string | null };
+    wrapped.code = code;
+    throw wrapped;
   }
 }
 

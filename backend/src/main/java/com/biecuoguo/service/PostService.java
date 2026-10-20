@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.PostDtos;
@@ -250,7 +251,7 @@ public class PostService {
         post.setOfficial(canPostOfficial(author, request.board()) && Boolean.TRUE.equals(request.official()));
         post.setDontMiss(Boolean.TRUE.equals(request.dontMiss()) && canPostOfficial(author, request.board()));
         post.setPinned(Boolean.TRUE.equals(request.pinned()) && "ADMIN".equals(author.getRole()));
-        post.setDeadlineAt(request.deadlineAt());
+        post.setDeadlineAt(AppTime.toLocal(request.deadlineAt()));
         post.setMissConsequence(request.missConsequence());
         post.setNextAction(request.nextAction());
         post.setTags(joinTags(request.tags()));
@@ -570,7 +571,7 @@ public class PostService {
             PostDtos.PostView postView = postViews.get(item.getPostId());
             if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "like", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, item.getCreatedAt(), true
+                        item.getId(), "like", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, AppTime.toOffset(item.getCreatedAt()), true
                 ));
             }
         });
@@ -579,7 +580,7 @@ public class PostService {
             PostDtos.PostView postView = postViews.get(item.getPostId());
             if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "favorite", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, item.getCreatedAt(), true
+                        item.getId(), "favorite", authorView(actor, actorSchools, actorColleges, actorMajors), postView, null, null, AppTime.toOffset(item.getCreatedAt()), true
                 ));
             }
         });
@@ -588,7 +589,7 @@ public class PostService {
             PostDtos.PostView postView = postViews.get(item.getPostId());
             if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "comment", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                        item.getId(), "comment", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), AppTime.toOffset(item.getCreatedAt()), true
                 ));
             }
         });
@@ -597,7 +598,7 @@ public class PostService {
             PostDtos.PostView postView = postViews.get(item.getPostId());
             if (actor != null && postView != null) {
                 notices.add(new PostDtos.InteractionNoticeView(
-                        item.getId(), "reply", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), item.getCreatedAt(), true
+                        item.getId(), "reply", authorView(actor, actorSchools, actorColleges, actorMajors), postView, item.getContent(), item.getParentId(), AppTime.toOffset(item.getCreatedAt()), true
                 ));
             }
         });
@@ -711,9 +712,9 @@ public class PostService {
                 .map(post -> new PostDtos.PostView(
                         post.getId(), post.getBoard(), post.getSourceType(), post.getTitle(), post.getContent(), post.getExcerpt(),
                         post.getCoverUrl(), imagesByPost.getOrDefault(post.getId(), List.of()), post.getRiskLevel(), post.getOfficial(), post.getDontMiss(), post.getPinned(),
-                        post.getDeadlineAt(), post.getMissConsequence(), post.getNextAction(), splitTags(post.getTags()),
+                        AppTime.toOffset(post.getDeadlineAt()), post.getMissConsequence(), post.getNextAction(), splitTags(post.getTags()),
                         safe(post.getLikeCount()), safe(post.getCommentCount()), safe(post.getFavoriteCount()), safe(post.getShareCount()),
-                        likedPostIds.contains(post.getId()), favoritedPostIds.contains(post.getId()), post.getStatus(), post.getPublishedAt(), post.getCreatedAt(),
+                        likedPostIds.contains(post.getId()), favoritedPostIds.contains(post.getId()), post.getStatus(), AppTime.toOffset(post.getPublishedAt()), AppTime.toOffset(post.getCreatedAt()),
                         authorView(authors.get(post.getAuthorId()), schools, colleges, majors)
                 ))
                 .toList();
@@ -762,7 +763,7 @@ public class PostService {
                 .map(comment -> new PostDtos.CommentView(
                         comment.getId(), comment.getPostId(), comment.getUserId(), comment.getParentId(), comment.getContent(),
                         safe(comment.getLikeCount()), safe(comment.getReplyCount()), likedCommentIds.contains(comment.getId()), Boolean.TRUE.equals(comment.getFeatured()),
-                        comment.getStatus(), comment.getCreatedAt(), authorView(users.get(comment.getUserId()), schools, colleges, majors)
+                        comment.getStatus(), AppTime.toOffset(comment.getCreatedAt()), authorView(users.get(comment.getUserId()), schools, colleges, majors)
                 ))
                 .toList();
     }

@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.Conversation;
 import com.biecuoguo.domain.Message;
@@ -73,8 +74,8 @@ public class MessageService {
                         authorView(peers.get(peerIdOf(conversation, currentUser.id()))),
                         contentOf(lastMessageByConversation.get(conversation.getId())),
                         unreadByConversation.getOrDefault(conversation.getId(), 0).longValue(),
-                        conversation.getLastMessageAt(),
-                        conversation.getUpdatedAt()
+                        AppTime.toOffset(conversation.getLastMessageAt()),
+                        AppTime.toOffset(conversation.getUpdatedAt())
                 ))
                 .toList();
     }
@@ -193,13 +194,13 @@ public class MessageService {
                 authorView(peer),
                 last == null ? "" : last.getContent(),
                 unread,
-                conversation.getLastMessageAt(),
-                conversation.getUpdatedAt()
+                AppTime.toOffset(conversation.getLastMessageAt()),
+                AppTime.toOffset(conversation.getUpdatedAt())
         );
     }
 
     private MessageDtos.MessageView messageView(Message message) {
-        return new MessageDtos.MessageView(message.getId(), message.getConversationId(), message.getSenderId(), message.getReceiverId(), message.getContent(), message.getReadFlag(), message.getCreatedAt());
+        return new MessageDtos.MessageView(message.getId(), message.getConversationId(), message.getSenderId(), message.getReceiverId(), message.getContent(), message.getReadFlag(), AppTime.toOffset(message.getCreatedAt()));
     }
 
     private PostDtos.AuthorView authorView(User user) {

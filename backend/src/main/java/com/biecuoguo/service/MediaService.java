@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.domain.MediaObject;
 import com.biecuoguo.dto.MediaDtos;
@@ -75,7 +76,7 @@ public class MediaService {
             mediaObjectMapper.insert(media);
             media.setUrl(mediaUrl(media));
             mediaObjectMapper.updateById(media);
-            return new MediaDtos.UploadResponse(media.getId(), media.getUrl(), media.getObjectKey(), media.getContentType(), media.getSizeBytes(), media.getPurpose(), media.getCreatedAt());
+            return new MediaDtos.UploadResponse(media.getId(), media.getUrl(), media.getObjectKey(), media.getContentType(), media.getSizeBytes(), media.getPurpose(), AppTime.toOffset(media.getCreatedAt()));
         } catch (Exception ex) {
             throw uploadFailure(ex);
         }

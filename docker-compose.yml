@@ -68,6 +68,8 @@ services:
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@biecuoguo.local}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@123456}
       APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-http://localhost,http://localhost:5173}
+      # 数据库 DATETIME 的解释时区；有安全默认值，不设也能跑
+      APP_TIME_ZONE: ${APP_TIME_ZONE:-Asia/Shanghai}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:?MINIO_ENDPOINT is required in .env}
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:?MINIO_PUBLIC_ENDPOINT is required in .env}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required in .env}

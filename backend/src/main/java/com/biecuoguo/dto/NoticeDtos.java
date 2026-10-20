@@ -1,12 +1,13 @@
 package com.biecuoguo.dto;
 
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.Category;
 import com.biecuoguo.domain.Notice;
 import com.biecuoguo.domain.Tag;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public final class NoticeDtos {
@@ -23,7 +24,7 @@ public final class NoticeDtos {
             String categoryName,
             String importance,
             String riskLevel,
-            LocalDateTime deadlineAt,
+            OffsetDateTime deadlineAt,
             String summary,
             String missConsequence,
             String nextAction,
@@ -52,7 +53,7 @@ public final class NoticeDtos {
             String categoryName,
             String importance,
             String riskLevel,
-            LocalDateTime deadlineAt,
+            OffsetDateTime deadlineAt,
             String officialUrl,
             String attachmentUrl,
             String summary,
@@ -70,7 +71,7 @@ public final class NoticeDtos {
             Boolean highRisk,
             Boolean urgent,
             Integer sortWeight,
-            LocalDateTime publishedAt,
+            OffsetDateTime publishedAt,
             long commentCount,
             boolean favorited,
             boolean reminded,
@@ -86,7 +87,7 @@ public final class NoticeDtos {
             @NotNull Long categoryId,
             String importance,
             String riskLevel,
-            LocalDateTime deadlineAt,
+            OffsetDateTime deadlineAt,
             String officialUrl,
             String attachmentUrl,
             @NotBlank String summary,
@@ -131,7 +132,7 @@ public final class NoticeDtos {
         notice.setCategoryId(request.categoryId());
         notice.setImportance(defaultText(request.importance(), "medium"));
         notice.setRiskLevel(defaultText(request.riskLevel(), "medium"));
-        notice.setDeadlineAt(request.deadlineAt());
+        notice.setDeadlineAt(AppTime.toLocal(request.deadlineAt()));
         notice.setOfficialUrl(request.officialUrl());
         notice.setAttachmentUrl(request.attachmentUrl());
         notice.setSummary(request.summary());

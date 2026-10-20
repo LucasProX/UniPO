@@ -1,7 +1,7 @@
 package com.biecuoguo.dto;
 
 import java.io.InputStream;
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public final class MediaDtos {
     private MediaDtos() {}
@@ -13,7 +13,7 @@ public final class MediaDtos {
             String contentType,
             Long sizeBytes,
             String purpose,
-            LocalDateTime createdAt
+            OffsetDateTime createdAt
     ) {}
 
     public record StoredObject(

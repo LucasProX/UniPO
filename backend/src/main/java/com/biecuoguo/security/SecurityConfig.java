@@ -2,6 +2,8 @@ package com.biecuoguo.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.biecuoguo.config.AppProperties;
+import com.biecuoguo.web.ErrorCode;
+import com.biecuoguo.web.ErrorResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -22,10 +24,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 @Configuration
 @EnableMethodSecurity
@@ -37,14 +37,22 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(exceptions -> exceptions
+                        // 全局异常处理器管不到 Security 过滤器链里抛出的认证异常
+                        // （它在 DispatcherServlet 之外），所以这里手写一份，
+                        // 响应格式必须和 GlobalExceptionHandler 保持一致。
                         .authenticationEntryPoint((request, response, ex) -> {
                             response.setStatus(HttpStatus.UNAUTHORIZED.value());
                             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                             response.setCharacterEncoding("UTF-8");
-                            objectMapper.writeValue(response.getWriter(), Map.of(
-                                    "message", "请先登录",
-                                    "timestamp", Instant.now().toString()
-                            ));
+                            objectMapper.writeValue(response.getWriter(),
+                                    ErrorResponse.of(ErrorCode.AUTH_UNAUTHENTICATED));
+                        })
+                        .accessDeniedHandler((request, response, ex) -> {
+                            response.setStatus(HttpStatus.FORBIDDEN.value());
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.setCharacterEncoding("UTF-8");
+                            objectMapper.writeValue(response.getWriter(),
+                                    ErrorResponse.of(ErrorCode.AUTH_FORBIDDEN));
                         })
                 )
                 .authorizeHttpRequests(auth -> auth

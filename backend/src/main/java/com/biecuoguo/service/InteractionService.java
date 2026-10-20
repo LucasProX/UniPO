@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.NoticeDtos;
@@ -76,7 +77,7 @@ public class InteractionService {
                     return ReminderDtos.ReminderView.from(
                             reminder,
                             notice == null ? "已删除通知" : notice.getTitle(),
-                            notice == null ? null : notice.getDeadlineAt()
+                            AppTime.toOffset(notice == null ? null : notice.getDeadlineAt())
                     );
                 })
                 .toList();
@@ -91,7 +92,7 @@ public class InteractionService {
         Reminder reminder = existing == null ? new Reminder() : existing;
         reminder.setUserId(currentUser.id());
         reminder.setNoticeId(noticeId);
-        reminder.setRemindAt(request.remindAt());
+        reminder.setRemindAt(AppTime.toLocal(request.remindAt()));
         reminder.setStatus("pending");
         reminder.setChannel(request.channel() == null || request.channel().isBlank() ? "in_app" : request.channel());
         reminder.setUpdatedAt(LocalDateTime.now());
@@ -101,7 +102,7 @@ public class InteractionService {
         } else {
             reminderMapper.updateById(reminder);
         }
-        return ReminderDtos.ReminderView.from(reminder, notice.getTitle(), notice.getDeadlineAt());
+        return ReminderDtos.ReminderView.from(reminder, notice.getTitle(), AppTime.toOffset(notice.getDeadlineAt()));
     }
 
     @Transactional
@@ -110,12 +111,12 @@ public class InteractionService {
         if (reminder == null || !reminder.getUserId().equals(currentUser.id())) {
             throw new NoSuchElementException("提醒不存在");
         }
-        reminder.setRemindAt(request.remindAt());
+        reminder.setRemindAt(AppTime.toLocal(request.remindAt()));
         reminder.setChannel(request.channel() == null ? reminder.getChannel() : request.channel());
         reminder.setUpdatedAt(LocalDateTime.now());
         reminderMapper.updateById(reminder);
         Notice notice = noticeMapper.selectById(reminder.getNoticeId());
-        return ReminderDtos.ReminderView.from(reminder, notice.getTitle(), notice.getDeadlineAt());
+        return ReminderDtos.ReminderView.from(reminder, notice.getTitle(), AppTime.toOffset(notice.getDeadlineAt()));
     }
 
     @Transactional

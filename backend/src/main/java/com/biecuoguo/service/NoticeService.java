@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.biecuoguo.domain.*;
@@ -196,7 +197,7 @@ public class NoticeService {
         if ("high".equals(notice.importance())) score += 18;
         if ("medium".equals(notice.importance())) score += 8;
         if ("ignored".equals(notice.userStatus())) score -= 60;
-        if (notice.deadlineAt() != null && notice.deadlineAt().isBefore(LocalDateTime.now().plusDays(3))) score += 16;
+        if (notice.deadlineAt() != null && notice.deadlineAt().isBefore(AppTime.nowOffset().plusDays(3))) score += 16;
         return score + (notice.sortWeight() == null ? 0 : notice.sortWeight());
     }
 
@@ -236,7 +237,7 @@ public class NoticeService {
                 category == null ? "未分类" : category.getName(),
                 notice.getImportance(),
                 notice.getRiskLevel(),
-                notice.getDeadlineAt(),
+                AppTime.toOffset(notice.getDeadlineAt()),
                 notice.getOfficialUrl(),
                 notice.getAttachmentUrl(),
                 notice.getSummary(),
@@ -254,7 +255,7 @@ public class NoticeService {
                 notice.getHighRisk(),
                 notice.getUrgent(),
                 notice.getSortWeight(),
-                notice.getPublishedAt(),
+                AppTime.toOffset(notice.getPublishedAt()),
                 commentCount,
                 favorites.contains(notice.getId()),
                 reminders.contains(notice.getId()),
@@ -275,7 +276,7 @@ public class NoticeService {
                 category == null ? "未分类" : category.getName(),
                 notice.getImportance(),
                 notice.getRiskLevel(),
-                notice.getDeadlineAt(),
+                AppTime.toOffset(notice.getDeadlineAt()),
                 notice.getSummary(),
                 notice.getMissConsequence(),
                 notice.getNextAction(),

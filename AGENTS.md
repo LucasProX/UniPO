@@ -56,7 +56,7 @@ mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 ```
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 25 项全链路检查（含 /api/v1 与游标分页）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 29 项全链路检查（含 /api/v1、游标分页、响应包、时区）
 ```
 全栈（需要 Docker）：
 ```bash
@@ -66,14 +66,20 @@ docker compose up -d --build
 
 ## 4. 后端约定
 - 分层：`web` -> `service` -> `mapper`（MyBatis-Plus）-> `domain`。Controller 不写业务，Service 不碰 HTTP。
-- 成功返回 `ApiResponse.ok(data)`，线上 JSON 是 `{"data": ...}`；列表也是 `{"data": [...]}`，没有分页元数据。
+- **统一响应包**：成功是 `{"code":"OK","message":"","data":...,"requestId":"..."}`，错误是 `{"code":"AUTH_...","message":"中文提示","data":null,"requestId":"...","timestamp":"..."}`。
+  - `code` 是**稳定契约**（`web/ErrorCode.java`），App 端 switch 它；`message` 只给人看，不要拿来做逻辑判断。
+  - `requestId` 由 `web/RequestIdFilter.java` 分配（优先复用入站 `X-Request-Id`，否则生成 16 位），同时回写响应头并进 MDC，日志里能对上。
+  - **HTTP 状态码保留语义**（400/401/403/404/405/413/500），不要退化成「一律 200 + code 判断」。
+  - 错误体一律走 `GlobalExceptionHandler`；它管不到 Security 过滤器链里的认证异常，`SecurityConfig` 的 `authenticationEntryPoint` / `accessDeniedHandler` 手写了同一格式，改格式要两处一起改。
+  - 500 兜底**不把异常 message 吐给客户端**（可能含 SQL/路径/主机名），只回通用文案 + requestId，详情打日志。
+  - 新增错误码只往 `ErrorCode` 里加，不要改名或改含义。
+- **时间**：数据库存 `LocalDateTime`（MySQL `DATETIME` 无时区），**接口一律返回 `OffsetDateTime`**（ISO-8601 带偏移，如 `2026-10-19T15:22:01+08:00`）。转换只走 `config/AppTime.java` 的两个方向：出参 `AppTime.toOffset(...)` 在 DTO 的 `from()` 里，入参 `AppTime.toLocal(...)` 在 Service 落库前。解释时区由 `app.time-zone`（`APP_TIME_ZONE`，默认 `Asia/Shanghai`）显式决定，**不要依赖 JVM 默认时区**。
 - **版本化**：Controller 同时挂在 `/api` 与 `/api/v1` 两个前缀下（`security/ApiVersionPrefixFilterConfig.java` 把 `/api/v1/**` 改写成 `/api/**`，`SecurityConfig` 白名单只需维护一份）。前端已切到 `/api/v1`；`/api` 保留兼容，观察 2 个版本后下线。**`/api/v1` 的演进只做加法**：加字段、加端点不升版本，删字段/改语义/改类型才升 `v2`。
 - **分页（强制游标）**：新端点用 `GET /api/v1/posts/page?tab=&cursor=&limit=`，返回 `{items, nextCursor, hasMore, limit}`；`limit` 默认 20、上限 50。游标编码上一页最后一条的**完整排序键**（pinned/official/dontMiss/likeCount/commentCount/publishedAt/id），不要只用 id——排序按热度排，id 小的可能排在 id 大的前面。非法游标返回 400。
-- 错误返回 `ErrorResponse{message, timestamp}`，由 `GlobalExceptionHandler` 映射 400/401/403/404/413。**没有兜底 500 处理**，未知异常走 Spring 默认错误页。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
-- 时间字段目前全是 `LocalDateTime`（无时区信息）。**新接口请用 `OffsetDateTime`**，原因见 `docs/MOBILE-API-PLAN.md` §4。
+- 新增环境变量：`APP_TIME_ZONE` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它有空值也安全的默认 `Asia/Shanghai`，强制必填会让老部署直接起不来。
 
 ## 5. 数据库
 - Flyway 管 schema：已发布的 V1–V10 禁止修改，新增 `V11__xxx.sql`。
@@ -93,7 +99,7 @@ docker compose up -d --build
 1. **不得**把 `app.verification.mock-accept-any-code` 以 `true` 部署到生产（`application.yml:51` 默认就是 true，当前最严重漏洞）。
 2. **不得**新增硬编码账号/密码（`AuthService` 已有 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua` 三个后门）。
 3. **不得**在启动时重置管理员密码（`AuthService:197` 每次启动把 admin 密码改成 `BOOTSTRAP_ADMIN_PASSWORD`，compose 默认 `Admin@123456`）。
-4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。
+4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。有安全默认值的可选变量可以只加前两处，但必须在 §4 记明是刻意为之（现有例外：`APP_TIME_ZONE`）。
 5. 不要在日志里打印 token / 密码 / 验证码。
 
 ## 8. 已知坑
@@ -114,7 +120,7 @@ docker compose up -d --build
 
 1. ~~跑通本地链路~~ ✅ **已完成（2026-10-19）**：Docker → MySQL 8.4 → 后端 → 前端，真实数据已渲染，登录/发帖链路实测通过。
 2. 去假数据 + 前端组件化（Web/App 共用的地基）。
-3. 后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包。
+3. ~~后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包~~ ✅ **已完成**：N+1 清零 + 游标分页 + `/api/v1` + 统一响应包（`code`/`requestId`）+ `OffsetDateTime`。
 4. 上线前集中清零 **R 项**（验证码放行、后门账号、管理员密码重置）。
 5. 清理 notices 遗留域。
 

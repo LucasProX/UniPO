@@ -3,7 +3,9 @@ package com.biecuoguo.dto;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserPreference;
 
-import java.time.LocalDateTime;
+import com.biecuoguo.config.AppTime;
+
+import java.time.OffsetDateTime;
 
 public record UserProfile(
         Long id,
@@ -34,8 +36,8 @@ public record UserProfile(
         Boolean emailNotificationEnabled,
         Boolean browserNotificationEnabled,
         Integer remindBeforeHours,
-        LocalDateTime createdAt,
-        LocalDateTime lastLoginAt
+        OffsetDateTime createdAt,
+        OffsetDateTime lastLoginAt
 ) {
     public static UserProfile from(User user, UserPreference preference) {
         return from(user, preference, false);
@@ -71,8 +73,8 @@ public record UserProfile(
                 preference != null && Boolean.TRUE.equals(preference.getEmailNotificationEnabled()),
                 preference != null && Boolean.TRUE.equals(preference.getBrowserNotificationEnabled()),
                 preference == null ? 24 : preference.getRemindBeforeHours(),
-                user.getCreatedAt(),
-                user.getLastLoginAt()
+                AppTime.toOffset(user.getCreatedAt()),
+                AppTime.toOffset(user.getLastLoginAt())
         );
     }
 }

@@ -3,7 +3,7 @@ package com.biecuoguo.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public final class PostDtos {
@@ -38,7 +38,7 @@ public final class PostDtos {
             Boolean official,
             Boolean dontMiss,
             Boolean pinned,
-            LocalDateTime deadlineAt,
+            OffsetDateTime deadlineAt,
             String missConsequence,
             String nextAction,
             List<String> tags,
@@ -49,8 +49,8 @@ public final class PostDtos {
             Boolean liked,
             Boolean favorited,
             String status,
-            LocalDateTime publishedAt,
-            LocalDateTime createdAt,
+            OffsetDateTime publishedAt,
+            OffsetDateTime createdAt,
             AuthorView author
     ) {}
 
@@ -64,7 +64,7 @@ public final class PostDtos {
             Boolean official,
             Boolean dontMiss,
             Boolean pinned,
-            LocalDateTime deadlineAt,
+            OffsetDateTime deadlineAt,
             @Size(max = 500) String missConsequence,
             @Size(max = 500) String nextAction,
             List<String> tags
@@ -83,7 +83,7 @@ public final class PostDtos {
             Boolean liked,
             Boolean featured,
             String status,
-            LocalDateTime createdAt,
+            OffsetDateTime createdAt,
             AuthorView author
     ) {}
 
@@ -94,7 +94,7 @@ public final class PostDtos {
             PostView post,
             String commentContent,
             Long parentCommentId,
-            LocalDateTime createdAt,
+            OffsetDateTime createdAt,
             Boolean unread
     ) {}
 

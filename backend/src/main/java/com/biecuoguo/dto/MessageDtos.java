@@ -3,7 +3,7 @@ package com.biecuoguo.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 public final class MessageDtos {
     private MessageDtos() {}
@@ -13,8 +13,8 @@ public final class MessageDtos {
             PostDtos.AuthorView peer,
             String lastMessage,
             Long unreadCount,
-            LocalDateTime lastMessageAt,
-            LocalDateTime updatedAt
+            OffsetDateTime lastMessageAt,
+            OffsetDateTime updatedAt
     ) {}
 
     public record MessageView(
@@ -24,7 +24,7 @@ public final class MessageDtos {
             Long receiverId,
             String content,
             Boolean read,
-            LocalDateTime createdAt
+            OffsetDateTime createdAt
     ) {}
 
     public record CreateConversationRequest(@Size(max = 32) String peerUid, Long peerId) {}

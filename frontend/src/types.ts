@@ -1,8 +1,27 @@
 export type Role = 'USER' | 'OPERATOR' | 'SCHOOL_OPERATOR' | 'COLLEGE_OPERATOR' | 'MAJOR_OPERATOR' | 'ADMIN';
 export type BoardCode = 'recommend' | 'school' | 'college' | 'major';
 
+/** 后端统一成功响应包，见 docs/MOBILE-API-PLAN.md 4.2。 */
 export interface ApiResponse<T> {
+  code: 'OK';
+  message: string;
   data: T;
+  requestId: string;
+}
+
+/**
+ * 后端统一错误响应包。
+ *
+ * code 是稳定契约（AUTH_* / POST_* / USER_* / MSG_* / MEDIA_* / VALIDATION_FAILED /
+ * INTERNAL ...），App 端应该 switch 它；message 只给人看，不要拿来做逻辑判断。
+ * requestId 用来把用户报的故障对上服务端日志。
+ */
+export interface ApiErrorBody {
+  code: string;
+  message: string;
+  data: unknown;
+  requestId: string;
+  timestamp: string;
 }
 
 /**
