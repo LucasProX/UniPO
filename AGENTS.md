@@ -218,6 +218,8 @@ xcrun simctl launch booted com.unipo.app
   本地 `APNS_ENABLED=false` 时后端只打日志；模拟器用 `xcrun simctl push` 验通知 UI。
 - **注销账号**是软删除：状态置 `deleted` + PII 匿名化 + 删 token/关注/拉黑 + 吊销 Web 会话；
   不物理删用户行，因为帖子/评论还在引用。
+- **头像**：新手引导和「我的」头像都走 `AvatarCropView`（相册选图 -> 圆形裁剪/缩放 -> 800x800 PNG -> 上传 MinIO -> `PUT /users/me`）。
+  主页资料行顺序是性别符号（♂ 蓝 / ♀ 粉）-> 星座 -> MBTI -> 年龄；年龄由 `birthYear` 计算，`showAge/showGender` 为 false 时不展示。
 
 ## 7. 硬性禁止（安全红线）
 > 2026-10-20 更新：R-1 / R-2 / R-3 / R-4 / R-5 五条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。

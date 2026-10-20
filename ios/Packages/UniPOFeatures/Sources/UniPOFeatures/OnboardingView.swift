@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import UniPOCore
 import UniPOUI
 import UIKit
@@ -18,6 +19,9 @@ struct OnboardingView: View {
     @State private var mbti = ""
     @State private var signature = ""
     @State private var avatarIndex = 0
+    @State private var pickedAvatar: UIImage?
+    @State private var photoItem: PhotosPickerItem?
+    @State private var cropImage: CropImage?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -70,6 +74,17 @@ struct OnboardingView: View {
                 await finish()
             }
             #endif
+        }
+        .fullScreenCover(item: $cropImage) { crop in
+            AvatarCropView(
+                image: crop.image,
+                onCancel: { cropImage = nil },
+                onCrop: { image in
+                    cropImage = nil
+                    pickedAvatar = image
+                    photoItem = nil
+                }
+            )
         }
     }
 
@@ -242,24 +257,53 @@ struct OnboardingView: View {
 
                 HStack {
                     Spacer()
-                    ZStack {
-                        Circle()
-                            .fill(LinearGradient(colors: [Color(hex: avatars[avatarIndex].color1), Color(hex: avatars[avatarIndex].color2)],
-                                                 startPoint: .topLeading, endPoint: .bottomTrailing))
-                            .frame(width: 120, height: 120)
-                        Text(avatars[avatarIndex].emoji)
-                            .font(.system(size: 64))
+                    Group {
+                        if let pickedAvatar {
+                            Image(uiImage: pickedAvatar)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                        } else {
+                            ZStack {
+                                Circle()
+                                    .fill(LinearGradient(colors: [Color(hex: avatars[avatarIndex].color1), Color(hex: avatars[avatarIndex].color2)],
+                                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .frame(width: 120, height: 120)
+                                Text(avatars[avatarIndex].emoji)
+                                    .font(.system(size: 64))
+                            }
+                        }
                     }
                     .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 1))
                     Spacer()
                 }
                 .padding(.vertical, 8)
 
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Label(pickedAvatar == nil ? "从相册选一张" : "重新从相册选", systemImage: "photo.on.rectangle")
+                        .font(.uniLabel(12))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .onChange(of: photoItem) { _, newValue in
+                    guard let newValue else { return }
+                    Task {
+                        if let data = try? await newValue.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            cropImage = CropImage(image: image)
+                        }
+                    }
+                }
+
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
                     ForEach(Array(avatars.enumerated()), id: \.offset) { index, avatar in
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 avatarIndex = index
+                                pickedAvatar = nil
                             }
                         } label: {
                             ZStack {
@@ -370,7 +414,7 @@ struct OnboardingView: View {
         errorMessage = nil
         defer { isSaving = false }
         var avatarUrl = auth.profile?.avatarUrl
-        if let data = renderAvatar(avatars[avatarIndex]) {
+        if let data = pickedAvatar?.pngData() ?? renderAvatar(avatars[avatarIndex]) {
             if let uploaded = try? await APIClient.shared.uploadImage(data: data, filename: "avatar.png", mimeType: "image/png") {
                 avatarUrl = uploaded.url
             }

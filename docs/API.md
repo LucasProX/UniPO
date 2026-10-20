@@ -369,7 +369,14 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 - 完成后 `onboardingCompleted=true`；新注册用户默认 false，已有用户默认 true；
 - 头像先由 App 本地生成 PNG，再走 `/media/upload` 得到 URL。
 
-### 9.8 推送设备
+### 9.8 个人主页数据
+
+- `GET /api/users/me/stats`：关注/粉丝/作品等统计；
+- `GET /api/users/me/posts` / `/likes` / `/post-favorites`：作品/喜欢/收藏三栏；
+- `PUT /api/users/me`：头像更新只传 `avatarUrl`；
+- 主页展示字段来自 `UserProfile`：`gender` / `zodiac` / `mbti` / `birthYear` / `showGender` / `showAge`。
+
+### 9.9 推送设备
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -381,7 +388,7 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 - `app.push.apns.enabled=false` 时用 `LoggingPushService`，只打日志；
 - 打开后需要 `APNS_KEY_PATH` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC`。
 
-### 9.9 账号注销
+### 9.10 账号注销
 
 `DELETE /api/users/me`：软删除 + 匿名化。
 

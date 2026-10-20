@@ -89,6 +89,19 @@ public struct AuthorView: Codable, Hashable {
     public let online: Bool?
 }
 
+public struct UserStatsView: Codable {
+    public let favorites: Int
+    public let likedPosts: Int
+    public let sharedPosts: Int
+    public let completed: Int
+    public let comments: Int
+    public let upcoming: Int
+    public let avoidedRisks: Int
+    public let following: Int
+    public let followers: Int
+    public let posts: Int
+}
+
 public struct PostView: Codable, Identifiable, Hashable {
     public let id: Int64
     public let board: String

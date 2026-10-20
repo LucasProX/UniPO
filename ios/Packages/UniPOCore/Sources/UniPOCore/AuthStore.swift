@@ -101,6 +101,12 @@ public final class AuthStore {
         }
     }
 
+    public func applyProfile(_ user: UserProfile) {
+        guard let current = session else { return }
+        session = AuthSession(token: current.token, refreshToken: current.refreshToken,
+                              expiresInSeconds: current.expiresInSeconds, user: user)
+    }
+
     public func completeOnboarding(_ input: OnboardingInput) async throws {
         let user = try await api.completeOnboarding(input)
         guard let current = session else { return }

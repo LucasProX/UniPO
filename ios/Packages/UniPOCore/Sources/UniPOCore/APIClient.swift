@@ -162,6 +162,26 @@ public actor APIClient {
         )
     }
 
+    public func userStats() async throws -> UserStatsView {
+        try await request(path: "users/me/stats")
+    }
+
+    public func myPosts() async throws -> [PostView] {
+        try await request(path: "users/me/posts")
+    }
+
+    public func likedPosts() async throws -> [PostView] {
+        try await request(path: "users/me/likes")
+    }
+
+    public func favoritePosts() async throws -> [PostView] {
+        try await request(path: "users/me/post-favorites")
+    }
+
+    public func updateAvatar(url: String) async throws -> UserProfile {
+        try await request(path: "users/me", method: "PUT", body: ["avatarUrl": url])
+    }
+
     public func unreadCount() async throws -> Int {
         try await request(path: "messages/unread-count")
     }
