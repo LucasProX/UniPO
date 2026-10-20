@@ -48,14 +48,14 @@ const featuredComment = computed(() => {
               </p>
             </div>
           </div>
-          <span class="mini-chip" :class="post.official ? 'border-[#007aff]/20 bg-[#007aff]/10 text-[#007aff]' : ''">{{ boardText }}</span>
+          <span class="mini-chip shrink-0 whitespace-nowrap" :class="post.official ? 'border-[#007aff]/20 bg-[#007aff]/10 text-[#007aff]' : ''">{{ boardText }}</span>
         </div>
 
         <div class="po-card__middle">
           <div class="po-card__copy">
             <h2 class="po-card__title">{{ compactPostTitle(post.title) }}</h2>
             <p class="po-card__excerpt">{{ plainPostContent(post.excerpt || post.content) }}</p>
-            <div class="flex flex-wrap gap-1.5">
+            <div class="flex flex-nowrap gap-1.5 overflow-hidden">
               <span v-for="tag in post.tags.slice(0, 3)" :key="tag" class="mini-chip">{{ tag }}</span>
             </div>
           </div>
@@ -69,13 +69,13 @@ const featuredComment = computed(() => {
           <span class="ml-2 line-clamp-1 inline align-bottom">{{ featuredComment }}</span>
         </div>
 
-        <div class="mt-0 flex flex-wrap items-center justify-between gap-3 border-t border-[#e3e9f1] pt-4">
-          <div class="flex gap-4 text-sm font-bold text-[#718097]">
+        <div class="mt-0 flex flex-nowrap items-center justify-between gap-3 border-t border-[#e3e9f1] pt-4">
+          <div class="flex shrink-0 gap-4 text-sm font-bold text-[#718097]">
             <span class="inline-flex items-center gap-1" :class="post.liked ? 'text-[#ff3b30]' : ''"><Heart :size="16" :fill="post.liked ? 'currentColor' : 'none'" />{{ post.likeCount }}</span>
             <span class="inline-flex items-center gap-1 text-[#007aff]"><MessageCircle :size="16" fill="currentColor" />{{ post.commentCount }}</span>
             <span class="inline-flex items-center gap-1" :class="post.favorited ? 'text-[#ffb800]' : ''"><Bookmark :size="16" :fill="post.favorited ? 'currentColor' : 'none'" />{{ post.favoriteCount }}</span>
           </div>
-          <time class="text-sm font-black text-[#19202f]">{{ formatPublishedAt(post.publishedAt) }}</time>
+          <time class="shrink-0 whitespace-nowrap text-sm font-black text-[#19202f]">{{ formatPublishedAt(post.publishedAt) }}</time>
         </div>
       </div>
     </div>

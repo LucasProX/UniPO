@@ -1337,7 +1337,8 @@ select:focus-visible {
 }
 
 .po-card__title {
-  max-width: 16em;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

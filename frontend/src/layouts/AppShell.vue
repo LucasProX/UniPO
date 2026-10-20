@@ -40,7 +40,7 @@ function selectDate(dateKey: string | null) {
       class="relative z-10 mx-auto grid min-h-0 w-[min(1600px,calc(100vw-24px))] gap-5 lg:h-[calc(100vh-100px)] lg:overflow-hidden max-[880px]:grid-cols-1 max-[880px]:overflow-visible"
       :class="isHome ? 'grid-cols-[280px_minmax(0,1fr)_280px] max-[1180px]:grid-cols-[240px_minmax(0,1fr)]' : 'grid-cols-1'"
     >
-      <LeftRail v-if="isHome" @open-post="openPost($event as CampusPost)" @show-level-catalog="showLevelCatalog = true" />
+      <LeftRail v-if="isHome" class="max-[880px]:hidden" @open-post="openPost($event as CampusPost)" @show-level-catalog="showLevelCatalog = true" />
 
       <section class="min-h-0 min-w-0 lg:h-full" :class="isHome ? '' : 'mx-auto w-[min(1180px,100%)]'">
         <router-view v-slot="{ Component }">
@@ -48,7 +48,7 @@ function selectDate(dateKey: string | null) {
         </router-view>
       </section>
 
-      <RightRail v-if="isHome" :selected-date="selectedDate" @select-date="selectDate" />
+      <RightRail v-if="isHome" class="max-[1180px]:hidden" :selected-date="selectedDate" @select-date="selectDate" />
     </main>
 
     <DockNav />
