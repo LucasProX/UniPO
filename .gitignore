@@ -12,3 +12,4 @@ mysql_data/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 .logs/
+.DS_Store
