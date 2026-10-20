@@ -14,6 +14,9 @@ spring:
     locations: classpath:db/migration
 
 app:
+  auth:
+    # 本地是 http://127.0.0.1:5173，Secure Cookie 不会被浏览器保存，必须关掉。
+    cookie-secure: false
   cors:
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
   jwt:

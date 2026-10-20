@@ -3829,6 +3829,46 @@ SMTP_HOST=127.0.0.1 SMTP_PORT=2525 SMTP_SSL_ENABLE=false \
 后续按 ADR 的路线走：P0 单机可上线（Cookie 认证、WebSocket、Redis、观测性、备份），
 P1 模块边界 + ArchUnit，P2 性能，P3 水平扩展。
 
+## 2026-10-20 Web 登录态改用 Cookie：会话、CSRF、以及「Secure Cookie 在 http 下静默失效」
+
+按 ADR-0001 D3 把 Web 登录态从 localStorage token 换成 httpOnly Cookie。后端先落，前端暂不动。
+
+**存储**：Cookie 里只放一个不透明 session id（32 字节随机数，Base64URL），
+userId / role / csrfToken 放服务端 `SessionStore`。memory 和 redis 两套实现，
+由 `STATE_BACKEND` 选——这样「踢掉所有设备」「改密即失效」才能成立。
+session id 故意没用 UUID：UUIDv4 只有 122 bit 随机性，而且格式可猜。
+
+**两个 Cookie 的分工**：`unipo_sid` 是 HttpOnly（JS 读不到，XSS 偷不走）；
+`unipo_csrf` 故意非 HttpOnly，前端读出来塞进 `X-CSRF-Token`，这是双提交方案。
+校验用定长比较，别用 `equals` 泄漏前缀。
+
+**CSRF 只作用于 Cookie 认证的请求**。第一版差点写成「所有写请求都校验」——
+那样 App 的 Bearer 请求会被 403，因为 App 根本没有 csrf cookie。
+正确做法是 `SessionAuthenticationFilter` 在 request attribute 上标记「这次是 Cookie 认证」，
+`CsrfFilter` 只看这个标记。
+
+**踩到的坑：Secure Cookie 在 http 下静默失效**。本地是 `http://127.0.0.1:5173`，
+如果 `cookie-secure=true`，浏览器会拒绝保存 Set-Cookie —— 表现不是报错，是「登录接口 200，
+下一个请求 401」，极难查。所以 `AUTH_COOKIE_SECURE` 默认 false，
+docker-compose（有 Caddy/HTTPS）默认 true，纯 HTTP 的 IP 部署必须显式 false。
+
+**filter 顺序**：JWT 先认（App/脚本），没有 Authorization 头才回落到 Cookie。
+用 `addFilterAfter(sessionFilter, UsernamePasswordAuthenticationFilter.class)`、
+`addFilterAfter(csrfFilter, SessionAuthenticationFilter.class)` 固定顺序。
+
+**验证**（curl 实测）：
+
+```text
+POST /api/auth/login                     -> Set-Cookie: unipo_sid(HttpOnly) + unipo_csrf
+GET  /api/auth/me (只带 cookie)           -> 200
+POST /api/posts (cookie, 无 CSRF)         -> 403 AUTH_CSRF_INVALID
+POST /api/posts (cookie + X-CSRF-Token)   -> 200
+POST /api/auth/logout (cookie + CSRF)     -> 200，随后 /me -> 401
+```
+
+Bearer 路径完全没动，`smoke.sh` 37 项仍然全绿。前端切 Cookie 时会一起改：
+`axios.withCredentials`、去掉 localStorage、401 时不再自己刷新（服务端会话自己续期）。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

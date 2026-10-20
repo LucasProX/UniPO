@@ -11,7 +11,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
   * school_id（见 docs/ISSUES.md D-3），同一个请求两次可能看到不同内容。
   */
  public record AppProperties(Cors cors, Jwt jwt, Bootstrap bootstrap, Minio minio, Verification verification,
-                             Long defaultSchoolId) {
+                             Auth auth, Long defaultSchoolId) {
     public record Cors(String allowedOrigins) {}
     /**
      * JWT 配置。
@@ -33,4 +33,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
     public record Bootstrap(String adminEmail, String adminPassword, boolean seedDemoData) {}
     public record Minio(String endpoint, String publicEndpoint, String accessKey, String secretKey, String bucket, boolean publicRead) {}
     public record Verification(boolean mockAcceptAnyCode) {}
+    /**
+     * Web 会话 Cookie 配置。
+     *
+     * <p>Cookie 里只放不透明 session id，登录态在服务端（Redis / 内存）。
+     * 生产必须 {@code cookieSecure=true}（只走 HTTPS）；本地 http 由 application-local.yml 关掉。
+     *
+     * <p>{@code csrfHeaderName} 是前端要回填的请求头，值来自非 HttpOnly 的 csrf Cookie。
+     */
+    public record Auth(String sessionCookieName, String csrfCookieName, String csrfHeaderName,
+                       int sessionTtlMinutes, boolean cookieSecure, String cookieSameSite) {}
 }

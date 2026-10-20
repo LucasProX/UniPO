@@ -31,7 +31,8 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter,
+                                              SessionService sessionService, ObjectMapper objectMapper) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -69,7 +70,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // 两套认证入口：App 走 Bearer（JWT），浏览器走 httpOnly Cookie（服务端会话）。
+                // 顺序很重要：JWT 先认，没有 Authorization 头时才回落到 Cookie。
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(new SessionAuthenticationFilter(sessionService), UsernamePasswordAuthenticationFilter.class)
+                // CSRF 只作用于 Cookie 认证的写请求；Bearer 请求不经过这里（不会自动带 Cookie）。
+                .addFilterAfter(new CsrfFilter(sessionService, objectMapper), SessionAuthenticationFilter.class);
         return http.build();
     }
 

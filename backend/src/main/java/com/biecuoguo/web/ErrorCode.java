@@ -17,6 +17,7 @@ public enum ErrorCode {
     AUTH_INVALID_CREDENTIALS("邮箱或密码不正确"),
     AUTH_UNAUTHENTICATED("请先登录"),
     AUTH_FORBIDDEN("没有权限执行该操作"),
+    AUTH_CSRF_INVALID("请求校验失败，请刷新页面后重试"),
     AUTH_VERIFICATION_CODE_INVALID("验证码不正确或已过期"),
     AUTH_EMAIL_TAKEN("该邮箱已被注册"),
     AUTH_NICKNAME_TAKEN("该昵称已被占用"),

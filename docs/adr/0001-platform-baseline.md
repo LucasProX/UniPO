@@ -70,6 +70,9 @@ BFF 只做聚合/裁剪，不重写业务规则。
 **代价**：两套认证入口；Cookie 方案必须处理 CSRF 与 CORS 凭证；
 需要 Redis（单机也跑 Redis，见 D6）。
 
+**落地进度（2026-10-20）**：后端已完成（`SessionStore` + `SessionAuthenticationFilter` + `CsrfFilter`），
+`STATE_BACKEND=redis` 下实测通过；前端仍用 Bearer，切换时再改 `lib/api.ts` 与登录流程。
+
 ### D4. 实时：WebSocket，不是 SSE
 
 **决定**：Web/App 统一走 WebSocket。协议自定 JSON 信封，不直接把业务对象裸奔在帧里。

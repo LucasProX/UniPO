@@ -21,7 +21,7 @@ class JwtServiceTest {
 
     private static JwtService service(String secret, long accessMinutes, long refreshMinutes) {
         return new JwtService(new AppProperties(
-                null, new AppProperties.Jwt(secret, accessMinutes, refreshMinutes), null, null, null, null));
+                null, new AppProperties.Jwt(secret, accessMinutes, refreshMinutes), null, null, null, null, null));
     }
 
     private static JwtService service() {

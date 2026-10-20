@@ -120,6 +120,15 @@ docker compose up -d --build
   不要为了「少写一个方法」把类型检查去掉，那等于把 14 天的 token 变成能直接调接口的通行证。
   退出登录会把 access 和 refresh 一起写进 `TokenBlacklistService`；**刷新刻意不轮换** refresh token（理由见 DEVLOG：
   黑名单是进程内的，轮换会在多标签页并发刷新 / 多实例部署时把用户误踢下线）。
+- **Web 端登录态用 httpOnly Cookie，App 继续用 Bearer**（2026-10-20，ADR-0001 D3）：
+  `POST /auth/login|register|refresh` 会额外下发两个 Cookie —— `unipo_sid`（HttpOnly，不透明 session id）
+  和 `unipo_csrf`（非 HttpOnly，前端读出来放进 `X-CSRF-Token`）。登录态存在 `SessionStore`（memory/redis），
+  所以「改密/封号/退出所有设备」能立即生效，这点纯 JWT 做不到。
+  **规则**：Cookie 认证的写请求必须带 CSRF 头（`security/CsrfFilter.java`，双提交 + 定长比较）；
+  安全方法不校验。Bearer 请求不经过 CSRF（Authorization 不会被浏览器自动带上）。
+  Cookie 的 `Secure` 由 `AUTH_COOKIE_SECURE` 控制：HTTPS 必须 true，纯 HTTP 的 IP 部署必须 false，
+  否则浏览器不保存 Cookie，表现为「登录成功但没登录」。
+  **前端目前仍走 localStorage + Bearer**，切 Cookie 是下一步前端改造；在那之前两套入口并存是刻意的。
 - **限流规则表在 `web/RateLimitFilter.java`**：按「来源 IP + 接口」做固定窗口，命中回 429 + `Retry-After`。
   新增「能被刷出成本」的接口（发邮件、上传、写库）要往 `RULES` 里加一条。
   数值是「挡脚本」不是「精确配额」，本地连着跑三四遍 `smoke.ps1` 有可能撞到，等窗口过去或临时 `RATE_LIMIT_ENABLED=false`。

@@ -80,6 +80,18 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  auth:
+    # Web 端登录态：Cookie 里只放不透明 session id，服务端（Redis）存 userId/role/csrfToken。
+    # 这和 App 的 Bearer token 是两套载体，共用同一个用户身份；见 ADR-0001 D3。
+    session-cookie-name: unipo_sid
+    csrf-cookie-name: unipo_csrf
+    csrf-header-name: X-CSRF-Token
+    # 会话空闲有效期（分钟），默认 7 天；每次访问滑动续期。
+    session-ttl-minutes: ${AUTH_SESSION_TTL_MINUTES:10080}
+    # HTTPS 部署必须 true。默认 false 是为了「IP + HTTP」部署不静默失效（Cookie 存不下、登录看似成功）；
+    # docker-compose 里默认 true（有 Caddy），纯 HTTP 的 deploy-ip.sh 部署要在 .env 里显式设 false。
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    cookie-same-site: Lax
   # 撤销名单（退出登录）/ 在线状态 / 限流计数 放哪：
   #   memory = 进程内（默认，单实例足够，重启即清空）
   #   redis  = 多实例共享，必须设 REDIS_HOST/REDIS_PORT；连不上会启动失败

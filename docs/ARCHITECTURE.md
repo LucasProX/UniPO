@@ -17,6 +17,17 @@
 实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）；消息的可靠投递用 Outbox + Redis Streams。
 详见 ADR-0001。
 
+### 落地进度（2026-10-20）
+
+| 能力 | 状态 |
+|---|---|
+| Redis 进单机 compose，会话语义外部化 | ✅ 已完成（`STATE_BACKEND=redis` 已实测） |
+| Web httpOnly Cookie 会话 + CSRF 双提交 | ✅ 后端完成（前端仍走 Bearer，切换待前端改造） |
+| 会话滑动过期 / 退出所有设备 | ✅ 已完成（`SessionStore` memory / redis 双实现） |
+| WebSocket 实时通道 | ⏳ 未开始（当前仍是 SSE） |
+| 模块化拆包 + ArchUnit | ⏳ 未开始 |
+| 可观测性（metrics / 告警） | ⏳ 只做到 requestId + 健康检查 |
+
 ## 1. 拓扑
 
 本机开发：
