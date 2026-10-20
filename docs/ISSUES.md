@@ -16,13 +16,10 @@
 
 ## 1. B — 当前阻塞项（本地跑通）
 
-| 状态 | 项 | 说明 |
-|---|---|---|
-| ✅ 已解决 | ``没有 JDK / Maven`` | Temurin **21.0.12.1** + Maven **3.9.16** 已装；`mvn -DskipTests package` 实测 **BUILD SUCCESS**（2 分 22 秒，63.1 MB fat jar） |
-| ✅ 已解决 | ``前端依赖`` | `npm install` + `npm run build` 通过（1633 modules，5.26 秒，类型检查干净） |
-| 🔄 进行中 | **没有本地数据库** | 方案已定：Docker Desktop + compose 的 `mysql` 服务（profile `local-db`） |
-| 🔄 进行中 | **Docker Desktop 未装，WSL2 未启用** | 安装包已下到 `D:\Environments\installers\DockerDesktopInstaller.exe`（607 MB）；`wsl --status` 报 `REGDB_E_CLASSNOTREG`，装完需重启一次 |
-| ⏳ 待办 | 默认 datasource 指向远端库 | 不改代码即可绕过：`application.yml:6` 有 `spring.config.import: optional:file:../.env[.properties]`，在仓库根建 `.env` 覆盖 `SPRING_DATASOURCE_URL` 即可 |
+**B 类已清零（2026-10-19）**：JDK 21 + Maven 3.9.16 已装、前端 `npm run build` 通过、
+Docker Desktop 29.8.2 + WSL 2.7.13 起得来、MySQL 8.4（`127.0.0.1:12306`）与 MinIO 容器正常、
+后端 Flyway 自动建表 V1–V11、前端真实数据渲染，登录/发帖/图片上传实测通过。
+完整启动顺序见 [`LOCAL-DEV.md`](LOCAL-DEV.md)。
 
 ## 2. R — 上线阻断项（原 P0，现在不阻塞本地开发）
 
@@ -83,29 +80,63 @@
 > - `.env.example` 改成 `127.0.0.1:12306`，并在注释里写明「后端在容器里时改成 `mysql:3306`」。
 > 实测：改完后 `mvn package` + `scripts/smoke.ps1` 仍然 34/34 全绿（本地 `.env` 覆盖不受影响）。
 
+### R-5 JWT 签名密钥有写死的默认值
+证据：`application.yml:80` 默认 `change-this-secret-to-a-very-long-random-string-32-plus`；
+`.env.example:29` 是 `change_me_to_a_long_random_secret_at_least_32_chars`；
+`docker-compose.yml:70` 是 `please-change-this-to-a-very-long-random-secret-32`。三个地方三个值，但**全都是公开的**。
+`security/JwtService.java:56-62` 还会把短于 32 字节的密钥补 `0` 凑长度——一个 3 位密钥被补成 32 字节，看起来合规，强度还是 3 位。
+
+攻击链：不需要注册、不需要验证码。拿仓库里这个默认值自己签一个 `{"sub":"5","role":"ADMIN"}`，
+`Authorization: Bearer <伪造>` 直接就是管理员。**不留任何异常日志**，因为服务器认为这是合法 token。
+
+> **✅ 已修复（2026-10-20）**：
+> - `application.yml` 的默认值改成空 `${JWT_SECRET:}`，本地由 `application-local.yml` 提供专用值；
+> - `docker-compose.yml` 改成 `${JWT_SECRET:?...}`，缺失时 compose 直接报错，不会再悄悄用一个公开密钥启动；
+> - `.env.example` 改成空值 + `openssl rand -base64 48` 的生成提示；`deploy-app.sh` 本来就在 `required_vars` 里；
+> - `config/StartupSafetyGuard.java` 新增第 0 条检查（profile 无关）：空值 / 三个历史示例值 / 短于 32 字符 / 非开发环境用了本地专用值 —— 四种情况全部**拒绝启动**，
+>   异常信息里刻意不打印密钥本身（会进日志）；
+> - `security/JwtService.java` 不再补 `0`，密钥不合格直接抛异常。
+>
+> 实测：空值 / 示例值 / `abc123` / 非开发 profile + 本地值，四种都 exit=1 并给出对应文案；
+> `local` profile 正常启动，登录拿到 token、`/auth/me` 校验通过，`smoke.ps1` 34/34。
+> **仍待做**：无刷新令牌、10 天有效期（`JWT_EXPIRATION_MINUTES` 默认 10080）——属于 Q 项。
+
 ## 3. D — 开发体验（影响日常协作，建议边做边改）
 
 | 编号 | 问题 | 证据 | 影响 |
 |---|---|---|---|
-| D-1 | **N+1 查询** | `PostService.java:502-519` `toViews` 逐条调 `toView`，每条 7 次 SQL（author + images + like + favorite + school/college/major） | 100 条 feed ≈ 700 次查询，本地都卡 |
-| D-2 | **列表无分页** | `PostService.java:53-64` `selectList` 无 limit；`MessageService.messages()` 全量加载 | 数据一多前端直接卡死 |
+| D-1 ✅ | ~~N+1 查询~~ **已清零** | `toViews` 现在批量查作者/图片/点赞/收藏/字典表，一条 feed 固定 5 条 SQL | 100 条 feed 从 ~700 次降到 5 次 |
+| D-2 ✅ | ~~列表无分页~~ **已做游标分页** | `GET /api/v1/posts/page?limit=&cursor=`，`limit` 默认 20、上限 50，游标编码完整排序键 | 数据量再大也只查一页 |
 | D-3 | ~~匿名视角取随机用户~~ ✅ **已修复（2026-10-20）** | 未登录现在就是 `viewer = null`，学校隔离统一走 `app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 1）；`defaultViewer()` 已删除，`AuthService` 里四处硬编码的 `1L` 也收进同一个配置 | 匿名 feed 确定且可配置 |
-| D-4 | 前端 4207 行单文件 | `frontend/src/App.vue`，6 个 `ViewKey` 手写状态机，无 vue-router | 无法多人协作，也无法复用到 App |
+| D-4 ✅ | ~~前端 4207 行单文件~~ **已组件化（2026-10-20）** | `App.vue` 降到 61 行外壳，拆出 `layouts/AppShell.vue` + 6 个 `views/` + `components/{layout,modals,post,ui}` + 6 个 Pinia store + `vue-router` | Web/App 共用同一批 store 与 `lib/*.ts` 纯函数 |
 | D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
-| D-6 | 轮询过密 | `App.vue:1987` 3s、`:3205` 1.8s、`:2208` 10s | 放大 D-1/D-2 |
+| D-6 | 轮询过密（**仍在**） | 已随组件化挪进 store：会话列表 3s（`stores/messages.ts`）、当前会话 1.8s、在线心跳 10s | 实时化（SSE/WebSocket）之前先别再加轮询 |
 | D-7 ✅ | ~~notices 遗留域~~ **已删除（2026-10-20）** | 删掉 19 个 Java 文件（`NoticeController` / `CommentController` / `InteractionController` / `NoticeService` / `InteractionService` / `CommentService` / 5 个 domain / 5 个 mapper / 3 个 DTO）+ `V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 和 `comments.notice_id`；`AdminService` 概览改按 posts 口径 | 只剩一套内容模型，`comments` 只认 `post_id` |
 | D-8 | db/local 与 H2 是死代码 | 无任何 profile 引用 `db/local`，H2 未被使用 | 误导后来者 |
 
 ## 4. Q — 质量项（长期）
 
-- `GlobalExceptionHandler` 无兜底 `Exception` handler → 500 走 Spring 默认错误页，前端拿不到 `{message}`。
-- 错误体无业务错误码，App 只能匹配中文文案。
-- 时间字段全是 `LocalDateTime`，JSON 无时区；App 端跨时区必错。
-- 无限流（登录、验证码、发帖、上传）。
-- JWT 默认 secret、10080 分钟、无刷新令牌、存 `localStorage`。
-- 登出黑名单与在线状态是单机 `ConcurrentHashMap`。
-- 上传只校验 `Content-Type` 前缀。
-- 无测试（0 个）、无 lint、无 CI。
+已完成（2026-10 前）：兜底 `Exception` handler 有了（`GlobalExceptionHandler:122`，且不吐异常 message）；
+业务错误码有了（`web/ErrorCode.java`）；时间字段已全改 `OffsetDateTime`；
+JWT 默认 secret 已删（见 **R-5**）。
+
+### 真正剩下的
+
+| 编号 | 问题 | 现状 | 影响 |
+|---|---|---|---|
+| Q-1 | **无限流** | 登录、验证码、发帖、上传都没有任何限流或锁定 | 验证码接口可以拿来刷邮件、刷成本；登录可以无限次撞库 |
+| Q-2 | **JWT 无刷新令牌** | 有效期 10080 分钟（7 天），过期就是硬过期，客户端只能重新登录；token 存 `localStorage` | 7 天内 token 被偷就等于永久会话；到期体验差 |
+| Q-3 | **上传只校验 `Content-Type`** | `MediaService.java:46-49` 只看请求头是不是 `image/` 开头，不验文件头、不看尺寸、不限像素；`MAX_UPLOAD_FILE_SIZE` 默认 20MB | 改个请求头就能传任意文件；SVG 可以带脚本，MinIO 公开读 + 同源时就是 XSS |
+| Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |
+| Q-5 | **无测试、无 lint、无 CI** | 后端 0 个测试；前端没有 eslint/prettier；没有 `.github/workflows` | 唯一的回归防线是 `scripts/smoke.ps1`（34 项） |
+| Q-6 | 类型手写，与后端 DTO 已漂移 | `frontend/src/lib/types.ts` 手写，无 OpenAPI 生成 | 接口改了两边容易漏改 |
+
+### 已解决但留着记录
+
+- ~~`GlobalExceptionHandler` 无兜底 `Exception` handler~~ → `GlobalExceptionHandler.java:122` 有兜底，且按项目规矩不把异常 message 吐给客户端。
+- ~~错误体无业务错误码~~ → `web/ErrorCode.java`，`code` 是稳定契约。
+- ~~时间字段全是 `LocalDateTime`~~ → 出参统一 `OffsetDateTime`，转换只走 `config/AppTime.java`。
+- ~~JWT 默认 secret~~ → 见 R-5。
 
 ## 5. 建议顺序（本地开发模式）
 

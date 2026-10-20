@@ -55,8 +55,11 @@ public class JwtService {
 
     private SecretKey key() {
         String secret = properties.jwt().secret();
-        if (secret.length() < 32) {
-            secret = secret + "0".repeat(32 - secret.length());
+        // 以前这里会把短密钥补 '0' 凑到 32 字节——那会让一个 3 位密钥看起来「能用」，
+        // 实际强度等于 3 位。签名密钥不合格应该在启动时就炸（见 StartupSafetyGuard），
+        // 而不是在这里悄悄修补。
+        if (secret == null || secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT 签名密钥缺失或短于 32 字节，无法签发/校验 token");
         }
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }

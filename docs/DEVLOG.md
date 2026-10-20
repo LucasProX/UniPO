@@ -747,6 +747,80 @@ FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`))
 要验证「配置有没有生效」，别用默认值测。把配置改成一个**必然产生可见差异**的值，
 再断言那个差异。这次如果我用默认的 1 去测，改前改后一模一样，什么问题都发现不了。
 
+## 2026-10-20 JWT 的签名密钥，一直明明白白写在仓库里
+
+这条在清单上被归成 Q（质量项），排在最后。翻配置的时候才反应过来它其实是 R：
+
+```yaml
+# application.yml（改之前）
+jwt:
+  secret: ${JWT_SECRET:change-this-secret-to-a-very-long-random-string-32-plus}
+```
+
+`.env.example` 里是 `change_me_to_a_long_random_secret_at_least_32_chars`，
+`docker-compose.yml` 里是 `please-change-this-to-a-very-long-random-secret-32`。
+三个地方三个值，但**全都是公开的**，而且 `docker compose up` 不配 `JWT_SECRET` 就会用它们。
+
+### 为什么一直没当成事
+
+因为它长得像占位符。带 `change` / `please-change` 字样，看上去已经提醒过人了——
+仿佛「写了提醒」本身就等于「别人会去改」。
+
+但占位符写在配置文件里就是**生效值**，不是注释。真正的后果是：
+知道这个字符串的人可以自己签一个 `{"sub":"5","role":"ADMIN"}`，
+然后 `Authorization: Bearer <伪造>` 直接进后台。
+不需要注册，不需要验证码，**服务器也不会有任何一条异常日志**——
+它认为这就是一个合法 token。
+
+### 顺手发现的第二个问题
+
+`security/JwtService.java` 里有这么一段：
+
+```java
+if (secret.length() < 32) {
+    secret = secret + "0".repeat(32 - secret.length());
+}
+```
+
+为了防止 JJWT 抛 `WeakKeyException`，它把短密钥补 `0` 凑到 32 字节。
+一个 3 位密钥被补成 32 字节，看起来合规了，实际强度还是 3 位。
+这种「补齐」比报错危险得多——报错会逼你改配置，补齐只会让你以为没事。
+
+### 一个想过的方案：启动时自动生成密钥
+
+第一反应是「干脆别要配置了，启动时随机生成一个」。听起来最省事。
+
+问题是重启就换密钥，所有人当场被登出；多实例部署时每个实例的密钥还不一样，
+A 实例签的 token 到 B 实例直接验不过。随机生成的密钥只适合「进程内临时用」，
+不适合一个要跨重启、以后可能跨实例的会话系统。
+
+所以结论反过来：**宁可启动失败，也不要悄悄用一个能用的密钥。**
+
+### 改了什么
+
+```text
+application.yml        secret: ${JWT_SECRET:}                       # 空默认值
+application-local.yml  secret: ...local-dev-only-jwt-secret...      # 只有本地有值
+docker-compose.yml     JWT_SECRET: ${JWT_SECRET:?...必须显式配置}   # 缺失时 compose 直接报错
+.env.example           JWT_SECRET=                                   # 空，附 openssl 生成命令
+```
+
+`StartupSafetyGuard` 加了第 0 条检查，**不区分 profile**：空值、三个历史示例值、
+短于 32 字符、非开发环境用了本地那个专用值——四种情况一律拒绝启动。
+异常信息里刻意不打印密钥本身，因为这段文字会进日志。
+
+`JwtService` 的补 `0` 改成抛异常：密钥不合格应该在启动时炸，不该在签名时悄悄修补。
+
+### 怎么验的
+
+四条拒绝路径一条条跑，看退出码和文案对不对（空值 / 示例值 / `abc123` / 非开发 profile + 本地值），
+都是 `exit=1`。然后正常路径：`local` 启动 → 登录拿 token → `/auth/me` 返回 `ADMIN`
+（token 真的被签发并校验了，不是绕过去的）→ `smoke.ps1` 34/34。
+
+`docker compose config` 那一步没验成——这个 shell 里 compose 插件没挂上，
+`docker compose` 直接报 unknown command。`:?` 的语义是 Compose 规范里写死的，
+但「确实会拦下」这件事得等有 compose 的环境再确认一次。
+
 ---
 
 ## 怎么写这篇文档

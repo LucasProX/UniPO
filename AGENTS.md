@@ -106,13 +106,18 @@ docker compose up -d --build
 - 唯一 `v-html` 在 `components/post/PostDetailModal.vue`，内容统一过 `lib/richText.ts` 的 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
 ## 7. 硬性禁止（安全红线）
-> 2026-10-20 更新：R-1 / R-2 / R-3 三条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。
+> 2026-10-20 更新：R-1 / R-2 / R-3 / R-4 / R-5 五条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。
 
 1. **不得**把 `app.verification.mock-accept-any-code=true` 部署到非开发环境。默认已是 `false`，本地由 `application-local.yml` 打开；非 `local/dev/test` profile 下打开会被 `config/StartupSafetyGuard.java` **直接拒绝启动**。打开后任意 4 位数字都能通过验证码校验，等于任何人可以注册任意账号。
 2. **不得**新增硬编码账号/密码，也**不得**把演示账号的创建逻辑从 `app.bootstrap.seed-demo-data` 后面挪出来。`AuthService` 里那三个 `ensure*` 方法只能在这个开关为 true 时调用。
 3. **不得**让启动流程写 `password_hash` 或 `nickname`。`AuthService.run()` 只在管理员账号**不存在**时初始化，已存在只补 `publicUid` / `role` / `status`。以前无条件重置密码，等于永久保留一个公开的万能口令。
 4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。有安全默认值的可选变量可以只加前两处，但必须在 §4 记明是刻意为之（现有例外：`APP_TIME_ZONE`）。
-5. 不要在日志里打印 token / 密码 / 验证码。
+5. **不得**给 `app.jwt.secret`（`JWT_SECRET`）留默认值，也不得把示例值写进任何会被复制的地方（`application.yml` / `.env.example` / `docker-compose.yml`）。
+   签名密钥一旦公开，任何人自己签一个 `role=ADMIN` 的 token 就是管理员，**不需要注册、不需要验证码、也不留任何异常日志**。
+   现在 `application.yml` 的默认值是空的，`docker-compose.yml` 用 `${JWT_SECRET:?...}` 缺失直接报错，`deploy-app.sh` 在 `required_vars` 里，
+   只有 `application-local.yml` 有一个本地专用值——非 `local/dev/test` profile 下用这个值也会被 `StartupSafetyGuard` 拒绝启动。
+   `security/JwtService.java` 也不再给短密钥补 `0` 凑长度（以前一个 3 位密钥会被补成 32 字节，看起来能用，实际强度还是 3 位）。
+6. 不要在日志里打印 token / 密码 / 验证码。
 
 ## 8. 已知坑
 - `.gitignore` 忽略 `AGENT.md` / `agent.md`（单数），但**不忽略 `AGENTS.md`**——本文件会入库，视为团队资产。
@@ -133,9 +138,9 @@ docker compose up -d --build
 > 完整分级见 `docs/ISSUES.md`：**B 阻塞 / D 开发体验 / R 上线阻断 / Q 质量**。
 
 1. ~~跑通本地链路~~ ✅ **已完成（2026-10-19）**：Docker → MySQL 8.4 → 后端 → 前端，真实数据已渲染，登录/发帖链路实测通过。
-2. 去假数据 + 前端组件化（Web/App 共用的地基）。
+2. ~~去假数据 + 前端组件化~~ ✅ **已完成（2026-10-20）**：`App.vue` 从 4207 行降到 61 行，拆成 `layouts/AppShell.vue` + 6 个 `views/` + `components/{layout,modals,post,ui}` + 6 个 Pinia store；`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已删，首屏是三态。
 3. ~~后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包~~ ✅ **已完成**：N+1 清零 + 游标分页 + `/api/v1` + 统一响应包（`code`/`requestId`）+ `OffsetDateTime`。
-4. ~~上线前集中清零 **R 项**~~ ✅ **R-1 / R-2 / R-3 / R-4 全部已修（2026-10-20）**：默认值翻到安全侧 + `config/StartupSafetyGuard.java` 启动拦截；R-4 把库地址默认值改成 `127.0.0.1` / compose 服务名，两个部署脚本改成**必填**（不再猜主机）。**R-1 的 SMTP 通道已接**（`service/VerificationMailer.java`，配置 `SMTP_HOST` 等），但还没拿真实邮箱实测过，部署前要跑一遍。
+4. ~~上线前集中清零 **R 项**~~ ✅ **R-1 ~ R-5 全部已修（2026-10-20）**：默认值翻到安全侧 + `config/StartupSafetyGuard.java` 启动拦截（现在管危险开关、SMTP 缺失、JWT 密钥三类）；R-4 把库地址默认值改成 `127.0.0.1` / compose 服务名，两个部署脚本改成**必填**；R-5 删掉写死的 JWT 默认密钥。**R-1 的 SMTP 通道已接**（`service/VerificationMailer.java`，配置 `SMTP_HOST` 等），但还没拿真实邮箱实测过，部署前要跑一遍。
 5. ~~清理 notices 遗留域~~ ✅ **已完成（2026-10-20）**：删掉 19 个 Java 文件 + 5 张表 + `comments.notice_id`，`InteractionController` / `NoticeController` / `CommentController` 整体下线，`AdminService` 概览改按 posts 口径。详见 DEVLOG 同名条目。
 
 ## 10. 文档索引

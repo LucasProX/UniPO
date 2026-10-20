@@ -16,6 +16,10 @@ spring:
 app:
   cors:
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
+  jwt:
+    # 本地专用签名密钥。非 local/dev/test profile 下用这个值会被 StartupSafetyGuard 拒绝启动，
+    # 防止它被顺手复制到生产。
+    secret: ${JWT_SECRET:local-dev-only-jwt-secret-never-deploy-this-01}
   # 下面两项是本地开发专属的开闸，生产默认值都是关的（见 application.yml 的注释）。
   verification:
     # 还没接 SMTP，本地注册/改密需要能随便填 4 位数字。

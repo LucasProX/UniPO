@@ -67,7 +67,8 @@ services:
       APP_DEFAULT_SCHOOL_ID: ${APP_DEFAULT_SCHOOL_ID:-1}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-${MYSQL_USER:-biecuoguo}}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-${MYSQL_PASSWORD:-biecuoguo_password_change_me}}
-      JWT_SECRET: ${JWT_SECRET:-please-change-this-to-a-very-long-random-secret-32}
+      # 没有默认值：compose 缺这个变量就直接报错，不要让它悄悄用一个公开的密钥启动。
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必须显式配置（openssl rand -base64 48）}
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-10080}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@biecuoguo.local}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@123456}

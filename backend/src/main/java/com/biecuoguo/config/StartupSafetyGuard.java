@@ -32,6 +32,23 @@ public class StartupSafetyGuard {
     /** 允许开危险开关的 profile。加白名单要慎重，这里每加一个都是新的漏点。 */
     private static final List<String> DEV_PROFILES = List.of("local", "dev", "test");
 
+    /**
+     * 曾经写死在 application.yml / .env.example / docker-compose.yml 里的 JWT 示例值。
+     * 它们已经公开，谁都能拿来签一个合法 token——所以出现在配置里就要拒绝启动。
+     * 只用于比较，任何日志和异常信息都不要把它们打印出来。
+     */
+    private static final List<String> KNOWN_SECRETS = List.of(
+            "change-this-secret-to-a-very-long-random-string-32-plus",
+            "change_me_to_a_long_random_secret_at_least_32_chars",
+            "please-change-this-to-a-very-long-random-secret-32"
+    );
+
+    /** application-local.yml 里的本地专用密钥：开发能用，非开发环境用它会拒绝启动。 */
+    private static final String DEV_SECRET = "local-dev-only-jwt-secret-never-deploy-this-01";
+
+    /** HS256 要求密钥至少 256 位，短于 32 字节 JwtService 直接抛异常。 */
+    private static final int MIN_SECRET_LENGTH = 32;
+
     private final AppProperties properties;
     private final Environment environment;
     private final VerificationMailer mailer;
@@ -46,6 +63,20 @@ public class StartupSafetyGuard {
     void check() {
         List<String> active = Arrays.asList(environment.getActiveProfiles());
         boolean devLike = active.stream().anyMatch(DEV_PROFILES::contains);
+
+        // 0) JWT 签名密钥不能是空的、示例值太短的。
+        //    这一条不区分 profile，也不打 WARN 放行：空密钥根本签不出 token，
+        //    而公开的密钥等于把「伪造一个 ADMIN 身份」这件事变成公开知识。
+        //    本地开发由 application-local.yml 提供专用值，所以这里可以一律要求。
+        String secret = properties.jwt() == null ? null : properties.jwt().secret();
+        String secretProblem = jwtSecretProblem(secret, devLike);
+        if (secretProblem != null) {
+            throw new IllegalStateException("拒绝启动：" + secretProblem + "\n"
+                    + "这个值是 JWT 的签名密钥，公开或者为空都等于把管理员权限送人："
+                    + "任何人都能自己签一个 role=ADMIN 的 token。\n"
+                    + "生成一个随机的：openssl rand -base64 48，然后设进 JWT_SECRET。\n"
+                    + "本地开发请用 --spring.profiles.active=local（application-local.yml 里有本地专用值）。");
+        }
 
         boolean mockVerification = properties.verification() != null
                 && properties.verification().mockAcceptAnyCode();
@@ -85,5 +116,25 @@ public class StartupSafetyGuard {
                     + "确认是本地开发请加 --spring.profiles.active=local；"
                     + "如果是生产环境，请把上述配置改回 false。");
         }
+    }
+    /**
+     * 检查 JWT 密钥，返回一句「哪里不对」，没问题返回 {@code null}。
+     *
+     * <p>注意：返回的文案里**不要带上密钥本身**，异常信息会进日志。
+     */
+    private String jwtSecretProblem(String secret, boolean devLike) {
+        if (secret == null || secret.isBlank()) {
+            return "app.jwt.secret（JWT_SECRET）没有配置。";
+        }
+        if (KNOWN_SECRETS.contains(secret)) {
+            return "app.jwt.secret 还是文档里的示例值。";
+        }
+        if (secret.length() < MIN_SECRET_LENGTH) {
+            return "app.jwt.secret 太短（至少 " + MIN_SECRET_LENGTH + " 个字符，HS256 的密钥下限）。";
+        }
+        if (!devLike && DEV_SECRET.equals(secret)) {
+            return "app.jwt.secret 用的是 application-local.yml 里的本地开发专用值。";
+        }
+        return null;
     }
 }
