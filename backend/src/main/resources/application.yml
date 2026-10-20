@@ -152,8 +152,17 @@ app:
     # 非 local/dev/test profile 下打开会直接启动失败，见 config/StartupSafetyGuard.java。
     mock-accept-any-code: ${VERIFICATION_MOCK_ACCEPT_ANY_CODE:false}
   sms:
-    # 真实短信通道未接；只有 local/dev/test 可以打开 mock（固定码 123456）。
+    # 真实短信通道未接；只有 local/dev/test 可以打开 mock（固定码 1234，任意 4 位通过）。
     mock-accept-any-code: ${SMS_MOCK_ACCEPT_ANY_CODE:false}
+  push:
+    apns:
+      # 没有 .p8 时保持 false；本地只打日志，不影响发消息。
+      enabled: ${APNS_ENABLED:false}
+      key-path: ${APNS_KEY_PATH:}
+      key-id: ${APNS_KEY_ID:}
+      team-id: ${APNS_TEAM_ID:}
+      topic: ${APNS_TOPIC:com.unipo.app}
+      production: ${APNS_PRODUCTION:false}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}

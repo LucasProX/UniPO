@@ -50,6 +50,7 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: UniPO/UniPO.entitlements
     dependencies:
       - package: UniPOCore
       - package: UniPOUI

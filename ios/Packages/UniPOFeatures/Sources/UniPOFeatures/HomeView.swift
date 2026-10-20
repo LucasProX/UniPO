@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selectedPost: PostView?
+    @State private var unreadCount = 0
 
     private let boards = [
         ("recommend", "推荐"),
@@ -38,6 +39,7 @@ struct HomeView: View {
         .scrollIndicators(.hidden)
         .refreshable { await load(reset: true) }
         .task { await load(reset: true) }
+        .task { await pollUnread() }
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-post-detail"), selectedPost == nil {
@@ -79,6 +81,17 @@ struct HomeView: View {
                     .foregroundStyle(UniColor.ink)
                     .frame(width: 40, height: 40)
                     .background(UniColor.mist.opacity(0.75), in: Circle())
+                    .overlay(alignment: .topTrailing) {
+                        if unreadCount > 0 {
+                            Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(UniColor.danger, in: Capsule())
+                                .offset(x: 4, y: -4)
+                        }
+                    }
             }
             .buttonStyle(.plain)
             Button {
@@ -260,6 +273,15 @@ struct HomeView: View {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "加载失败"
         }
         isLoading = false
+    }
+
+    private func pollUnread() async {
+        while !Task.isCancelled {
+            if auth.isAuthenticated, let count = try? await APIClient.shared.unreadCount() {
+                unreadCount = count
+            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+        }
     }
 
     private static var todayText: String {

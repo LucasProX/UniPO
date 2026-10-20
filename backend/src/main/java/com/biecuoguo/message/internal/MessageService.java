@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.message.api.MessageDtos;
 import com.biecuoguo.post.api.PostDtos;
+import com.biecuoguo.push.api.PushService;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
@@ -28,14 +29,16 @@ public class MessageService {
     private final UserMapper userMapper;
     private final PresenceService presenceService;
     private final RealtimeHub realtimeHub;
+    private final PushService pushService;
 
     public MessageService(ConversationMapper conversationMapper, MessageMapper messageMapper, UserMapper userMapper,
-                          PresenceService presenceService, RealtimeHub realtimeHub) {
+                          PresenceService presenceService, RealtimeHub realtimeHub, PushService pushService) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.userMapper = userMapper;
         this.presenceService = presenceService;
         this.realtimeHub = realtimeHub;
+        this.pushService = pushService;
     }
 
     public List<MessageDtos.ConversationView> conversations(CurrentUser currentUser) {
@@ -146,6 +149,12 @@ public class MessageService {
         MessageDtos.MessageView view = messageView(message);
         // 推给收件人：没有在线连接就静默返回，不影响发消息本身（推送是加速通道，轮询仍是兜底）。
         realtimeHub.publish(receiverId, "message", Map.of("conversationId", conversation.getId(), "message", view));
+        // APNs 不阻塞发消息：虚拟线程里发，失败只打日志。
+        String preview = message.getContent().length() > 60
+                ? message.getContent().substring(0, 60) + "…"
+                : message.getContent();
+        Thread.startVirtualThread(() -> pushService.send(
+                receiverId, "新私信", preview, Map.of("conversationId", String.valueOf(conversation.getId()))));
         return view;
     }
 

@@ -127,6 +127,8 @@ call_api POST "$BASE/api/users/me/check-in" "" "$TOK"
 check check-in
 call_api GET "$BASE/api/users/me/stats" "" "$TOK"
 check stats
+call_api POST "$BASE/api/push/tokens" '{"token":"smoke-device-token","platform":"ios","environment":"sandbox"}' "$TOK"
+check push-token
 call_api GET "$V1/achievements/me" "" "$TOK"
 check achievements
 ACH_TASK="$(jget '.data.stages[0].tasks[0].id')"

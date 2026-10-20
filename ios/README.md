@@ -83,6 +83,24 @@ ios/
 - 本地 mock 短信：任意合规手机号点「获取验证码」即可，任意 4 位数字都能登录。
 - 协议默认勾选；协议正文目前是占位。
 
+## APNs
+
+1. Apple Developer → Keys → 新建 APNs Key（.p8），记下 Key ID；
+2. 后端配置：
+   ```
+   APNS_ENABLED=true
+   APNS_KEY_PATH=/secrets/AuthKey_XXXX.p8
+   APNS_KEY_ID=XXXXXXXXXX
+   APNS_TEAM_ID=XXXXXXXXXX
+   APNS_TOPIC=com.unipo.app
+   APNS_PRODUCTION=false
+   ```
+3. 模拟器没有真实 APNs token，用 `simctl push` 验通知 UI：
+   ```bash
+   xcrun simctl push booted com.unipo.app payload.json
+   ```
+   payload 里带 `"data": {"conversationId": "1"}`，点击通知会打开对应会话。
+
 ## 当前进度
 
 - [x] 工程骨架 + SPM 模块
@@ -99,4 +117,7 @@ ios/
 - [x] 消息列表 + 私信 + WebSocket（auth / 事件刷新）
 - [x] 图片上传（PhotosPicker + multipart + MinIO）
 - [x] 阶段/成就真实接口（V15：阶段/任务/进度/徽章）
-- [ ] APNs、账号注销、TestFlight
+- [x] 消息未读角标（15s 轮询 + 推送打开会话）
+- [x] APNs 注册 / 前台通知 / 点击跳转（真实推送需 .p8；模拟器可用 `simctl push`）
+- [x] 账号注销（我的 → 注销账号）
+- [ ] TestFlight

@@ -36,7 +36,7 @@ MINIO_ENDPOINT=http://127.0.0.1:9000
 docker compose --profile local-db up -d mysql minio   # 首次会拉镜像；等 healthy
 cd backend && mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local   # 8080（Flyway 自动建表）
 cd frontend && npm run dev -- --host 127.0.0.1 --port 5173                        # 5173
-bash scripts/smoke.sh                                                             # 41 项
+bash scripts/smoke.sh                                                             # 42 项
 ```
 
 > **备选：brew 原生服务。** 如果 colima 拉虚拟机镜像太慢（GitHub CDN），可以临时用
@@ -193,7 +193,7 @@ SMOKE_SKIP_UPLOAD=1 bash scripts/smoke.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1
 ```
 
-两份脚本检查同一批东西（41 项）：验证码 → 注册 → me → refresh / 拒绝 access 冒充 refresh →
+两份脚本检查同一批东西（42 项）：验证码 → 注册 → me → refresh / 拒绝 access 冒充 refresh →
 发帖 → 评论 → 点赞 → 收藏 → 签到 → 统计 → 热榜 → 必看 → 关注 → 建会话 → 发私信 → 会话列表 → 未读数 →
 **图片上传** → `/api/v1` 五个端点 → 游标分页走完不重不漏 → 非法游标 400 → 统一响应包（成功/错误/401）→
 时间带时区偏移 → 极简注册 → 重名 400 → 缺验证码 400 → 超长密码 400。

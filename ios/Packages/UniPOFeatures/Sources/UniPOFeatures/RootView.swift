@@ -11,6 +11,7 @@ public struct RootView: View {
     @State private var tab: AppTab = .home
     @State private var showCompose = false
     @State private var showMessages = false
+    @State private var pendingConversationId: Int64?
 
     public init() {
         // 调试用：xcrun simctl launch booted com.unipo.app -tab achievements
@@ -80,8 +81,8 @@ public struct RootView: View {
             LoginView()
                 .environment(auth)
         }
-        .sheet(isPresented: $showMessages) {
-            MessagesView()
+        .sheet(isPresented: $showMessages, onDismiss: { pendingConversationId = nil }) {
+            MessagesView(initialConversationId: pendingConversationId)
                 .environment(auth)
                 .presentationDetents([.large])
                 .presentationCornerRadius(30)
@@ -91,6 +92,18 @@ public struct RootView: View {
             if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
                 auth.loginRequested = true
             }
+            if auth.isAuthenticated, let token = PushTokenStore.token {
+                _ = try? await APIClient.shared.registerPushToken(token)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoPushToken)) { note in
+            guard auth.isAuthenticated, let token = note.object as? String else { return }
+            Task { _ = try? await APIClient.shared.registerPushToken(token) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoOpenConversation)) { note in
+            guard let id = note.object as? Int64 else { return }
+            pendingConversationId = id
+            showMessages = true
         }
         .task {
             #if DEBUG

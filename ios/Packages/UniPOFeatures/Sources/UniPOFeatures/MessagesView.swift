@@ -15,8 +15,11 @@ struct MessagesView: View {
     @State private var errorMessage: String?
     @State private var realtimeTick = 0
 
-    init(initialConversation: ConversationView? = nil) {
+    private let initialConversationId: Int64?
+
+    init(initialConversation: ConversationView? = nil, initialConversationId: Int64? = nil) {
         _selected = State(initialValue: initialConversation)
+        self.initialConversationId = initialConversationId
     }
 
     var body: some View {
@@ -203,6 +206,10 @@ struct MessagesView: View {
     private func bootstrap() async {
         isLoading = true
         await loadConversations()
+        if selected == nil, let initialConversationId,
+           let match = conversations.first(where: { $0.id == initialConversationId }) {
+            selected = match
+        }
         #if DEBUG
         if selected == nil,
            ProcessInfo.processInfo.arguments.contains("-open-thread"),

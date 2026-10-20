@@ -14,7 +14,7 @@ export interface paths {
         get: operations["me"];
         put: operations["updateProfile"];
         post?: never;
-        delete?: never;
+        delete: operations["deleteAccount"];
         options?: never;
         head?: never;
         patch?: never;
@@ -175,6 +175,22 @@ export interface paths {
         put?: never;
         post: operations["checkIn"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/push/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["register"];
+        delete: operations["unregister"];
         options?: never;
         head?: never;
         patch?: never;
@@ -413,7 +429,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["register"];
+        post: operations["register_1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1383,6 +1399,11 @@ export interface components {
             /** Format: date */
             checkinDate?: string;
         };
+        RegisterRequest: {
+            token?: string;
+            platform?: string;
+            environment?: string;
+        };
         CreatePostRequest: {
             board: string;
             title: string;
@@ -1611,13 +1632,6 @@ export interface components {
             verificationCode?: string;
             password: string;
             confirmPassword?: string;
-        };
-        RegisterRequest: {
-            email: string;
-            password: string;
-            confirmPassword?: string;
-            nickname?: string;
-            verificationCode?: string;
         };
         RefreshRequest: {
             refreshToken: string;
@@ -2086,6 +2100,26 @@ export interface operations {
             };
         };
     };
+    deleteAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
     updatePreferences: {
         parameters: {
             query?: never;
@@ -2404,6 +2438,52 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseCheckInView"];
+                };
+            };
+        };
+    };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    unregister: {
+        parameters: {
+            query: {
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
                 };
             };
         };
@@ -2897,7 +2977,7 @@ export interface operations {
             };
         };
     };
-    register: {
+    register_1: {
         parameters: {
             query?: never;
             header?: never;

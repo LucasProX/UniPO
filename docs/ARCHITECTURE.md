@@ -120,7 +120,12 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
   旧数据先双读（MinIO 走代理、COS 走 CDN），稳定后再迁移。
 - **不要现在就加 COS 依赖**：没有云凭证、没有 CDN 域名，提前接只会让本地开发变复杂。
 
-### 4.5 成就域（V15）
+### 4.5 推送域（V18）
+`device_tokens`：`user_id` / `token` / `platform` / `environment` / `last_seen_at`，token 唯一。
+发送走 `PushService`（`push.api`）：默认 `LoggingPushService`；配置 `app.push.apns.enabled=true` 后
+换成 `ApnsPushService`（Pushy + .p8），私信发送用虚拟线程异步推送，不阻塞接口。
+
+### 4.6 成就域（V15）
 | 表 | 说明 |
 |---|---|
 | `achievement_stages` | 阶段（大一上…大四），`stage_order`、`boss` |
@@ -129,7 +134,7 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 | `badges` | 徽章字典：`rarity` / `icon` / `sort_order` |
 | `user_badges` | 用户已获徽章，唯一键 `(user_id, badge_code)` |
 
-### 4.6 已删除的遗留域
+### 4.7 已删除的遗留域
 ~~`notices`、`notice_tags`、`user_notice_status`、`favorites`、`reminders`~~ —— 2026-10-20 由
 `V11__drop_notices_domain.sql` 整体删除，对应 Java 文件（`NoticeController` / `NoticeService` /
 `InteractionController` / `CommentController` 等 19 个）一并移除。

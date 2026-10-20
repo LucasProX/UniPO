@@ -6,6 +6,8 @@ import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.post.api.PostQueryApi;
+import com.biecuoguo.security.SessionService;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,19 +22,26 @@ public class UserService {
     private final UserFollowMapper userFollowMapper;
     private final UserBlockMapper userBlockMapper;
     private final UserCheckInMapper checkInMapper;
+    private final DeviceTokenMapper deviceTokenMapper;
     private final PresenceService presenceService;
+    private final PasswordEncoder passwordEncoder;
+    private final SessionService sessionService;
     /** 帖子统计走 facade，不直接注入 PostMapper（ADR-0002）。 */
     private final PostQueryApi postQueryApi;
 
     public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
-                       UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper,
-                       PresenceService presenceService, PostQueryApi postQueryApi) {
+                       UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper, DeviceTokenMapper deviceTokenMapper,
+                       PresenceService presenceService, PasswordEncoder passwordEncoder, SessionService sessionService,
+                       PostQueryApi postQueryApi) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.userFollowMapper = userFollowMapper;
         this.userBlockMapper = userBlockMapper;
         this.checkInMapper = checkInMapper;
+        this.deviceTokenMapper = deviceTokenMapper;
         this.presenceService = presenceService;
+        this.passwordEncoder = passwordEncoder;
+        this.sessionService = sessionService;
         this.postQueryApi = postQueryApi;
     }
 
@@ -150,6 +159,43 @@ public class UserService {
                 .eq(UserBlock::getBlockedId, viewerId)) > 0;
         return new UserDtos.PublicProfile(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())),
                 stats(user.getId()), following, mine, blocked, blockedBy);
+    }
+
+    /**
+     * 注销账号：软删除 + 匿名化。
+     *
+     * <p>不物理删除用户行，因为帖子/评论/消息还引用它；把 PII 清掉、状态置 deleted，
+     * 登录会被 status 拦截。Web 会话立即吊销；App 的 Bearer token 最长 2 小时自然过期，
+     * 客户端同时清 Keychain。
+     */
+    @Transactional
+    public void deleteAccount(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return;
+        }
+        String suffix = String.valueOf(System.currentTimeMillis());
+        user.setEmail("deleted_" + userId + "_" + suffix + "@unipo.local");
+        user.setPhone(null);
+        user.setNickname("已注销用户" + user.getPublicUid());
+        user.setAvatarUrl(null);
+        user.setBio(null);
+        user.setGender(null);
+        user.setBirthYear(null);
+        user.setZodiac(null);
+        user.setMbti(null);
+        user.setStatus("deleted");
+        user.setOnboardingCompleted(true);
+        user.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        userFollowMapper.delete(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, userId).or().eq(UserFollow::getFollowingId, userId));
+        userBlockMapper.delete(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, userId).or().eq(UserBlock::getBlockedId, userId));
+        deviceTokenMapper.delete(new LambdaQueryWrapper<DeviceToken>().eq(DeviceToken::getUserId, userId));
+        sessionService.revokeAllForUser(userId);
     }
 
     @Transactional

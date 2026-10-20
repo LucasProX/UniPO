@@ -35,6 +35,12 @@ public class UserController {
         return ApiResponse.ok(userService.updatePreferences(SecurityUtils.currentUser().id(), request));
     }
 
+    @DeleteMapping
+    public ApiResponse<Boolean> deleteAccount() {
+        userService.deleteAccount(SecurityUtils.currentUser().id());
+        return ApiResponse.ok(true);
+    }
+
     @PutMapping("/onboarding")
     public ApiResponse<UserProfile> onboarding(@Valid @RequestBody UserDtos.OnboardingRequest request) {
         return ApiResponse.ok(userService.completeOnboarding(SecurityUtils.currentUser().id(), request));

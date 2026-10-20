@@ -4497,6 +4497,37 @@ smoke 41/41（新增 sms-code / sms-login）；iOS BUILD SUCCEEDED。
 验证：新手机号 13900003333 登录 -> 3 步引导 -> 完成后头像变狐狸、进入首页；
 `mvn test` 43 绿，smoke 41/41，iOS BUILD SUCCEEDED。
 
+## 2026-10-20 APNs 注册、消息通知、账号注销
+
+三件事一起做，都是 App Store 上架前必须有的。
+
+**APNs**：
+
+- 后端 V18 建 `device_tokens`，`POST /api/push/tokens` 注册；同一 token 只保留一条；
+- `PushService` 放 `push.api`，默认 `LoggingPushService`（只打日志）；
+  配置 `app.push.apns.enabled=true` 后换成 `ApnsPushService`（Pushy + .p8）；
+- 私信发送后用虚拟线程异步推送，失败不影响发消息；
+- iOS `AppDelegate` 请求通知权限、注册远程通知、把 token 存 `PushTokenStore`，登录后上报；
+- 前台收到通知用 `.banner/.sound/.badge` 展示；点击通知带 `conversationId` 打开对应会话；
+- 首页消息图标加未读数角标，15s 轮询 `/messages/unread-count`。
+
+**账号注销**：
+
+- `DELETE /api/users/me`；
+- 软删除：status=deleted，邮箱/手机号/昵称/头像/资料匿名化，删 device token、关注、拉黑，吊销 Web 会话；
+- 不物理删用户，因为帖子/评论/消息还引用；注销后登录返回「账号已被停用」；
+- 我的页加「注销账号」，二次确认。
+
+**踩到的点**：
+
+1. 模拟器没有真实 APNs token，`didFailToRegister...` 是正常的；通知 UI 用 `xcrun simctl push` 验。
+2. Pushy 依赖进来后，只有 `enabled=true` 才初始化；本地 false 时不会因为缺 .p8 启动失败。
+3. 删除账号后 Bearer token 仍然能用到过期（最长 2h），因为 JWT 不在服务端逐个吊销；
+   客户端会立即清 Keychain。真要立刻失效所有 App token，需要加 token version / 用户状态校验，
+   这是下一步，不在 MVP 里。
+
+验证：push token 注册 200；注销后登录 400「账号已被停用」；smoke 42/42；iOS BUILD SUCCEEDED。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

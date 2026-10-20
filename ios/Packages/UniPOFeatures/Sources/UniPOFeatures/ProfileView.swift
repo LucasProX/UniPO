@@ -6,6 +6,8 @@ struct ProfileView: View {
     @Environment(AuthStore.self) private var auth
     let onRequestAuth: () -> Void
 
+    @State private var showDeleteConfirm = false
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -57,6 +59,24 @@ struct ProfileView: View {
                 row("rosette", "我的成就", "徽章与进度")
                 Divider().padding(.leading, 48)
                 row("gearshape.fill", "设置", "账号与隐私")
+                Divider().padding(.leading, 48)
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(UniColor.danger)
+                            .frame(width: 24)
+                        Text("注销账号")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(UniColor.danger)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                }
+                .buttonStyle(.plain)
             }
             .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
@@ -70,6 +90,14 @@ struct ProfileView: View {
                 Text("退出登录")
             }
             .buttonStyle(UniGhostButtonStyle())
+        }
+        .alert("注销账号", isPresented: $showDeleteConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("确认注销", role: .destructive) {
+                Task { _ = await auth.deleteAccount() }
+            }
+        } message: {
+            Text("注销后账号会被停用、个人资料会被匿名化，且无法恢复。确定继续吗？")
         }
     }
 

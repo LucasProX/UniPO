@@ -142,6 +142,13 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required in .env}
       MINIO_BUCKET: ${MINIO_BUCKET:?MINIO_BUCKET is required in .env}
       MINIO_PUBLIC_READ: ${MINIO_PUBLIC_READ:-false}
+      # APNs 默认关闭；打开后需要把 .p8 挂进容器并设置 APNS_KEY_PATH。
+      APNS_ENABLED: ${APNS_ENABLED:-false}
+      APNS_KEY_PATH: ${APNS_KEY_PATH:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_TOPIC: ${APNS_TOPIC:-com.unipo.app}
+      APNS_PRODUCTION: ${APNS_PRODUCTION:-false}
       TZ: Asia/Shanghai
     expose:
       - "8080"

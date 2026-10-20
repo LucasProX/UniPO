@@ -109,6 +109,21 @@ public final class AuthStore {
         loginRequested = false
     }
 
+    public func deleteAccount() async -> Bool {
+        isLoggingIn = true
+        errorMessage = nil
+        defer { isLoggingIn = false }
+        do {
+            _ = try await api.deleteAccount()
+            clear()
+            loginRequested = true
+            return true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "注销失败，请稍后再试"
+            return false
+        }
+    }
+
     public func logout() async {
         let refresh = session?.refreshToken
         await api.logout(refreshToken: refresh)

@@ -153,6 +153,24 @@ public actor APIClient {
         try await request(path: "messages/conversations", method: "POST", body: ["peerUid": peerUid])
     }
 
+    @discardableResult
+    public func registerPushToken(_ token: String) async throws -> Bool {
+        try await request(
+            path: "push/tokens",
+            method: "POST",
+            body: ["token": token, "platform": "ios", "environment": "sandbox"]
+        )
+    }
+
+    public func unreadCount() async throws -> Int {
+        try await request(path: "messages/unread-count")
+    }
+
+    @discardableResult
+    public func deleteAccount() async throws -> Bool {
+        try await request(path: "users/me", method: "DELETE")
+    }
+
     public func achievements() async throws -> AchievementView {
         try await request(path: "achievements/me")
     }

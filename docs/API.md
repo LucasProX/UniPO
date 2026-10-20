@@ -369,6 +369,27 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 - 完成后 `onboardingCompleted=true`；新注册用户默认 false，已有用户默认 true；
 - 头像先由 App 本地生成 PNG，再走 `/media/upload` 得到 URL。
 
+### 9.8 推送设备
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/push/tokens` | 注册 APNs token，body `{ "token": "...", "platform": "ios", "environment": "sandbox" }` |
+| DELETE | `/api/push/tokens?token=...` | 注销 token（退出/换设备时可选） |
+
+- token 存 `device_tokens`，同一 token 只保留一条（换账号会覆盖）；
+- 私信发送后会异步推送给收件人，推送失败不影响发消息；
+- `app.push.apns.enabled=false` 时用 `LoggingPushService`，只打日志；
+- 打开后需要 `APNS_KEY_PATH` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC`。
+
+### 9.9 账号注销
+
+`DELETE /api/users/me`：软删除 + 匿名化。
+
+- `users.status=deleted`，邮箱/手机号/昵称/头像/资料清空或替换；
+- 关注、拉黑、device token 删除；Web 会话全吊销；
+- 不物理删用户行（帖子/评论/消息仍有引用）；
+- 注销后登录返回「账号已被停用」。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |
