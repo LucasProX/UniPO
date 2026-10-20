@@ -100,5 +100,25 @@ public final class PostDtos {
 
     public record BoardView(String code, String name, String description, Long count) {}
 
+    /**
+     * 游标分页结果。
+     *
+     * 为什么用游标而不是 page/size：offset 分页在 feed 有新内容插入时会
+     * 重复或漏条，App 的无限滚动体验会崩。nextCursor 编码「上一页最后一条」
+     * 的完整排序键（keyset pagination），hasMore 表示是否还有更多。
+     *
+     * 老契约（直接返回数组）保留在 /api 上，/api/v1 起新端点统一用这个包装。
+     */
+    public record PostPageView(
+            List<PostView> items,
+            String nextCursor,
+            Boolean hasMore,
+            Integer limit
+    ) {
+        public static PostPageView of(List<PostView> items, String nextCursor, int limit) {
+            return new PostPageView(items, nextCursor, nextCursor != null, limit);
+        }
+    }
+
     public record ShareResponse(String url, Integer shareCount) {}
 }

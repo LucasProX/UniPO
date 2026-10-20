@@ -1,10 +1,24 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
+import type { ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
 
-const api = axios.create({ baseURL: '/api' });
-const publicApi = axios.create({ baseURL: '/api' });
-const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api' });
+/**
+ * API 版本前缀。
+ *
+ * 走 /api/v1 而不是 /api：/api 是 v1 之前的旧契约（列表直接返回全量数组、
+ * 无分页元数据），服务端会保留一段时间兼容，但新代码一律用 /api/v1，
+ * 见 docs/MOBILE-API-PLAN.md 4.1「只做加法」的演进规则。
+ *
+ * 服务端有一个 ApiVersionPrefixFilter 把 /api/v1/** 改写成 /api/**，
+ * 所以 SecurityConfig 的白名单只需维护一份；v1 独有端点（如 /posts/page）
+ * 已单独加白，不会被改写。
+ */
+const API_PREFIX = '/api/v1';
+
+const api = axios.create({ baseURL: API_PREFIX });
+const publicApi = axios.create({ baseURL: API_PREFIX });
+// 仅 DEV 生效：vite 代理不可用时直连后端，避免把跨域问题当成接口失败
+const localApi = axios.create({ baseURL: 'http://127.0.0.1:8080/api/v1' });
 const TOKEN_KEY = 'bcg_token';
 
 function isUsableToken(token: string | null | undefined) {
@@ -105,7 +119,19 @@ async function loginWithFallback(email: string, password: string) {
 }
 
 export const campusApi = {
+  /** 老的全量列表，仍保留：下拉刷新 / 兜底场景用。 */
   posts: (tab = 'recommend') => unwrap<PostView[]>(api.get('/posts', { params: { tab } })),
+  /**
+   * 游标分页列表（推荐用法）。
+   *
+   * limit 默认 20、上限 50；cursor 传上一页返回的 nextCursor。
+   * 首页首屏用 postsPage() 拿第一页，滚动到底再用同一 cursor 续拉，
+   * 不要自己拼 page 参数——服务端只支持游标。
+   */
+  postsPage: (tab = 'recommend', cursor?: string | null, limit = 20) =>
+    unwrap<PagedResponse<PostView>>(api.get('/posts/page', {
+      params: { tab, ...(cursor ? { cursor } : {}), limit }
+    })),
   boards: () => unwrap<BoardView[]>(api.get('/posts/boards')),
   hotToday: () => unwrap<PostView>(api.get('/posts/hot-today')),
   dontMiss: () => unwrap<PostView[]>(api.get('/posts/dont-miss')),

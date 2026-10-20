@@ -1,6 +1,6 @@
 # API 参考（现状快照）
 
-> 快照日期 2026-10-19，commit `05a265d`。当前接口**未版本化**，base path 固定 `/api`。
+> 快照日期 2026-10-20，commit 见 git log。当前接口**已版本化**：base path 同时提供 `/api`（旧契约，保留兼容）与 `/api/v1`（新契约，前端已切）。
 
 ## 1. 通用约定
 
@@ -9,11 +9,44 @@
 | 认证 | `Authorization: Bearer <jwt>`；无状态、无刷新令牌、有效期 10080 分钟 |
 | 成功响应 | HTTP 200，body `{"data": <T>}` |
 | 错误响应 | 4xx，body `{"message": "中文提示", "timestamp": "ISO-8601 Instant"}` |
-| 分页 | **没有**。列表接口全量返回，前端自己 slice |
-| 时间 | `LocalDateTime` 序列化为 `"2026-05-08T22:23:35"`，**无时区偏移** |
+| 版本前缀 | `/api` 与 `/api/v1` 等价，由 `security/ApiVersionPrefixFilterConfig.java` 把 `/api/v1/**` 改写为 `/api/**` 实现。`/api/v1` 下的 v1 独有端点（目前只有 `posts/page`）不会被改写，自己挂前缀 |
+| 分页 | **仅 `/api/v1/posts/page`**，游标分页（见 §3.1）。其余列表仍全量返回 |
+| 时间 | `LocalDateTime` 序列化为 `"2026-05-08T22:23:35"`，**无时区偏移**（`OffsetDateTime` 迁移见 `docs/MOBILE-API-PLAN.md` §4） |
 | 未登录访问受保护接口 | 401 `{"message":"请先登录"}` |
 | 富文本 | 帖子 `content` 直接是 HTML 片段，前端用 `sanitizeRichHtml` 清洗后 `v-html` |
 | Swagger | `/swagger-ui.html`、`/v3/api-docs` 已放行（springdoc） |
+
+### 1.1 `/api/v1` 演进规则（只做加法）
+
+- 加字段、加端点、加可选参数：**不升版本**。
+- 删字段、改字段语义、改字段类型、改排序规则：**升 `v2`**。
+- 老版本至少保留 2 个发布周期再下线。
+
+## 1.2 游标分页（`GET /api/v1/posts/page`）
+
+| 参数 | 默认 | 上限 | 说明 |
+|---|---|---|---|
+| `tab` | `recommend` | — | `recommend` / `school` / `college` / `major` |
+| `cursor` | 无 | — | 上一页返回的 `nextCursor`，**原样回传，不要解析或拼接** |
+| `limit` | 20 | 50 | 每页条数 |
+
+响应：
+
+```json
+{
+  "data": {
+    "items": ["...PostView..."],
+    "nextCursor": "false|false|false|186|34|2026-10-19T15:22:01|5",
+    "hasMore": true,
+    "limit": 20
+  }
+}
+```
+
+- `nextCursor` 是上一页最后一条的**完整排序键**（`pinned|official|dontMiss|likeCount|commentCount|publishedAt|id`，全 DESC）。之所以不只编码 `id`：排序按热度/权重排，id 小的帖子可能排在 id 大的前面，只按 `id < cursor` 过滤会把排在前面的帖子重复吐出来。
+- `hasMore` 为 `false` 时 `nextCursor` 为 `null`，不要继续请求。
+- 游标非法返回 **400** `{"message":"分页游标无效"}`（不会静默降级成第一页）。
+- 同一 tab 内翻页；换 tab 必须重新从第一页开始，游标和排序键是按 tab 的过滤条件生成的。
 
 枚举值：
 - `board`：`recommend` / `school` / `college` / `major`
@@ -37,9 +70,15 @@
 
 ## 3. PO 信息流 `/api/posts`
 
+> 2026-10-20 已消除 N+1：`list` / `hotToday` / `dontMiss` / `interactionNotices` 的
+> 作者、图片、学校/学院/专业字典、当前用户点赞收藏，全部改为 `in(...)` 批量查 +
+> `groupingBy` 归组，一次请求的 SQL 条数从 O(N) 降到常数（实测 12 帖 72 → 7 条，
+> 6 会话 18 → 4 条）。**新增列表接口必须沿用这个模式**，不要回到 per-row 查询。
+
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| GET | `/?tab=recommend\|school\|college\|major` | 公开 | 主 feed，**全量返回**，按 pinned/official/dontMiss/热度/时间排序 |
+| GET | `/?tab=recommend\|school\|college\|major` | 公开 | 主 feed，**全量返回**（旧契约，`/api` 独有），按 pinned/official/dontMiss/热度/时间排序。新代码请用 `/api/v1/posts/page` |
+| GET | `/page?tab=&cursor=&limit=` | 公开 | 主 feed，**游标分页**（`/api/v1` 独有，见 §1.2）。返回 `{items, nextCursor, hasMore, limit}` |
 | GET | `/boards` | 公开 | 四个板块 + 各自总数 |
 | GET | `/hot-today` | 公开 | 今日热帖；无数据时回落到全量 recommend |
 | GET | `/dont-miss` | 公开 | 别错过（带 deadline） |

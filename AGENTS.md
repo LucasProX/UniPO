@@ -56,7 +56,7 @@ mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 ```
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 17 项全链路检查
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 25 项全链路检查（含 /api/v1 与游标分页）
 ```
 全栈（需要 Docker）：
 ```bash
@@ -67,9 +67,12 @@ docker compose up -d --build
 ## 4. 后端约定
 - 分层：`web` -> `service` -> `mapper`（MyBatis-Plus）-> `domain`。Controller 不写业务，Service 不碰 HTTP。
 - 成功返回 `ApiResponse.ok(data)`，线上 JSON 是 `{"data": ...}`；列表也是 `{"data": [...]}`，没有分页元数据。
+- **版本化**：Controller 同时挂在 `/api` 与 `/api/v1` 两个前缀下（`security/ApiVersionPrefixFilterConfig.java` 把 `/api/v1/**` 改写成 `/api/**`，`SecurityConfig` 白名单只需维护一份）。前端已切到 `/api/v1`；`/api` 保留兼容，观察 2 个版本后下线。**`/api/v1` 的演进只做加法**：加字段、加端点不升版本，删字段/改语义/改类型才升 `v2`。
+- **分页（强制游标）**：新端点用 `GET /api/v1/posts/page?tab=&cursor=&limit=`，返回 `{items, nextCursor, hasMore, limit}`；`limit` 默认 20、上限 50。游标编码上一页最后一条的**完整排序键**（pinned/official/dontMiss/likeCount/commentCount/publishedAt/id），不要只用 id——排序按热度排，id 小的可能排在 id 大的前面。非法游标返回 400。
 - 错误返回 `ErrorResponse{message, timestamp}`，由 `GlobalExceptionHandler` 映射 400/401/403/404/413。**没有兜底 500 处理**，未知异常走 Spring 默认错误页。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
-- 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。
+- 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
+- **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
 - 时间字段目前全是 `LocalDateTime`（无时区信息）。**新接口请用 `OffsetDateTime`**，原因见 `docs/MOBILE-API-PLAN.md` §4。
 
 ## 5. 数据库
@@ -96,6 +99,7 @@ docker compose up -d --build
 ## 8. 已知坑
 - `.gitignore` 忽略 `AGENT.md` / `agent.md`（单数），但**不忽略 `AGENTS.md`**——本文件会入库，视为团队资产。
 - 系统级 `core.autocrlf=true`，而 `.gitattributes` 只对 `*.sh` 强制 LF。改 shell 脚本注意别提交 CRLF。
+- **`.ps1` 必须是 CRLF**（2026-10-20 实测）：`edit`/`write` 工具写出来的是 LF，PowerShell 5.1 解析 LF-only 的 `.ps1` 会出现「变量赋值后仍为空」这类静默诡异行为（`scripts/smoke.ps1` 里 `$v1 = ($Base.TrimEnd('/')) + '/api/v1'` 算出空串，但同样代码单独跑没问题）。改完 `.ps1` 后统一 `(Get-Content f -Raw) -replace "`r?`n","`r`n" | Set-Content f -NoNewline` 转回 CRLF，并保持 ASCII-only。
 - `PostService.baseVisibleWrapper`（`PostService.java:470-478`）在用户没选学校或未登录时**硬编码 `school_id = 1`**；`defaultViewer()`（`PostService.java:646`）还会随便挑一个 active 用户当"匿名视角"。这是 bug，不是设计。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - 前端轮询（2026-10-20 已随组件化搬进 store）：会话列表 3s（`stores/messages.ts` 的 `startConversationListPolling`）、当前会话 1.8s（`startActiveConversationPolling`）、在线心跳 10s（`stores/auth.ts` 的 `startPresenceHeartbeat`）。实时化之前别再加轮询。
@@ -103,6 +107,7 @@ docker compose up -d --build
 - **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。要判断真实可达性，用 check-host.net 这类外部节点，或先关代理。
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
 - 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
+- **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。
 
 ## 9. 当前优先级（2026-10，本地开发模式）
 > 完整分级见 `docs/ISSUES.md`：**B 阻塞 / D 开发体验 / R 上线阻断 / Q 质量**。

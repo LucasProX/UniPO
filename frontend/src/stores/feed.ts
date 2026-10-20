@@ -24,6 +24,13 @@ export const useFeedStore = defineStore('feed', () => {
   const selectedPost = ref<CampusPost | null>(null);
   const expandedPost = ref<CampusPost | null>(null);
 
+  // 信息流分页态（游标分页，见 lib/api.ts 的 postsPage 说明）
+  const feedCursor = ref<string | null>(null);
+  const feedHasMore = ref(false);
+  const feedLoadingMore = ref(false);
+  /** 当前信息流板块，分页续拉必须用同一个 tab，否则游标和排序对不上 */
+  const feedTab = ref<BoardCode>('recommend');
+
   const deletingPostIds = ref<Set<number>>(new Set());
 
   // 评论区 UI 态
@@ -74,26 +81,53 @@ export const useFeedStore = defineStore('feed', () => {
     return post;
   }
 
-  async function load() {
+  /** 首屏加载：拉第一页 + 板块列表。tab 变化时必须重新调用，不要续拉。 */
+  async function load(tab: BoardCode = 'recommend') {
     feedLoading.value = true;
     feedError.value = '';
+    feedTab.value = tab;
     try {
-      const [postList, boardList] = await Promise.all([
-        campusApi.posts('recommend'),
+      const [page, boardList] = await Promise.all([
+        campusApi.postsPage(tab, null, 20),
         campusApi.boards()
       ]);
-      posts.value = enrichApiPosts(postList);
+      posts.value = enrichApiPosts(page.items);
+      feedCursor.value = page.nextCursor;
+      feedHasMore.value = page.hasMore;
       boards.value = boardList.length ? normalizeBoards(boardList) : defaultBoards();
       comments.value = [];
       selectedPost.value = posts.value[0] || null;
     } catch (error) {
       posts.value = [];
+      feedCursor.value = null;
+      feedHasMore.value = false;
       boards.value = defaultBoards();
       comments.value = [];
       selectedPost.value = null;
       feedError.value = describeError(error, '无法连接后端，请确认服务已启动');
     } finally {
       feedLoading.value = false;
+    }
+  }
+
+  /**
+   * 加载下一页（滚动到底部时调用）。
+   *
+   * 并发保护：feedLoadingMore 为 true 时直接返回，避免快速滚动重复请求。
+   * 失败时静默保留已加载内容，由用户再次滚动重试——不弹错误、不清列表。
+   */
+  async function loadMore() {
+    if (feedLoadingMore.value || !feedHasMore.value || !feedCursor.value) return;
+    feedLoadingMore.value = true;
+    try {
+      const page = await campusApi.postsPage(feedTab.value, feedCursor.value, 20);
+      posts.value = [...posts.value, ...enrichApiPosts(page.items)];
+      feedCursor.value = page.nextCursor;
+      feedHasMore.value = page.hasMore;
+    } catch {
+      // 续拉失败不打断用户，保留当前列表与游标，下次滚动会重试同一页
+    } finally {
+      feedLoadingMore.value = false;
     }
   }
 
@@ -121,10 +155,13 @@ export const useFeedStore = defineStore('feed', () => {
 
   async function refreshPostFromServer(postId: number) {
     try {
-      const apiPosts = await campusApi.posts('recommend');
+      // 只刷新已加载的那些帖子：用全量接口查一次再按 id 对齐，
+      // 不动 posts 的长度和顺序，否则会把用户正在滚动的分页状态打乱。
+      const apiPosts = await campusApi.posts(feedTab.value);
       const freshPosts = enrichApiPosts(apiPosts);
+      const loadedIds = new Set(posts.value.map((item) => item.id));
       posts.value = posts.value.map((item) => freshPosts.find((fresh) => fresh.id === item.id) || item);
-      const freshExpanded = freshPosts.find((post) => post.id === postId);
+      const freshExpanded = freshPosts.find((post) => post.id === postId && loadedIds.has(post.id));
       if (freshExpanded && expandedPost.value?.id === postId) expandedPost.value = freshExpanded;
     } catch {
       // 刷新失败保留本地状态
@@ -369,6 +406,10 @@ export const useFeedStore = defineStore('feed', () => {
     comments,
     feedLoading,
     feedError,
+    feedCursor,
+    feedHasMore,
+    feedLoadingMore,
+    feedTab,
     selectedPost,
     expandedPost,
     detailComments,
@@ -383,6 +424,7 @@ export const useFeedStore = defineStore('feed', () => {
     authorFromCurrentUser,
     addLocalPost,
     load,
+    loadMore,
     syncAuthorEverywhere,
     refreshPostComments,
     refreshPostFromServer,

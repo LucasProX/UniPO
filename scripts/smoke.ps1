@@ -89,5 +89,49 @@ try {
 }
 
 ""
+# ---- /api/v1 版本化契约 ----
+# 服务端同时挂 /api 与 /api/v1，前端已切到 /api/v1（见 docs/MOBILE-API-PLAN.md 4.1）。
+# 这里单独验证：1) 前缀可用；2) 游标分页能完整走完且不重复不漏。
+$v1 = ($Base.TrimEnd('/')) + '/api/v1'
+Check 'v1-posts'      (CallApi 'GET' "$v1/posts?tab=recommend" $null $tok)
+Check 'v1-boards'     (CallApi 'GET' "$v1/posts/boards" $null $tok)
+Check 'v1-hot-today'  (CallApi 'GET' "$v1/posts/hot-today" $null $tok)
+Check 'v1-dont-miss'  (CallApi 'GET' "$v1/posts/dont-miss" $null $tok)
+Check 'v1-me'         (CallApi 'GET' "$v1/auth/me" $null $tok)
+
+# 游标分页：limit=5 连拉多页，累计 id 必须无重复（重复说明游标键没编码完整排序键）
+$r = CallApi 'GET' "$v1/posts/page?tab=recommend&limit=5" $null $tok
+Check 'v1-page-1' $r
+$seen = New-Object System.Collections.Generic.List[string]
+$cursor = $null
+$pages = 0
+try {
+  $page = ($r.body | ConvertFrom-Json).data
+  $cursor = $page.nextCursor
+  foreach ($item in $page.items) { [void]$seen.Add([string]$item.id) }
+  $pages = 1
+} catch {}
+while ($cursor -and $pages -lt 10) {
+  $r = CallApi 'GET' ("$v1/posts/page?tab=recommend&limit=5&cursor=" + [uri]::EscapeDataString($cursor)) $null $tok
+  if ($r.code -ne '200') { Check ('v1-page-' + ($pages + 1)) $r; break }
+  try {
+    $page = ($r.body | ConvertFrom-Json).data
+    foreach ($item in $page.items) { [void]$seen.Add([string]$item.id) }
+    $cursor = $page.nextCursor
+    $pages++
+  } catch { break }
+}
+$dupes = ($seen | Group-Object | Where-Object { $_.Count -gt 1 }).Count
+if ($dupes -eq 0 -and $seen.Count -gt 0) {
+  'PASS v1-page-walk            pages=' + $pages + ' items=' + $seen.Count + ' dupes=0'
+} else {
+  $script:fail++
+  'FAIL v1-page-walk            pages=' + $pages + ' items=' + $seen.Count + ' dupes=' + $dupes
+}
+
+# 非法游标必须 400，不能静默当成第一页
+$r = CallApi 'GET' "$v1/posts/page?tab=recommend&cursor=not-a-cursor" $null $tok
+Check 'v1-page-bad-cursor' $r '400'
+
 "---- failed checks: $script:fail ----"
 if ($script:fail -gt 0) { exit 1 }

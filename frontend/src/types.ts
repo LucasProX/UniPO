@@ -5,6 +5,20 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+/**
+ * 游标分页响应，来自 GET /api/v1/posts/page。
+ *
+ * nextCursor 编码了上一页最后一条的完整排序键（pinned/official/dontMiss/
+ * likeCount/commentCount/publishedAt/id），客户端原样回传即可，不要自己解析。
+ * hasMore 为 false 时 nextCursor 为 null，表示没有下一页。
+ */
+export interface PagedResponse<T> {
+  items: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
 export interface AuthorView {
   id: number;
   uid: string;

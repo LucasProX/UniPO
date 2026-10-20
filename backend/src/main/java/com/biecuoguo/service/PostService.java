@@ -51,16 +51,131 @@ public class PostService {
     }
 
     public List<PostDtos.PostView> list(String tab, CurrentUser currentUser) {
+        return list(tab, currentUser, null, null).items();
+    }
+
+    /**
+     * 游标分页（keyset pagination）的列表。
+     *
+     * 排序键与老版完全一致：pinned > official > dontMiss > likeCount > commentCount > publishedAt > id。
+     *
+     * 为什么不能只用 id 当游标：排序是按热度/权重排的，id 小的帖子完全可能排在
+     * id 大的前面（实测 legacy 顺序 2,3,1,4,5,15,14,... 就是这种情况）。
+     * 只按 id < cursor 过滤会把排在 cursor 之前、但 id 更小的帖子重复吐出来。
+     * 所以游标必须编码上一页最后一条的**完整排序键元组**，
+     * 下一页用「字典序小于」精确接续，这也是标准 keyset pagination 的做法。
+     *
+     * limit 上限 50、默认 20，见 docs/MOBILE-API-PLAN.md 4.3。
+     */
+    public PostDtos.PostPageView list(String tab, CurrentUser currentUser, String cursor, Integer requestedLimit) {
         User viewer = currentUser == null ? defaultViewer() : userMapper.selectById(currentUser.id());
+        int limit = normalizeLimit(requestedLimit);
         LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer);
         applyTab(wrapper, normalizeBoard(tab), viewer);
+        PostCursor cursorKey = PostCursor.parse(cursor);
+        if (cursorKey != null) {
+            applyCursor(wrapper, cursorKey);
+        }
         wrapper.orderByDesc(Post::getPinned)
                 .orderByDesc(Post::getOfficial)
                 .orderByDesc(Post::getDontMiss)
                 .orderByDesc(Post::getLikeCount)
                 .orderByDesc(Post::getCommentCount)
-                .orderByDesc(Post::getPublishedAt);
-        return toViews(postMapper.selectList(wrapper), currentUser);
+                .orderByDesc(Post::getPublishedAt)
+                .orderByDesc(Post::getId);
+        // 多查一条用于判断 hasMore
+        List<Post> page = postMapper.selectList(wrapper.last("limit " + (limit + 1)));
+        boolean hasMore = page.size() > limit;
+        List<Post> items = hasMore ? page.subList(0, limit) : page;
+        String nextCursor = hasMore ? PostCursor.of(items.get(items.size() - 1)).encode() : null;
+        return PostDtos.PostPageView.of(toViews(items, currentUser), nextCursor, limit);
+    }
+
+    /**
+     * 把「上一页最后一条的排序键」翻译成 SQL 的字典序小于条件。
+     *
+     * 排序是 (pinned, official, dontMiss, likeCount, commentCount, publishedAt, id) 全部 DESC，
+     * 所以「排在它后面」等价于：第一个不同的键比它小。
+     * 展开成 OR 链：
+     *   pinned < k.pinned
+     *   OR (pinned = k.pinned AND official < k.official)
+     *   OR (pinned = k.pinned AND official = k.official AND dontMiss < k.dontMiss)
+     *   ... 以此类推到 id
+     */
+    private void applyCursor(LambdaQueryWrapper<Post> wrapper, PostCursor key) {
+        // LambdaQueryWrapper 没有 and(Consumer)，改用 AbstractWrapper 的 nested 形式：
+        // 手写一段 OR 链，MyBatis-Plus 会自动补上外层括号，
+        // 生成的 SQL 形如 AND ((a) OR (b) OR ...)，不会和现有条件串味。
+        wrapper.nested(w -> {
+            w.lt(Post::getPinned, key.pinned());
+            w.or().eq(Post::getPinned, key.pinned()).lt(Post::getOfficial, key.official());
+            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).lt(Post::getDontMiss, key.dontMiss());
+            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
+                    .lt(Post::getLikeCount, key.likeCount());
+            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
+                    .eq(Post::getLikeCount, key.likeCount()).lt(Post::getCommentCount, key.commentCount());
+            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
+                    .eq(Post::getLikeCount, key.likeCount()).eq(Post::getCommentCount, key.commentCount())
+                    .lt(Post::getPublishedAt, key.publishedAt());
+            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
+                    .eq(Post::getLikeCount, key.likeCount()).eq(Post::getCommentCount, key.commentCount())
+                    .eq(Post::getPublishedAt, key.publishedAt()).lt(Post::getId, key.id());
+        });
+    }
+
+    private int normalizeLimit(Integer requestedLimit) {
+        int value = requestedLimit == null ? 20 : requestedLimit;
+        return Math.max(1, Math.min(50, value));
+    }
+
+    /** 排序键元组：与 list() 的 ORDER BY 严格一一对应，顺序不能改。 */
+    private record PostCursor(boolean pinned, boolean official, boolean dontMiss, int likeCount, int commentCount, LocalDateTime publishedAt, long id) {
+
+        static PostCursor of(Post post) {
+            return new PostCursor(
+                    Boolean.TRUE.equals(post.getPinned()),
+                    Boolean.TRUE.equals(post.getOfficial()),
+                    Boolean.TRUE.equals(post.getDontMiss()),
+                    post.getLikeCount() == null ? 0 : post.getLikeCount(),
+                    post.getCommentCount() == null ? 0 : post.getCommentCount(),
+                    post.getPublishedAt() == null ? LocalDateTime.MIN : post.getPublishedAt(),
+                    post.getId()
+            );
+        }
+
+        /**
+         * 游标编码：字段用 | 分隔，Boolean 存 1/0，时间存 ISO-8601。
+         * 之所以不 Base64：游标会出现在 URL 和日志里，可读性好排查；
+         * 且这些都是服务端自己产出的值，不承载用户输入，无需防篡改。
+         */
+        String encode() {
+            return pinned + "|" + official + "|" + dontMiss + "|" + likeCount + "|" + commentCount + "|"
+                    + (publishedAt == null ? "" : publishedAt.toString()) + "|" + id;
+        }
+
+        static PostCursor parse(String cursor) {
+            if (cursor == null || cursor.isBlank()) {
+                return null;
+            }
+            String[] parts = cursor.trim().split("\\|", -1);
+            if (parts.length != 7) {
+                throw new IllegalArgumentException("分页游标无效");
+            }
+            try {
+                LocalDateTime publishedAt = parts[5].isEmpty() ? LocalDateTime.MIN : LocalDateTime.parse(parts[5]);
+                return new PostCursor(
+                        Boolean.parseBoolean(parts[0]),
+                        Boolean.parseBoolean(parts[1]),
+                        Boolean.parseBoolean(parts[2]),
+                        Integer.parseInt(parts[3]),
+                        Integer.parseInt(parts[4]),
+                        publishedAt,
+                        Long.parseLong(parts[6])
+                );
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException("分页游标无效");
+            }
+        }
     }
 
     public List<PostDtos.BoardView> boards(CurrentUser currentUser) {

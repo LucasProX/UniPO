@@ -24,6 +24,12 @@ const feed = useFeedStore();
 const feedPage = ref(1);
 const feedPageSize = 10;
 
+/**
+ * 服务端已是游标分页（stores/feed.ts 的 load/loadMore），
+ * 这里的 feedPage 只是「已加载内容」的本地翻页，用于在桌面上分屏浏览。
+ * 翻到最后一页且服务端还有更多时，自动续拉下一页。
+ */
+
 const filteredPosts = computed(() => feed.posts
   .filter((post) => {
     const dateMatches = props.date ? postDateKey(post) === props.date : true;
@@ -46,7 +52,10 @@ function postDateKey(post: CampusPost) {
 }
 
 function goFeedPage(delta: number) {
-  feedPage.value = Math.min(feedPageCount.value, Math.max(1, feedPage.value + delta));
+  const next = Math.min(feedPageCount.value, Math.max(1, feedPage.value + delta));
+  feedPage.value = next;
+  // 翻到最后一页且服务端还有数据时提前续拉，避免用户看到空页
+  if (next === feedPageCount.value) feed.loadMore();
 }
 
 watch([filteredPosts, () => props.board, () => props.date], () => {
@@ -58,11 +67,17 @@ watch(feedPageCount, (count) => {
 });
 
 onMounted(() => {
-  if (!feed.posts.length) feed.load();
+  // board 变化时重新拉第一页：服务端分页的游标是按 tab 的排序键编码的，
+  // 换 tab 不重新加载会把另一个板块的游标混进来。
+  if (!feed.posts.length || feed.feedTab !== props.board) feed.load(props.board);
+});
+
+watch(() => props.board, (board) => {
+  feed.load(board);
 });
 
 function reloadFeed() {
-  feed.load();
+  feed.load(props.board);
 }
 </script>
 
@@ -83,7 +98,7 @@ function reloadFeed() {
         @open-author="emit('open-author', $event)"
       />
     </div>
-    <div v-if="feedPageCount > 1" class="feed-pagination">
+    <div v-if="feedPageCount > 1 || feed.feedHasMore" class="feed-pagination">
       <button
         v-if="canGoPrevFeedPage"
         class="feed-pagination__button"
@@ -101,6 +116,16 @@ function reloadFeed() {
       >
         <ChevronRight :size="20" />
       </button>
+      <button
+        v-else-if="feed.feedHasMore"
+        class="feed-pagination__button"
+        title="加载更多"
+        :disabled="feed.feedLoadingMore"
+        @click="feed.loadMore()"
+      >
+        <ChevronRight :size="20" />
+      </button>
     </div>
+    <p v-if="feed.feedLoadingMore" class="feed-pagination__hint">正在加载更多…</p>
   </div>
 </template>
