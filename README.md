@@ -9,7 +9,11 @@
 - 数据库：MySQL 8
 - 媒体存储：外部 MinIO，通过 `.env` 配置连接
 
-## 两台服务器部署
+## 两台服务器部署（历史方案，2026-10 起停用）
+
+> 下面这套「服务器 A 跑 MySQL、服务器 B 跑应用」的部署方式已经不用了——`115.190.3.204` 已停服。
+> 现在开发全在本地 Docker 跑，见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
+> 这一节保留下来只是因为脚本（`deploy-mysql.sh` / `deploy-app.sh` / `deploy-ip.sh`）还在，别照着它新建环境。
 
 服务器需要先安装 Docker 和 Docker Compose。
 
@@ -115,12 +119,13 @@ nano .env
 - `MINIO_SECRET_KEY`
 - `MINIO_BUCKET`
 
-数据库连接默认就是服务器 A：
+数据库地址**必须显式配置**：`SPRING_DATASOURCE_URL` 已经进了 `deploy-app.sh` 的必填项，不给就直接退出，脚本不再猜一个默认主机。
 
 ```env
-SPRING_DATASOURCE_URL=jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+# 本地开发（后端跑宿主机、MySQL 由 docker compose --profile local-db 提供）
+SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
 SPRING_DATASOURCE_USERNAME=biecuoguo
-MYSQL_PASSWORD=服务器A的MYSQL_PASSWORD
+SPRING_DATASOURCE_PASSWORD=你的MySQL密码
 ```
 
 注意 JDBC 地址不要带 `http://`。
@@ -144,7 +149,7 @@ MYSQL_PASSWORD=服务器A的MYSQL_PASSWORD
 
 这个脚本只会构建并启动 `backend`、`frontend`、`caddy`，不会启动 MySQL，也不会动 MinIO。
 
-`deploy-app.sh` 会先检查能不能连上数据库。如果这里报 `Cannot connect to MySQL at 115.190.3.204:12306`，先处理服务器 A 的 MySQL、云安全组或防火墙；后端启动时 Flyway 必须先连上数据库，否则就会出现 `Communications link failure`。
+`deploy-app.sh` 会先检查能不能连上数据库。如果这里报 `Cannot connect to MySQL at <host>:<port>`，先确认 `.env` 里的 `SPRING_DATASOURCE_URL` 写对了、那台 MySQL 在跑、安全组和防火墙放行了端口；后端启动时 Flyway 必须先连上数据库，否则就会出现 `Communications link failure`。
 
 ### 无域名服务器：IP 直连部署
 

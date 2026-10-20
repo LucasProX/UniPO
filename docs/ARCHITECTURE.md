@@ -14,17 +14,18 @@ backend :8080  --->  MySQL :3306 (profile local-db) / 远程 MySQL
    +---> MinIO（外部对象存储）
 ```
 
-生产（双机）：
+部署形态（单机 docker compose）：
 ```text
 用户
  |  HTTPS
  v
-服务器 B：Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
-                                                        |
-服务器 A：MySQL 8 (115.190.3.204:12306)  <---------------+---> MinIO（外部）
+Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
+                                                     |
+                    MySQL 8（compose 服务 mysql:3306）<+--> MinIO（外部）
 ```
 
-- 服务器 A 只跑 MySQL；服务器 B 跑 backend / frontend / caddy。
+- MySQL 默认走 compose 网络里的 `mysql` 服务；要连外部库就把 `SPRING_DATASOURCE_URL` 显式设成那个地址——代码里**没有任何远端默认值**（见 `docs/ISSUES.md` R-4）。
+- 本地开发时后端跑在宿主机、MySQL 用 `docker compose --profile local-db` 起在 `127.0.0.1:12306`。
 - 所有前端请求都走同源 `/api`，由 `frontend/nginx.conf` 反代到 `backend:8080`；Caddy 只负责 TLS 与透传 `Authorization`。
 - 没有 Redis、没有消息队列、没有 CDN；媒体走 MinIO，但**上传下载都经后端转发**（`MediaController`）。
 

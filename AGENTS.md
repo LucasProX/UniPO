@@ -121,8 +121,8 @@ docker compose up -d --build
 - `PostService.baseVisibleWrapper`（`PostService.java:470-478`）在用户没选学校或未登录时**硬编码 `school_id = 1`**；`defaultViewer()`（`PostService.java:646`）还会随便挑一个 active 用户当"匿名视角"。这是 bug，不是设计。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - 前端轮询（2026-10-20 已随组件化搬进 store）：会话列表 3s（`stores/messages.ts` 的 `startConversationListPolling`）、当前会话 1.8s（`startActiveConversationPolling`）、在线心跳 10s（`stores/auth.ts` 的 `startPresenceHeartbeat`）。实时化之前别再加轮询。
-- **默认 datasource 指向远端库**：`application.yml:14` 与 `application-local.yml:3` 都默认 `jdbc:mysql://115.190.3.204:12306/biecuoguo`。实测该端口**对公网不可达**（外部节点 TCP 全部超时；本机探测会被 Clash TUN 代理伪造成"可连接"，不可信），所以现在照 README 启动只会连接超时。一旦端口被放开，`spring-boot:run` 就会对远端库跑 Flyway + 触发 `AuthService` 启动逻辑（重置管理员密码、重建演示账号）。**启动前必须显式设置 `SPRING_DATASOURCE_URL` 指向本地库。**
-- **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。要判断真实可达性，用 check-host.net 这类外部节点，或先关代理。
+- **数据库默认值曾经指向一台已停用的服务器**（R-4，2026-10-20 已修，别再改回去）：那时候 `application.yml` / `application-local.yml` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，一旦那个端口被放开，照默认启动就会对着一台陌生库跑 Flyway + 触发 `AuthService` 启动逻辑。现在的默认值全是「本机」或「compose 服务名」：`application.yml` → `127.0.0.1:3306`，`application-local.yml` → `127.0.0.1:12306`，`docker-compose.yml` → `mysql:3306`。`deploy-app.sh` / `deploy-ip.sh` **没有默认值**，`SPRING_DATASOURCE_URL` 缺失直接退出。
+- **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。判断真实可达性要用外部节点（check-host.net），或先关代理。
 - `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
 - **真实模式下没有 SMTP 会启动失败**（2026-10-20 加）：`StartupSafetyGuard` 会查 `spring.mail.host`（`SMTP_HOST`），空就抛 `IllegalStateException`。这是刻意的——注册和找回密码全靠邮件，配不上就是断链，而且断得很静默（进程起得来、接口返回 200）。本地开发用 `--spring.profiles.active=local` 走 mock 模式即可，不需要 SMTP。
 - 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
@@ -134,7 +134,7 @@ docker compose up -d --build
 1. ~~跑通本地链路~~ ✅ **已完成（2026-10-19）**：Docker → MySQL 8.4 → 后端 → 前端，真实数据已渲染，登录/发帖链路实测通过。
 2. 去假数据 + 前端组件化（Web/App 共用的地基）。
 3. ~~后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包~~ ✅ **已完成**：N+1 清零 + 游标分页 + `/api/v1` + 统一响应包（`code`/`requestId`）+ `OffsetDateTime`。
-4. ~~上线前集中清零 **R 项**~~ ✅ **R-1 / R-2 / R-3 已修（2026-10-20）**：默认值翻到安全侧 + `config/StartupSafetyGuard.java` 启动拦截。**R-1 的 SMTP 通道已接**（`service/VerificationMailer.java`，配置 `SMTP_HOST` 等），但还没拿真实邮箱实测过，部署前要跑一遍。R-4（默认 datasource 指远端库）仍待处理。
+4. ~~上线前集中清零 **R 项**~~ ✅ **R-1 / R-2 / R-3 / R-4 全部已修（2026-10-20）**：默认值翻到安全侧 + `config/StartupSafetyGuard.java` 启动拦截；R-4 把库地址默认值改成 `127.0.0.1` / compose 服务名，两个部署脚本改成**必填**（不再猜主机）。**R-1 的 SMTP 通道已接**（`service/VerificationMailer.java`，配置 `SMTP_HOST` 等），但还没拿真实邮箱实测过，部署前要跑一遍。
 5. ~~清理 notices 遗留域~~ ✅ **已完成（2026-10-20）**：删掉 19 个 Java 文件 + 5 张表 + `comments.notice_id`，`InteractionController` / `NoticeController` / `CommentController` 整体下线，`AdminService` 概览改按 posts 口径。详见 DEVLOG 同名条目。
 
 ## 10. 文档索引

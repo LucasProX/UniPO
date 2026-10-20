@@ -22,9 +22,9 @@ if [[ ! -f .env ]]; then
   cp .env.example .env
   cat >&2 <<'MSG'
 Created .env from .env.example.
-This script deploys only backend, frontend, and Caddy for server B.
-By default the backend connects to MySQL on 115.190.3.204:12306.
-Edit .env and fill passwords, CORS, JWT, and existing MinIO settings, then rerun:
+This script deploys only backend, frontend, and Caddy.
+There is no default database host: set SPRING_DATASOURCE_URL in .env explicitly.
+Edit .env and fill the database URL, passwords, CORS, JWT, SMTP, and MinIO settings, then rerun:
   ./deploy-app.sh
 MSG
   exit 1
@@ -45,8 +45,6 @@ is_placeholder() {
   local value="$1"
   [[ "$value" == change_me* || "$value" == please-change* || "$value" == *"your-"* || "$value" == *"your_"* ]]
 }
-
-default_datasource_url="jdbc:mysql://115.190.3.204:12306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
 
 extract_mysql_host_port() {
   local url="$1"
@@ -71,6 +69,9 @@ check_tcp() {
 }
 
 required_vars=(
+  # 数据库地址必须显式给。以前这里有个写死远端 IP 的默认值，
+  # 那台服务器已经停用 —— 跟着默认值跑只会连到一个不该碰的库。
+  SPRING_DATASOURCE_URL
   JWT_SECRET
   BOOTSTRAP_ADMIN_PASSWORD
   # 验证码真实模式必需。没配的话后端会直接拒绝启动（config/StartupSafetyGuard.java），
@@ -118,7 +119,6 @@ if (( ${#placeholders[@]} )); then
 fi
 
 datasource_url="$(env_value SPRING_DATASOURCE_URL)"
-datasource_url="${datasource_url:-$default_datasource_url}"
 read -r mysql_host mysql_port < <(extract_mysql_host_port "$datasource_url")
 
 echo "Checking MySQL connection: ${mysql_host}:${mysql_port} ..."
@@ -126,11 +126,11 @@ if ! check_tcp "$mysql_host" "$mysql_port"; then
   cat >&2 <<MSG
 Cannot connect to MySQL at ${mysql_host}:${mysql_port}.
 
-Check these on server A:
-  1. ./deploy-mysql.sh has been run successfully.
-  2. docker ps shows unipo-mysql is running.
-  3. docker compose --profile local-db ps mysql shows the container is healthy.
-  4. The cloud firewall/security group allows TCP ${mysql_port} from server B.
+Check:
+  1. That MySQL instance is running and reachable from here.
+  2. SPRING_DATASOURCE_URL in .env really points at it.
+  3. The user/password in .env match that instance.
+  4. The cloud firewall/security group allows TCP ${mysql_port}.
   5. The server firewall allows TCP ${mysql_port}, for example: ufw allow ${mysql_port}/tcp.
 
 Backend was not started because Flyway requires a working database connection at boot.

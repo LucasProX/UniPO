@@ -73,6 +73,16 @@
 现状：该库不可达，本地启动只会连接超时。一旦放开端口，`spring-boot:run` 会对远端库跑 Flyway 并触发 `AuthService` 启动逻辑。
 修复：本地靠 `.env` 覆盖（见 §1）；长期把默认值改成 `127.0.0.1`，缺失即启动失败。
 
+> **✅ 已修复（2026-10-20）**：代码和脚本里已经不存在任何指向 `115.190.3.204` 的默认值。
+> - `backend/src/main/resources/application.yml` 默认 `jdbc:mysql://127.0.0.1:3306/biecuoguo`
+> （本机标准 MySQL 端口，连不上就是连不上，不会再摸到一台陌生库）。
+> - `application-local.yml` 默认 `127.0.0.1:12306`，正好对上 `docker compose --profile local-db` 的宿主机映射。
+> - `docker-compose.yml` 默认 `mysql:3306`（compose 服务名，整栈 `docker compose up` 可直接用）。
+> - `deploy-app.sh` / `deploy-ip.sh` **彻底去掉默认值**：`SPRING_DATASOURCE_URL` 进了 `required_vars`，缺失直接退出。
+>   部署脚本猜数据库地址这件事本身就是错的——猜错一次就是对着别人的库跑 Flyway。
+> - `.env.example` 改成 `127.0.0.1:12306`，并在注释里写明「后端在容器里时改成 `mysql:3306`」。
+> 实测：改完后 `mvn package` + `scripts/smoke.ps1` 仍然 34/34 全绿（本地 `.env` 覆盖不受影响）。
+
 ## 3. D — 开发体验（影响日常协作，建议边做边改）
 
 | 编号 | 问题 | 证据 | 影响 |
