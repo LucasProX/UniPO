@@ -548,22 +548,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/realtime/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["stream"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/posts/interaction-notices": {
         parameters: {
             query?: never;
@@ -1299,10 +1283,6 @@ export interface components {
             createdAt?: string;
             /** Format: date-time */
             updatedAt?: string;
-        };
-        SseEmitter: {
-            /** Format: int64 */
-            timeout?: number;
         };
         ApiResponseListCommentView: {
             code?: string;
@@ -2457,26 +2437,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseListSchool"];
-                };
-            };
-        };
-    };
-    stream: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": components["schemas"]["SseEmitter"];
                 };
             };
         };

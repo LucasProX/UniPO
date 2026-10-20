@@ -68,6 +68,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
+                        // WebSocket 握手必须放行：浏览器握手带不了 Authorization 头，
+                        // 真正的鉴权在握手拦截器（Cookie）或首条 auth 消息（Bearer）里做。
+                        .requestMatchers("/api/realtime/ws", "/api/v1/realtime/ws").permitAll()
                         .anyRequest().authenticated()
                 )
                 // 两套认证入口：App 走 Bearer（JWT），浏览器走 httpOnly Cookie（服务端会话）。

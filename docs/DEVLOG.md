@@ -3869,6 +3869,50 @@ POST /api/auth/logout (cookie + CSRF)     -> 200，随后 /me -> 401
 Bearer 路径完全没动，`smoke.sh` 37 项仍然全绿。前端切 Cookie 时会一起改：
 `axios.withCredentials`、去掉 localStorage、401 时不再自己刷新（服务端会话自己续期）。
 
+## 2026-10-20 实时通道从 SSE 换成 WebSocket：鉴权、续传、多实例
+
+ADR-0001 定了 WebSocket，今天把 SSE 整个换掉。过程里想清楚几件事：
+
+**浏览器 WebSocket 不能带 Authorization 头**。上一版 SSE 用 fetch + ReadableStream 绕开了这个限制；
+换成 WS 之后只有两条路：token 塞 query（会进访问日志、浏览器历史、Referer，绝对不行），
+或者连接后发一条 auth 消息。我们两条都支持：浏览器握手自动带 httpOnly Cookie（D3 的额外收益），
+App/脚本连上发 `{"type":"auth","token":"..."}`。**没有第三条路**。
+
+**协议信封**：`type / event / seq / ts / payload`。没有直接把 MessageView 裸奔在帧里——
+那样加字段、加事件类型、做 ack 都要改客户端解析器。
+
+**续传用全局 seq，不用时间戳**。同一毫秒可能有多条事件，时间戳当游标会漏。
+seq 的来源必须共享：单机用 AtomicLong，多实例用 Redis `INCR`，否则两个实例各自从 1 开始，
+客户端重连时会出现「补了一堆重复事件」或者「永远补不到」。
+
+**多实例广播踩到的第一个问题**：一开始想用「粘性会话」省事。但粘性只保证同一客户端回到同一实例，
+A 实例上的用户给 B 实例上的用户发消息时，事件根本到不了 B。必须 Pub/Sub。
+
+**Stream 的 ID 排序**：用 seq 当 Stream ID（`XADD KEY <seq> ...`），XRANGE 直接从 `lastEventId+1` 开始。
+如果用默认的 `*`（时间戳-序号），跨实例的时钟偏差会让续传漏事件。
+
+**鉴权失败的连接不注册订阅**，只回 `auth-required` / `error`。否则一个未登录连接也能占着广播列表，
+既浪费内存，也会让「在线人数」虚高。
+
+**测试怎么做的**：Node 22 自带全局 WebSocket，写了个 20 行脚本连上去发 auth 帧、另开一个用户发私信，
+断言收到 `event:message`；再断开、带 `lastEventId=seq-1` 重连，断言补回那一条。
+没装任何 ws 依赖 —— CI 里也能这么测。
+
+**结果**：
+```text
+ws open
+<- auth-required
+<- ready
+<- event message
+event payload ok: true
+
+captured seq 2 -> reconnecting with lastEventId 1
+replayed event seq 2 event message
+```
+
+前端 `lib/realtime.ts` 从 fetch 流改成原生 WebSocket，保留指数退避与 25s/60s 心跳；
+Vite 代理加了 `ws: true`，否则开发环境升级请求会 404。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

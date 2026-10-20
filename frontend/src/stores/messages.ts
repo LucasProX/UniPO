@@ -28,7 +28,7 @@ export const useMessagesStore = defineStore('messages', () => {
 
   let conversationListTimer: number | undefined;
   let activeConversationTimer: number | undefined;
-  /** SSE 连接句柄与状态：连上时轮询退让（只当兜底），断开时轮询自动接管。 */
+  /** WebSocket 连接句柄与状态：连上时轮询退让（只当兜底），断开时轮询自动接管。 */
   let realtimeStop: (() => void) | undefined;
   let realtimeOpen = false;
   let refreshingConversations = false;
@@ -144,7 +144,7 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
-  /** 3 秒一次的兜底轮询：SSE 活着时它什么都不做（D-6 之后正常路径是推送）。 */
+  /** 3 秒一次的兜底轮询：WebSocket 活着时它什么都不做（正常路径是推送）。 */
   function startConversationListPolling() {
     stopConversationListPolling();
     conversationListTimer = window.setInterval(() => {

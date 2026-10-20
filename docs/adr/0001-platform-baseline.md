@@ -94,6 +94,10 @@ BFF 只做聚合/裁剪，不重写业务规则。
 **扩展路径**：单机用 Spring WebSocket + Redis Pub/Sub 广播；多实例时每个实例订阅同一频道；
 再大就拆独立连接网关（Netty），业务服务只负责投递。**现在不拆。**
 
+**落地进度（2026-10-20）**：已上线。`/api/v1/realtime/ws`，Cookie / auth 帧双鉴权，
+`seq` + `lastEventId` 从 Redis Stream 续传，单机 `LocalRealtimeBroker`、多实例 `RedisRealtimeBroker`，
+切换只看 `STATE_BACKEND`。SSE 端点已删除。
+
 ### D5. 形态：模块化单体（Modular Monolith），不是微服务
 
 **决定**：后端保持一个可部署单元，但内部按**领域模块**划清边界：

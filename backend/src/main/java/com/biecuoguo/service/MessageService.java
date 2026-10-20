@@ -10,6 +10,7 @@ import com.biecuoguo.dto.PostDtos;
 import com.biecuoguo.mapper.ConversationMapper;
 import com.biecuoguo.mapper.MessageMapper;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

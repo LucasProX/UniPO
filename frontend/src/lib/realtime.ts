@@ -3,115 +3,150 @@ import { API_PREFIX, authToken } from './api';
 export type RealtimeState = 'connecting' | 'open' | 'closed';
 
 export interface RealtimeStreamOptions {
-  /** 收到一条服务端事件：name 是 SSE 的 event 名，data 是 JSON.parse 之后的值。 */
+  /** 收到一条服务端事件：name 是业务事件名（如 message），data 是 payload。 */
   onEvent?: (name: string, data: unknown) => void;
   /** 连接状态变化，给 store 用来决定要不要退回轮询。 */
   onState?: (state: RealtimeState) => void;
 }
 
+interface ServerFrame {
+  type: string;
+  event?: string;
+  seq?: number;
+  ts?: number;
+  payload?: unknown;
+  code?: string;
+  message?: string;
+}
+
 /**
- * 消息推送长连接（D-6）。
+ * 实时通道（ADR-0001 D4：WebSocket，不再用 SSE）。
  *
- * 为什么不用浏览器原生 EventSource：它不能带 Authorization 头，只能把 token 塞进 query，
- * 那样 token 会进访问日志、进浏览器历史、还可能被 Referer 带出去。这里用 fetch + ReadableStream
- * 读同一条 SSE 流，token 照常走请求头，服务端的鉴权链路不用为实时化开特例。
+ * 鉴权两条路：
+ * - 浏览器：握手自动带 httpOnly 会话 Cookie，服务端直接认出来；
+ * - 当前 Web 端还在用 Bearer（localStorage），所以连上后发一条 auth 帧。
+ *   等前端整体切到 Cookie 后，这条 auth 帧可以留着（无害），也可以删掉。
  *
- * 断线策略：指数退避重连（1s → 2s → … → 30s 封顶）。返回的 stop() 是幂等的，
- * 退出登录 / 组件卸载都要调，否则会有个后台连接一直拿着旧 token。
+ * 断线策略：指数退避（1s → 30s 封顶）。重连后带 lastEventId 续传，
+ * 服务端从 Redis Stream / 内存环形缓存补最近 100 条。
+ *
+ * 心跳：25 秒发一次 JSON ping（浏览器 WebSocket API 不暴露协议层 pong），
+ * 60 秒收不到 pong 就主动断开重连 —— 中间代理掐掉长连接时客户端不会毫无察觉。
  */
 export function openRealtimeStream(options: RealtimeStreamOptions = {}): () => void {
-  const controller = new AbortController();
+  let socket: WebSocket | undefined;
   let closed = false;
   let retryDelay = 1000;
   let retryTimer: number | undefined;
+  let heartbeatTimer: number | undefined;
+  let lastSeq = 0;
+  let lastPongAt = Date.now();
 
   const emitState = (state: RealtimeState) => {
     try {
       options.onState?.(state);
     } catch {
-      // 回调自己抛异常不能带崩连接循环
+      // 回调异常不能带崩连接循环
+    }
+  };
+
+  const url = () => {
+    const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${scheme}//${window.location.host}${API_PREFIX}/realtime/ws`;
+  };
+
+  const send = (frame: Record<string, unknown>) => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(frame));
     }
   };
 
   const scheduleReconnect = () => {
     if (closed) return;
     emitState('closed');
+    window.clearInterval(heartbeatTimer);
     retryTimer = window.setTimeout(() => { void connect(); }, retryDelay);
     retryDelay = Math.min(retryDelay * 2, 30000);
   };
 
-  const dispatch = (block: string) => {
-    let event = 'message';
-    const dataLines: string[] = [];
-    for (const line of block.split('\n')) {
-      if (!line || line.startsWith(':')) continue;
-      const colon = line.indexOf(':');
-      const field = colon === -1 ? line : line.slice(0, colon);
-      const value = colon === -1 ? '' : line.slice(colon + 1).replace(/^ /, '');
-      if (field === 'event') event = value;
-      else if (field === 'data') dataLines.push(value);
-    }
-    if (!dataLines.length) return;
-    let payload: unknown = dataLines.join('\n');
+  const handleFrame = (raw: string) => {
+    let frame: ServerFrame;
     try {
-      payload = JSON.parse(dataLines.join('\n'));
+      frame = JSON.parse(raw) as ServerFrame;
     } catch {
-      // 非 JSON 的 data（心跳之类）原样透传
-    }
-    try {
-      options.onEvent?.(event, payload);
-    } catch {
-      // 同上：消费方异常不能断流
-    }
-  };
-
-  const consume = async (body: ReadableStream<Uint8Array>) => {
-    const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    for (;;) {
-      // 流式读取天生是串行的：必须等上一块处理完才能读下一块，这里不是「循环里忘并发」
-      // eslint-disable-next-line no-await-in-loop
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      // SSE 用空行分隔事件；\r\n\r\n 也认，nginx 可能改写换行
-      buffer = buffer.replace(/\r\n/g, '\n');
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const block = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        if (block.trim()) dispatch(block);
-        boundary = buffer.indexOf('\n\n');
-      }
-    }
-  };
-
-  async function connect() {
-    if (closed) return;
-    const token = authToken();
-    if (!token) {
-      // 还没登录：不重连，等 store 再叫一次
-      emitState('closed');
       return;
     }
+    switch (frame.type) {
+      case 'ready':
+        retryDelay = 1000;
+        lastPongAt = Date.now();
+        emitState('open');
+        break;
+      case 'event': {
+        if (typeof frame.seq === 'number' && frame.seq > lastSeq) {
+          lastSeq = frame.seq;
+        }
+        try {
+          options.onEvent?.(frame.event ?? 'message', frame.payload);
+        } catch {
+          // 消费方异常不能断流
+        }
+        break;
+      }
+      case 'pong':
+        lastPongAt = Date.now();
+        break;
+      case 'auth-required': {
+        const token = authToken();
+        if (token) send({ type: 'auth', token });
+        break;
+      }
+      case 'error':
+        if (frame.code === 'AUTH_UNAUTHENTICATED') {
+          socket?.close();
+        }
+        break;
+      default:
+        break;
+    }
+  };
+
+  function connect() {
+    if (closed) return;
     emitState('connecting');
     try {
-      const response = await fetch(`${API_PREFIX}/realtime/stream`, {
-        headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
-        signal: controller.signal,
-      });
-      if (!response.ok || !response.body) {
-        throw new Error(`realtime stream ${response.status}`);
-      }
-      retryDelay = 1000;
-      emitState('open');
-      await consume(response.body);
-      scheduleReconnect();
+      socket = new WebSocket(url());
     } catch {
-      if (closed || controller.signal.aborted) return;
       scheduleReconnect();
+      return;
     }
+
+    socket.onopen = () => {
+      const token = authToken();
+      if (token) send({ type: 'auth', token });
+      if (lastSeq > 0) send({ type: 'resume', lastEventId: lastSeq });
+      lastPongAt = Date.now();
+      heartbeatTimer = window.setInterval(() => {
+        send({ type: 'ping' });
+        if (Date.now() - lastPongAt > 60000) {
+          // 半开连接：浏览器以为还连着，实际早断了。主动关掉走重连。
+          socket?.close();
+        }
+      }, 25000);
+    };
+
+    socket.onmessage = (event) => {
+      if (typeof event.data === 'string') handleFrame(event.data);
+    };
+
+    socket.onclose = () => {
+      window.clearInterval(heartbeatTimer);
+      if (!closed) scheduleReconnect();
+    };
+
+    socket.onerror = () => {
+      socket?.close();
+    };
   }
 
   void connect();
@@ -120,7 +155,8 @@ export function openRealtimeStream(options: RealtimeStreamOptions = {}): () => v
     if (closed) return;
     closed = true;
     window.clearTimeout(retryTimer);
-    controller.abort();
+    window.clearInterval(heartbeatTimer);
+    socket?.close();
     emitState('closed');
   };
 }

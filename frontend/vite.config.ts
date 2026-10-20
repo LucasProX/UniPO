@@ -6,7 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8080'
+      // ws: true 让 WebSocket 升级请求也走代理，否则开发环境连不上 /api/v1/realtime/ws
+      '/api': { target: 'http://localhost:8080', ws: true }
     }
   }
 });

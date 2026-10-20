@@ -107,13 +107,14 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 
 ## 7. 实时化
 
-现状：会话列表 3s、当前会话 1.8s、心跳 10s 轮询。
+现状（2026-10-20 更新）：**WebSocket 已上线**，轮询保留为兜底。
 
-建议：**SSE 优先**。
-- 服务端 `SseEmitter` / WebFlux，事件：`message.new` / `conversation.updated` / `unread.count` / `post.new`。
-- Web 与 App 都能用（App 用 http 流，断线重连 + `Last-Event-ID` 补发）。
-- 写操作仍走 REST。
-- 只有在需要双向低延迟（如正在输入、语音）时才上 WebSocket。
+- 端点 `WS /api/v1/realtime/ws`；协议见 [`docs/API.md`](API.md) §10.1。
+- 鉴权：浏览器用 httpOnly Cookie（握手自动带），App 连上后发 `auth` 帧带 Bearer——
+  不把 token 塞 query，避免进日志/历史。
+- 断线续传：事件带全局 `seq`，重连带 `lastEventId`，服务端从 Redis Stream 补最近 100 条。
+- Web 与 App 共用同一套协议；写操作仍走 REST。
+- 多实例：Redis Pub/Sub 广播；再大再拆独立连接网关。
 
 ## 8. 上传
 

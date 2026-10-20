@@ -226,25 +226,44 @@
 | `authApi.login / me / heartbeat / logout` | `/api/auth/**` |
 | `userApi.profile / stats / checkIn` | `/api/users/me/**` |
 | `mediaApi.upload` | `POST /api/media/upload` |
-| 消息推送长连接 | `GET /api/v1/realtime/stream`（SSE；连上先收 `event: ready`，新私信是 `event: message`） |
-| 会话兜底轮询 | `GET /api/messages/conversations`（3s，SSE 连上后不发请求） |
+| 消息推送长连接 | `WS /api/v1/realtime/ws`（WebSocket；连上先收 `ready`，新私信是 `event: message`） |
+| 会话兜底轮询 | `GET /api/messages/conversations`（3s，WS 连上后不发请求） |
 | 当前会话兜底轮询 | `GET /api/messages/conversations/{id}/messages`（1.8s，同上） |
 
 > `api.ts` 里的 `localApi` 在 DEV 且同源请求失败时直连 `http://127.0.0.1:8080/api`，仅用于本地调试。
 
-### 10.1 消息推送（SSE）
+### 10.1 消息推送（WebSocket）
 
-`GET /api/v1/realtime/stream`，`Accept: text/event-stream`，**要登录**（未登录是 401 JSON，不会给一条假连接）。
+`WS /api/v1/realtime/ws`（开发环境走 Vite 代理，`ws: true`）。JSON 文本帧。
 
-| 事件 | 时机 | data |
+**鉴权**（两种，任选其一）：
+
+- 浏览器：握手自动带 httpOnly 会话 Cookie（`unipo_sid`），握手拦截器直接解析出用户；
+- App / 脚本：连上后发 `{"type":"auth","token":"<access token>"}`。没认证成功的连接只收到 `auth-required` / `error`。
+
+**客户端 → 服务端**
+
+| type | 字段 | 说明 |
 |---|---|---|
-| `ready` | 连接建立 | `{"userId":59}` |
-| `message` | 收到新私信 | `{"conversationId":36,"message":{...MessageView}}` |
+| `auth` | `token` | Bearer 登录（有 Cookie 时不需要） |
+| `resume` | `lastEventId` | 断线重连后续传，服务端补发该序号之后最多 100 条 |
+| `ping` | — | 应用层心跳，服务端回 `pong` |
+| `ack` | `seq` | 客户端确认已渲染（当前只记日志，不做服务端重发） |
 
-- 每 20 秒一条 `:` 注释心跳（代理不会把空闲连接回收），连接 30 分钟由服务端关闭、前端指数退避重连（1s → 30s 封顶）。
-- 浏览器原生 `EventSource` 不能带 `Authorization`，前端用 fetch + ReadableStream 读同一条流（`frontend/src/lib/realtime.ts`），**不要把 token 塞进 query**。
-- 推送只是加速通道：SSE 断开时前端自动退回原有轮询，离线消息仍靠 `/messages/unread-count` 拉。
-- 多实例限制：emitter 存在本进程内存，A 实例发的消息推不到连在 B 实例的客户端（同 `STATE_BACKEND=memory` 那类问题）。多副本要先给 `RealtimeHub.publish` 接 Redis 频道。
+**服务端 → 客户端**
+
+| type | 字段 | 说明 |
+|---|---|---|
+| `ready` | `userId, ts` | 认证成功、可以收事件 |
+| `event` | `event, seq, ts, payload` | 业务事件；目前只有 `message` |
+| `pong` | `ts` | 心跳响应 |
+| `error` | `code, message` | 统一错误码（如 `AUTH_UNAUTHENTICATED`） |
+
+- 事件带全局自增 `seq`，客户端记住它；重连带 `lastEventId` 就能补上断线期间的消息。
+- 心跳：客户端 25 秒发一次 `ping`，60 秒收不到 `pong` 主动重连（半开连接检测）。
+- 多实例：事件先落 Redis Stream（每用户最近 500 条），再经 Redis Pub/Sub 广播给所有实例；
+  单机则是进程内回调。切换只由 `STATE_BACKEND` 决定，业务代码不变。
+- 推送只是加速通道：WS 断开时前端自动退回原有轮询，离线消息仍靠 `/messages/unread-count` 拉。
 
 ## 11. 已知不一致
 
