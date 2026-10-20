@@ -78,6 +78,10 @@ docker compose up -d --build
 - **时间**：数据库存 `LocalDateTime`（MySQL `DATETIME` 无时区），**接口一律返回 `OffsetDateTime`**（ISO-8601 带偏移，如 `2026-10-19T15:22:01+08:00`）。转换只走 `config/AppTime.java` 的两个方向：出参 `AppTime.toOffset(...)` 在 DTO 的 `from()` 里，入参 `AppTime.toLocal(...)` 在 Service 落库前。解释时区由 `app.time-zone`（`APP_TIME_ZONE`，默认 `Asia/Shanghai`）显式决定，**不要依赖 JVM 默认时区**。
 - **版本化**：Controller 同时挂在 `/api` 与 `/api/v1` 两个前缀下（`security/ApiVersionPrefixFilterConfig.java` 把 `/api/v1/**` 改写成 `/api/**`，`SecurityConfig` 白名单只需维护一份）。前端已切到 `/api/v1`；`/api` 保留兼容，观察 2 个版本后下线。**`/api/v1` 的演进只做加法**：加字段、加端点不升版本，删字段/改语义/改类型才升 `v2`。
 - **分页（强制游标）**：新端点用 `GET /api/v1/posts/page?tab=&cursor=&limit=`，返回 `{items, nextCursor, hasMore, limit}`；`limit` 默认 20、上限 50。游标编码上一页最后一条的**完整排序键**（pinned/official/dontMiss/likeCount/commentCount/publishedAt/id），不要只用 id——排序按热度排，id 小的可能排在 id 大的前面。非法游标返回 400。
+- **注册/登录的「账号」不是邮箱**：`RegisterRequest` / `LoginRequest` 里字段名叫 `email`（沿用 `users.email` 列），但**不校验邮箱格式**，可以是任意字符串；`account` / `username` 是它的 JSON 别名，App 端可以直接传。
+  - 注册只强制两件事：账号非空且不重名、密码非空。`nickname` 不填就用账号；`confirmPassword`、`verificationCode` 都可选。
+  - `verificationCode` **只在 `mock-accept-any-code=false`（真实环境）时才校验**，开发环境留空直接注册。
+  - **密码上限是 72 字节，不是 72 个字符**：BCrypt 的有效输入只有 72 字节，超出会被静默忽略（两个不同的长密码可能算出同一个哈希）。`AuthService.assertPasswordAcceptable()` 显式拒绝超长，不要改成截断。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。

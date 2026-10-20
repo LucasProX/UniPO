@@ -51,17 +51,30 @@ public class AuthService implements CommandLineRunner {
     @Transactional
     public AuthDtos.AuthResponse register(AuthDtos.RegisterRequest request) {
         String email = normalizeEmail(request.email());
-        if (!request.password().equals(request.confirmPassword())) {
+        if (email.isBlank()) {
+            throw new IllegalArgumentException("请输入账号");
+        }
+        // confirmPassword 可选：给了就必须一致，没给就跳过。
+        if (request.confirmPassword() != null && !request.confirmPassword().isEmpty()
+                && !request.password().equals(request.confirmPassword())) {
             throw new IllegalArgumentException("两次输入的密码不一致");
         }
+        assertPasswordAcceptable(request.password());
+        // 『账号』唯一即可，不校验邮箱格式：开发阶段要能随手建测试号。
         if (findByEmail(email) != null) {
-            throw new IllegalArgumentException("该邮箱已注册");
+            throw new IllegalArgumentException("该账号已被注册");
         }
+        // nickname 可选，不填就用账号本身（此时唯一性由上面的账号判重保证）。
         String nickname = normalizeNickname(request.nickname());
+        if (nickname.isBlank()) {
+            nickname = email;
+        }
         if (findByNickname(nickname) != null) {
             throw new IllegalArgumentException("该用户名已被占用");
         }
-        verificationService.verifyCode(email, "register", request.verificationCode());
+        if (verificationRequired()) {
+            verificationService.verifyCode(email, "register", request.verificationCode());
+        }
         LocalDateTime now = LocalDateTime.now();
         User user = new User();
         user.setEmail(email);
@@ -87,6 +100,36 @@ public class AuthService implements CommandLineRunner {
         String token = jwtService.createToken(new CurrentUser(user.getId(), user.getEmail(), user.getRole()));
         presenceService.markOnline(user.getId());
         return new AuthDtos.AuthResponse(token, UserProfile.from(user, preference, true));
+    }
+
+    /**
+     * 验证码是不是真的需要校验。mock 模式（本地开发）下为 false —— 注册不必先去收验证码。
+     */
+    private boolean verificationRequired() {
+        return properties.verification() != null && !properties.verification().mockAcceptAnyCode();
+    }
+
+    /**
+     * 密码长度校验。
+     *
+     * <p>下限：mock 模式（开发）下 1 位即可，方便随手建测试号；真实环境仍是 6 位。
+     *
+     * <p>上限：**BCrypt 的有效输入只有 72 字节**，超出部分会被静默忽略（等于两个不同的长密码
+     * 可能算出同一个哈希）。这里显式拒绝而不是截断，免得埋一个看不出来的坑。
+     */
+    private void assertPasswordAcceptable(String password) {
+        if (password == null || password.isEmpty()) {
+            throw new IllegalArgumentException("请输入密码");
+        }
+        int min = verificationRequired() ? 6 : 1;
+        if (password.length() < min) {
+            throw new IllegalArgumentException("密码至少 " + min + " 位");
+        }
+        int bytes = password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        if (bytes > 72) {
+            throw new IllegalArgumentException(
+                    "密码太长：最多 72 字节（约 72 个英文字符或 24 个汉字），当前 " + bytes + " 字节");
+        }
     }
 
     public void requestVerificationCode(AuthDtos.VerificationRequest request) {
@@ -124,14 +167,18 @@ public class AuthService implements CommandLineRunner {
     @Transactional
     public void resetPassword(AuthDtos.ResetPasswordRequest request) {
         String email = normalizeEmail(request.email());
-        if (!request.password().equals(request.confirmPassword())) {
+        if (request.confirmPassword() != null && !request.confirmPassword().isEmpty()
+                && !request.password().equals(request.confirmPassword())) {
             throw new IllegalArgumentException("两次输入的密码不一致");
         }
+        assertPasswordAcceptable(request.password());
         User user = findByEmail(email);
         if (user == null) {
-            throw new IllegalArgumentException("该邮箱尚未注册");
+            throw new IllegalArgumentException("该账号尚未注册");
         }
-        verificationService.verifyCode(email, "reset-password", request.verificationCode());
+        if (verificationRequired()) {
+            verificationService.verifyCode(email, "reset-password", request.verificationCode());
+        }
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);

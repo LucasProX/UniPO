@@ -108,21 +108,21 @@ function close() {
                         v-model="authForms.register.nickname"
                         class="field auth-field__input"
                         :class="authErrors.register.nickname ? 'field--error' : ''"
-                        placeholder="请输入用户名"
+                        placeholder="选填，默认与账号相同"
                         type="text"
                         autocomplete="nickname"
                         data-testid="register-nickname"
                       />
                     </label>
                     <label class="auth-field">
-                      <span>绑定邮箱</span>
+                      <span>账号</span>
                       <div class="auth-split-row">
                         <input
                           v-model="authForms.register.email"
                           class="field auth-field__input"
                           :class="authErrors.register.email ? 'field--error' : ''"
-                          placeholder="请输入邮箱"
-                          type="email"
+                          placeholder="任意字符串，不重名即可"
+                          type="text"
                           autocomplete="email"
                           data-testid="register-email"
                         />
@@ -139,7 +139,7 @@ function close() {
                         v-model="authForms.register.verificationCode"
                         class="field auth-field__input"
                         :class="authErrors.register.verificationCode ? 'field--error' : ''"
-                        placeholder="请输入 4 位验证码"
+                        placeholder="开发环境可留空"
                         inputmode="numeric"
                         maxlength="4"
                         type="text"
@@ -153,7 +153,7 @@ function close() {
                         v-model="authForms.register.password"
                         class="field auth-field__input"
                         :class="authErrors.register.password ? 'field--error' : ''"
-                        placeholder="至少 6 位"
+                        placeholder="开发环境随意，上限 72 字节"
                         type="password"
                         autocomplete="new-password"
                         data-testid="register-password"

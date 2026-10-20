@@ -91,7 +91,7 @@
 
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
-| POST | `/register` | 公开 | 注册，需学校等资料 |
+| POST | `/register` | 公开 | 注册。只需 `email`（账号，任意字符串）+ `password`；`nickname` / `confirmPassword` / `verificationCode` 均可选 |
 | POST | `/login` | 公开 | 邮箱或用户名。`good` / `xiaoba` / `yuanhua` 三个别名只在本地 `seed-demo-data=true` 时有意义 |
 | POST | `/logout` | 登录 | 把 jti 加入内存黑名单 |
 | POST | `/heartbeat` | 登录 | 在线心跳（内存 Map） |

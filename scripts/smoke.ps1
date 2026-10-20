@@ -179,5 +179,34 @@ try {
 if ($tz_ok) { 'PASS time-offset              ' + $tz_sample }
 else { $script:fail++; 'FAIL time-offset              ' + $tz_sample }
 
+# ---- 开发期随手注册：账号 + 密码即可，不要验证码、不要昵称 ----
+$bare = 'bare' + (Get-Random -Maximum 99999)
+$r = CallApi 'POST' "$v1/auth/register" @{ email = $bare; password = '1' } $null
+$bare_ok = $false; $bare_nick = ''
+try {
+  $b = $r.body | ConvertFrom-Json
+  $bare_nick = [string]$b.data.user.nickname
+  $bare_ok = ($r.code -eq '200') -and ($bare_nick -eq $bare)
+} catch {}
+if ($bare_ok) { 'PASS register-minimal        nickname=' + $bare_nick }
+else { $script:fail++; 'FAIL register-minimal        http=' + $r.code }
+
+# 刚建的号能登录（证明真的落库了）
+$r = CallApi 'POST' "$v1/auth/login" @{ account = $bare; password = '1' } $null
+$login_ok = $false
+try { $login_ok = ($r.code -eq '200') -and (($r.body | ConvertFrom-Json).code -eq 'OK') } catch {}
+if ($login_ok) { 'PASS register-minimal-login  ' + $bare }
+else { $script:fail++; 'FAIL register-minimal-login  http=' + $r.code }
+
+# 重名必须被拒（这是唯一的约束）
+$r = CallApi 'POST' "$v1/auth/register" @{ account = $bare; password = 'other' } $null
+if ($r.code -eq '400') { 'PASS register-duplicate      http=400' }
+else { $script:fail++; 'FAIL register-duplicate      http=' + $r.code }
+
+# 密码超过 BCrypt 的 72 字节要明确拒绝，不能静默截断
+$r = CallApi 'POST' "$v1/auth/register" @{ account = ('long' + (Get-Random -Maximum 99999)); password = ('a' * 73) } $null
+if ($r.code -eq '400') { 'PASS register-longpassword   http=400' }
+else { $script:fail++; 'FAIL register-longpassword   http=' + $r.code }
+
 "---- failed checks: $script:fail ----"
 if ($script:fail -gt 0) { exit 1 }
