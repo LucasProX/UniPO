@@ -3539,6 +3539,56 @@ CI 的冒烟 job 里也加了一步：后端起着的时候重新生成一遍，
 
 ---
 
+## 2026-10-20 补上第一套单测和 eslint 基线（以及两个自己写错的断言）
+
+CI 四个 job 早就绿了，但没有一个测试：`mvn -B -DskipTests package` 里 `skipTests` 就是全部测试。
+「CI 绿」只证明代码能编译、能起来、接口能通，不证明 JWT 的两种 token 真的不能混用。
+
+### 先测纯逻辑，不碰数据库
+
+CI 的冒烟 job 已经有一个真 MySQL service，单测再套一层 Spring 上下文只会更慢（每次 8-10 秒起步）。
+所以这 22 个测试全部是纯 JVM：`JwtService`、`ImageSignature`、`AppTime`、`RateLimitService`、三个内存 store。
+它们跑完 0.5 秒，本地改一行就能立刻知道有没有破坏那条安全边界。
+
+### 坑一：`expected: <webp> but was: <image/webp>`
+
+第一次跑 `mvn test` 就红了，报的是 `ImageSignatureTest.recognisesSupportedFormats`。
+第一反应是「签名识别写错了」——去翻 `ImageSignature.detect()`，其实是好的。
+是我自己的断言写错：`assertEquals("webp", ...contentType())`，前面那个应该是 `extension()`。
+教训：**测试红了先看断言，再看被测代码**。这次差一点就把一个没问题的类「修」坏。
+
+### 坑二：`AppTime` 的时区是 static volatile
+
+`AppTime` 做成静态工具是因为 DTO 的 `from()` 是静态工厂、注入不进去，构造函数由 Spring 调一次写进静态字段。
+测试里 `new AppTime("UTC")` 会改全局，于是「UTC 的用例」会把「Asia/Shanghai 的用例」一起带歪。
+加了 `@AfterEach` 复位成 `Asia/Shanghai`——这类「为了可测性给静态状态留后门」的做法，
+如果不复位，后面的用例会以一种完全不相关的方式失败。
+
+### eslint 只开了一小撮规则
+
+没有直接 `extends recommended`：项目代码是手写风格，一次上全量会冒出几百条纯风格告警，
+那种 PR 除了噪音什么都得不到，最后的结果一定是「加个 eslint-disable 关掉」。
+
+现在只开会让运行行为出问题的：`no-debugger` / `no-var` / `prefer-const` / `eqeqeq(smart)` /
+`no-duplicate-case` / `no-unreachable` / `no-unsafe-finally`，`no-await-in-loop` 只 warn。
+跑全量 `src` 的结果是 **0 error 0 warning**，基线干净。
+
+验证方式：往 `src/lib/postHelpers.ts` 和 `src/views/HomeView.vue` 各插一行 `debugger`，
+`npx eslint src` 报 2 条 `no-debugger`（`.ts` 和 `.vue` 都真的被解析了），删掉后回到 0。
+**不验证这一步，就没法确定「0 条」是因为代码干净还是因为文件根本没被 lint 到**——
+eslint 的 flat config 配错 `files` 时，就是这么安静。
+
+### 现在的提交前清单
+
+```text
+npm.cmd run lint     # eslint 基线
+npm.cmd run build    # vue-tsc + vite（含 api-contract 断言）
+mvn test             # 22 个单测
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项
+```
+
+---
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

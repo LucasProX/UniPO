@@ -21,9 +21,9 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: mvn package
+      - name: mvn package（含单元测试）
         working-directory: backend
-        run: mvn -B -DskipTests package
+        run: mvn -B package
 
   frontend:
     name: 前端类型检查与构建
@@ -38,6 +38,9 @@ jobs:
       - name: npm ci
         working-directory: frontend
         run: npm ci
+      - name: npm run lint（eslint 基线）
+        working-directory: frontend
+        run: npm run lint
       - name: npm run build（vue-tsc + vite，类型错会红）
         working-directory: frontend
         run: npm run build

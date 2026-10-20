@@ -46,6 +46,8 @@ cd frontend
 npm.cmd install
 npm.cmd run dev -- --host 127.0.0.1 --port 5173   # vite 代理 /api -> localhost:8080
 npm.cmd run build                                   # vue-tsc -b && vite build，提交前必须绿
+npm.cmd run lint                                    # eslint 基线（no-debugger / no-var / prefer-const 等）
+npm.cmd run gen:api                                 # 后端起着时，重生成 src/api-types.ts（改了后端 DTO 就必跑）
 ```
 本地库（Docker Desktop 必须先运行）：
 ```bash
@@ -55,12 +57,13 @@ docker compose --profile local-db up -d mysql minio   # 3306/12306 + MinIO 9000/
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
+mvn test                                 # 22 个单测（不碰数据库：JWT / 文件头识别 / 时区 / 限流 / 内存 store）
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 # 自动读仓库根的 .env（application.yml:6 的 spring.config.import）
 ```
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 34 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码、refresh token）
 ```
 全栈（需要 Docker）：
 ```bash
@@ -167,9 +170,11 @@ docker compose up -d --build
   只有「A 实例退出登录，B 实例还认这个 token」「A 限流拦住了，B 还在放行」这种表现。
   起多副本时必须 `STATE_BACKEND=redis` + `docker compose --profile redis up -d`；
   本地也实测过一遍：两个实例共用 Redis 时 401 / 429 都能跨实例生效，memory 模式下不能。
-- **CI 有了，测试和 lint 还没有**：`.github/workflows/ci.yml` 跑 mvn package / npm ci + build / 脚本换行自查 / 真 MySQL 起服务的接口冒烟。
-  但它**不能代替本地 `smoke.ps1`**——34 项全链路检查（含上传、游标分页、时区、注册验证码）只有 Windows 上那一份，CI 里没跑。
-  提交前仍然要：`npm.cmd run build` 绿 + `mvn -DskipTests package` 绿 + `smoke.ps1` 34/34。
+- **CI 有测试和 lint 了（2026-10-20），但 `smoke.ps1` 还是只在 Windows 上跑**：`.github/workflows/ci.yml` 跑
+  `mvn -B package`（含 22 个单测）/ `npm ci` + `npm run lint` + `npm run build` / 脚本换行自查 /
+  真 MySQL 起服务的接口冒烟 / 重生成 `api-types.ts` 后 `git diff --exit-code`。
+  但它**不能代替本地 `smoke.ps1`**——37 项全链路检查（含上传、游标分页、时区、注册验证码、refresh token）只有 Windows 上那一份，CI 里没跑。
+  提交前仍然要：`npm.cmd run lint` + `npm.cmd run build` 绿 + `mvn test` 绿 + `smoke.ps1` 37/37。
   改 workflow 后先在本地跑 `actionlint .github/workflows/ci.yml`——GitHub 的 YAML 报错要到网页 logs 里看，
   而「解析就失败」的那种 run 连 job 都没有（`total_count == 0`、`created_at == updated_at`），没有 logs 可看。
 - **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。

@@ -139,7 +139,10 @@ JWT 默认 secret 已删（见 **R-5**）。
 | Q-5 🔶 | ~~无 CI~~ **CI 已加并跑绿（2026-10-20）** | `.github/workflows/ci.yml` 四个 job，GitHub Actions run `39360886056` **4/4 全绿**：
 `后端编译`（mvn package）/ `前端类型检查与构建`（npm ci + npm run build，vue-tsc 抓类型错）/ `脚本与换行自查`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
 `启动 + 接口冒烟`（真 MySQL 8.4 service + 起 jar + health/feed 游标/登录拿 token/带 token 调用/405/404 六条断言）。
-**还没有**：后端单测、前端 eslint/prettier、CI 里跑完整 `smoke.ps1`（依赖 Windows PowerShell + `curl.exe`，要移植成 bash） |
+**已补（2026-10-20）**：后端单测 **22 个**（`backend/src/test/java/`：JWT 两种 token 不可混用 + 短密钥拒签 + 过期拒收、
+图片文件头识别 + HTML/SVG 拒绝、时区边界、限流窗口/fail-open、三个内存 store），CI 的 `后端编译` job 改成 `mvn -B package`（跑测试）；
+前端加了 **eslint 基线**（`frontend/eslint.config.js`，只开 no-debugger / no-var / prefer-const / eqeqeq 等一小撮，`npm run lint`），CI `前端` job 加一步。
+**故意没上**：官方 recommended（几百条纯风格告警）、prettier（会和现有手写风格打架）、CI 里跑完整 `smoke.ps1`（依赖 Windows PowerShell + `curl.exe`，要移植成 bash） |
 | Q-6 ✅ | ~~类型手写，与后端 DTO 已漂移~~ **已上契约（2026-10-20）** | `npm run gen:api` 用 `openapi-typescript` 把 `/v3/api-docs` 生成到
 `frontend/src/api-types.ts`；`frontend/src/api-contract.ts` 用类型断言要求手写 `types.ts` 与生成类型字段名/类型完全一致，
 `npm run build` 不过就是漂移；CI 冒烟 job 会重生成并 `git diff --exit-code`。
