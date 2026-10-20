@@ -239,6 +239,7 @@ docker compose up -d --build
 5. ~~清理 notices 遗留域~~ ✅ **已完成（2026-10-20）**：删掉 19 个 Java 文件 + 5 张表 + `comments.notice_id`，`InteractionController` / `NoticeController` / `CommentController` 整体下线，`AdminService` 概览改按 posts 口径。详见 DEVLOG 同名条目。
 
 ## 10. 文档索引
+- [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md) — **产品定位、核心机制、冷启动、路线图（改产品方向前先读）**
 - `docs/ARCHITECTURE.md` — 系统架构、请求链路、数据模型
 - `docs/API.md` — 完整接口清单与调用约定
 - `docs/ISSUES.md` — 问题分级、证据、修复建议
