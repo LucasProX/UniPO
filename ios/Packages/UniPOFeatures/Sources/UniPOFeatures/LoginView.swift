@@ -78,26 +78,30 @@ struct LoginView: View {
             LoginBackground(reduceMotion: reduceMotion)
                 .onTapGesture { focusedField = nil }
 
-            VStack(spacing: 0) {
-                topBar
-                Spacer(minLength: 8)
-                brand
-                Spacer(minLength: 18)
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    topBar
+                    Spacer(minLength: 8)
+                    brand
+                    Spacer(minLength: 18)
 
-                Group {
-                    if mode == .oneTap, let devicePhone {
-                        oneTapContent(number: devicePhone)
-                    } else {
-                        phoneContent
+                    Group {
+                        if mode == .oneTap, let devicePhone {
+                            oneTapContent(number: devicePhone)
+                        } else {
+                            phoneContent
+                        }
                     }
-                }
-                .padding(.horizontal, 28)
+                    .padding(.horizontal, 28)
+                    // 只有「一键登录」整体上移 10% 屏高；手机号表单更高，保持原位避免压到标题。
+                    .offset(y: (mode == .oneTap && devicePhone != nil) ? -proxy.size.height * 0.10 : 0)
 
-                Spacer(minLength: 18)
-                agreementRow
-                footer
+                    Spacer(minLength: 18)
+                    agreementRow
+                    footer
+                }
+                .padding(.bottom, 14)
             }
-            .padding(.bottom, 14)
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -183,7 +187,7 @@ struct LoginView: View {
                 .foregroundStyle(.white)
                 .tracking(1)
 
-            Text("大学四年，别输在信息差上")
+            Text("大学生活缤纷多彩，开始探索吧")
                 .font(.uniBody(13))
                 .foregroundStyle(.white.opacity(0.5))
         }
