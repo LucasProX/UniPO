@@ -1,6 +1,8 @@
 package com.biecuoguo.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,12 +29,25 @@ public class RealtimeHub {
     private final RealtimeBroker broker;
     private final RealtimeStore store;
     private final ObjectMapper objectMapper;
+    private final Counter publishedCounter;
+    private final Counter deliveredCounter;
+    private final Counter failedCounter;
 
-    public RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper) {
+    public RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper,
+                       MeterRegistry meterRegistry) {
         this.broker = broker;
         this.store = store;
         this.objectMapper = objectMapper;
+        this.publishedCounter = meterRegistry.counter("unipo.realtime.events.published");
+        this.deliveredCounter = meterRegistry.counter("unipo.realtime.events.delivered");
+        this.failedCounter = meterRegistry.counter("unipo.realtime.events.delivery.failed");
+        // 在线连接数：Gauge 直接读 map，避免自己维护一个会漂移的计数器。
+        meterRegistry.gauge("unipo.realtime.connections", connections, RealtimeHub::countConnections);
         broker.subscribe(this::deliverLocal);
+    }
+
+    private static double countConnections(Map<Long, Set<RealtimeConnection>> map) {
+        return map.values().stream().mapToInt(Set::size).sum();
     }
 
     /** 一条本地连接。sink 收到的是已经序列化好的 JSON 帧。 */
@@ -47,6 +62,7 @@ public class RealtimeHub {
         long seq = store.nextSeq();
         RealtimeEvent realtimeEvent = new RealtimeEvent(seq, event, System.currentTimeMillis(), payload);
         store.append(userId, realtimeEvent);
+        publishedCounter.increment();
         broker.publish(new RealtimeBroker.BrokerMessage(userId, realtimeEvent));
     }
 
@@ -68,8 +84,10 @@ public class RealtimeHub {
         for (RealtimeConnection connection : targets) {
             try {
                 connection.send(json);
+                deliveredCounter.increment();
             } catch (RuntimeException error) {
                 // 客户端断开是常态，摘掉即可，别让它污染别的连接
+                failedCounter.increment();
                 remove(connection);
                 log.debug("realtime delivery drop user={}", message.userId());
             }

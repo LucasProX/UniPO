@@ -84,6 +84,16 @@ mvn test                                 # 22 个单测（不碰数据库：JWT 
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 # 自动读仓库根的 .env（application.yml:6 的 spring.config.import）
 ```
+可观测性：
+```bash
+curl -s http://127.0.0.1:8080/actuator/health/readiness
+curl -s http://127.0.0.1:8080/actuator/prometheus | grep unipo_
+docker compose --profile observability up -d prometheus   # 仅需要看指标时
+```
+自定义指标：`unipo.realtime.connections`（Gauge）、`unipo.realtime.events.published/delivered/delivery.failed`、
+`unipo.ratelimit.blocked{rule=...}`；HTTP/JVM 指标由 Micrometer 自动提供。
+**不要把 requestId 做成指标 tag**（基数会爆炸），它只在日志 MDC 里。
+
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码、refresh token）

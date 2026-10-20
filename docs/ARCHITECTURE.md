@@ -26,7 +26,7 @@
 | 会话滑动过期 / 退出所有设备 | ✅ 已完成（`SessionStore` memory / redis 双实现） |
 | WebSocket 实时通道 | ✅ 已完成（auth / resume / 心跳；Redis Stream + Pub/Sub） |
 | 模块化拆包 + ArchUnit | 🔄 规则已立（9 条边界测试）；**media、message 完整迁移；taxonomy、post 部分迁移**，其余按 ADR-0002 继续 |
-| 可观测性（metrics / 告警） | ⏳ 只做到 requestId + 健康检查 |
+| 可观测性（metrics / 告警） | 🔄 已接 Micrometer + `/actuator/prometheus`、liveness/readiness、自定义业务指标；Prometheus 走 compose `observability` profile。**Grafana 面板与告警规则未做** |
 
 ## 1. 拓扑
 

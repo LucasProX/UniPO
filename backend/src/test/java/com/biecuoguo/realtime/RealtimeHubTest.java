@@ -1,6 +1,7 @@
 package com.biecuoguo.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -17,7 +18,7 @@ class RealtimeHubTest {
 
     private final MemoryRealtimeStore store = new MemoryRealtimeStore();
     private final LocalRealtimeBroker broker = new LocalRealtimeBroker();
-    private final RealtimeHub hub = new RealtimeHub(broker, store, new ObjectMapper());
+    private final RealtimeHub hub = new RealtimeHub(broker, store, new ObjectMapper(), new SimpleMeterRegistry());
 
     @Test
     void publishWithoutConnectionIsNoopAndStillStored() {

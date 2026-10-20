@@ -2,6 +2,8 @@ package com.biecuoguo.web;
 
 import com.biecuoguo.service.RateLimitService;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -58,13 +60,15 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final ObjectMapper objectMapper;
     private final boolean enabled;
     private final boolean trustForwardedFor;
+    private final MeterRegistry meterRegistry;
 
     public RateLimitFilter(RateLimitService rateLimitService, ObjectMapper objectMapper,
-                          boolean enabled, boolean trustForwardedFor) {
+                          boolean enabled, boolean trustForwardedFor, MeterRegistry meterRegistry) {
         this.rateLimitService = rateLimitService;
         this.objectMapper = objectMapper;
         this.enabled = enabled;
         this.trustForwardedFor = trustForwardedFor;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -87,6 +91,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
         log.warn("Rate limit hit. rule={}, ip={}, path={}, retryAfter={}s",
                 rule.name(), ip, request.getRequestURI(), result.retryAfterSeconds());
+        // 命中率是「限流规则是否合理」的唯一客观指标：某个 rule 一直涨，要么是攻击，要么阈值太低。
+        Counter.builder("unipo.ratelimit.blocked")
+                .tag("rule", rule.name())
+                .register(meterRegistry)
+                .increment();
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setHeader("Retry-After", String.valueOf(result.retryAfterSeconds()));
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);

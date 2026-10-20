@@ -56,11 +56,26 @@ mybatis-plus:
     db-config:
       id-type: auto
 
+# 日志里固定带 requestId：线上排查时用户给一个 requestId 就能把所有相关日志串起来。
+# 格式刻意保持单行、可 grep；接 Loki/ELK 时再换 JSON encoder。
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{requestId:-}] %-40.40logger{39} : %m%n"
+
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        # prometheus 走内网 scrape；Caddy 只反代 /api，不会把它暴露到公网。
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # kubernetes 风格的 /health/liveness 与 /health/readiness；单机也用得上（部署脚本探活）。
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: unipo
   # 关掉 mail 健康检查。只要 spring.mail.host 这个键存在（哪怕值是空串），
   # Spring 就会创建 JavaMailSender 并注册 MailHealthIndicator；没配 SMTP 时它连不上，
   # 会把 /actuator/health 拖成 DOWN —— 容器健康检查和部署全挂。

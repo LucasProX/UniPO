@@ -71,6 +71,23 @@ services:
       # 默认只绑本机：生产用的 redis 不该暴露到公网。
       - "${REDIS_PUBLIC_BIND:-127.0.0.1}:${REDIS_PUBLIC_PORT:-6379}:6379"
 
+  # 指标采集（可观测性）。只在需要看监控时拉起：
+  #   docker compose --profile observability up -d prometheus
+  # 单机部署也不额外占常驻资源——不启这个 profile 就完全不跑。
+  prometheus:
+    image: ${DOCKER_REGISTRY:-}prom/prometheus:latest
+    container_name: unipo-prometheus
+    profiles:
+      - observability
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - unipo_prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PUBLIC_BIND:-127.0.0.1}:${PROMETHEUS_PUBLIC_PORT:-9090}:9090"
+    depends_on:
+      - backend
+
   backend:
     build:
       context: ./backend
@@ -165,6 +182,7 @@ services:
         condition: service_started
 
 volumes:
+  unipo_prometheus_data:
   unipo_mysql_data:
   unipo_redis_data:
   unipo_minio_data:

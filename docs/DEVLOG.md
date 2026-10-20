@@ -4049,6 +4049,34 @@ PostService 和实体/Mapper 原地不动。这样边界规则（post.internal �
 
 验证：mvn test 42 绿；smoke 发帖/评论/点赞/收藏/v1 分页全 200；CI 全绿。
 
+## 2026-10-20 可观测性第一版：先把「有没有在跑、跑得怎么样」变成数字
+
+基础建设做到可观测性。目标不是一次性上齐 Grafana/Loki/Tempo，而是先让三件事成立：
+
+1. **活着吗**：/actuator/health + liveness/readiness（部署脚本和容器健康检查要分得清
+   「进程还在」和「能接流量」）。
+2. **跑得怎么样**：HTTP/JVM 指标由 Micrometer 自动给；业务侧补了四个：
+   - unipo.realtime.connections（Gauge，直接读连接 map，不自己维护会漂移的计数器）
+   - unipo.realtime.events.published / delivered / delivery.failed（Counter）
+   - unipo.ratelimit.blocked{rule=...}（Counter，命中率是限流阈值是否合理的唯一客观依据）
+3. **出了问题能串起来**：日志 pattern 固定带 %X{requestId}，用户给一个 id 就能 grep 出整条链路。
+
+几个刻意的取舍：
+
+- **没有把 requestId 做成指标 tag**。那会让时间序列基数爆炸（每个请求一个 tag），
+  Prometheus 直接被打爆。requestId 只属于日志，不属于指标。
+- **日志先不换 JSON**。现在是单行文本 + requestId，grep 足够；接 Loki/ELK 时再换 encoder，
+  否则本地开发看日志会变得难读。真要做结构化，用 logstash-logback-encoder 或等 Boot 3.4 的
+  logging.structured，不要手写 JSON 拼字符串。
+- **Prometheus 走独立的 compose profile**（observability），默认不起。单机部署不应该为了
+  「可能要看监控」常驻一个 200MB 的进程；需要时一条命令拉起来。
+
+踩到的一个环境问题：docker.m.daocloud.io 对 prom/prometheus 返回 403（镜像加速只覆盖部分
+library 镜像）。compose 里支持 DOCKER_REGISTRY 覆盖，用 DOCKER_REGISTRY= docker compose ... 直连
+Docker Hub 即可。同样的坑以后拉 grafana/loki 也会遇到。
+
+还没做：Grafana 面板、告警规则、慢查询日志、链路追踪。先把指标暴露出来，等有真实流量再定阈值。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

@@ -3,6 +3,7 @@ package com.biecuoguo.web;
 import com.biecuoguo.service.RateLimitService;
 import com.biecuoguo.state.RateLimitStore;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -30,10 +31,11 @@ public class RateLimitFilterConfig {
     FilterRegistrationBean<RateLimitFilter> rateLimitFilterRegistration(
             RateLimitService rateLimitService,
             ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
             @Value("${app.rate-limit.enabled:true}") boolean enabled,
             @Value("${app.rate-limit.trust-forwarded-for:false}") boolean trustForwardedFor) {
         FilterRegistrationBean<RateLimitFilter> registration = new FilterRegistrationBean<>(
-                new RateLimitFilter(rateLimitService, objectMapper, enabled, trustForwardedFor));
+                new RateLimitFilter(rateLimitService, objectMapper, enabled, trustForwardedFor, meterRegistry));
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 2);
         registration.addUrlPatterns("/*");
         return registration;
