@@ -243,6 +243,98 @@ PowerShell 5.1 对行尾很敏感，而且报错信息完全不指向真正的�
 
 ---
 
+## 2026-10-20 三个安全漏洞：默认值是最贵的决定
+
+这次清 R-1 / R-2 / R-3，三条都是同一类问题：**代码写了「这是个开关」，但默认值是危险的那一侧。**
+
+R-1 是验证码。`application.yml` 里写的是 `${VERIFICATION_MOCK_ACCEPT_ANY_CODE:true}` ——
+冒号后面那个 `true` 就是默认值。也就是说，只要没人显式设这个环境变量（而绝大多数部署都不会设），
+验证码校验就是「任意 4 位数字通过」。任何人都能用任意邮箱注册，然后走 `reset-password` 接管账号。
+
+R-2 是三个演示账号。`AuthService.run()` 每次启动都无条件创建 `good` / `xiaoba` / `yuanhua`，
+密码跟用户名一样。这不是「测试代码忘了删」——它是正经写在 `CommandLineRunner` 里的启动逻辑，
+所以生产环境照样会执行。
+
+R-3 最离谱：每次启动 `admin.setPasswordHash(encode(BOOTSTRAP_ADMIN_PASSWORD))`。
+compose 里 `BOOTSTRAP_ADMIN_PASSWORD` 的默认值是 `Admin@123456`。所以哪怕管理员上线第一天就改了密码，
+下次重启又变回 `Admin@123456`。**改密码这个操作在这个系统里是无效的。**
+
+### 当时怎么想的
+
+第一版我打算只改默认值：把 `true` 改成 `false`，本地 profile 再写回 `true`。这确实能解决 90% 的场景。
+
+但我停下来想了一下：**「记得别在生产打开」这种约束，靠什么保证？**
+答案是靠人记得。而人一定会忘 —— 尤其是半年后有个紧急问题，有人在服务器上 `export` 一堆环境变量调试，
+顺手把 `VERIFICATION_MOCK_ACCEPT_ANY_CODE=true` 也带上了，然后再也没删。
+
+打一条 WARN 也没用。启动日志几百行，没人看；就算看到了，也不会为了一个黄色警告停下来。
+
+所以最后加的是 `config/StartupSafetyGuard.java`：非 `local/dev/test` profile 下，只要这两个开关有一个是 true，
+**直接抛异常让进程起不来**。效果是：
+
+```
+java.lang.IllegalStateException: 拒绝启动：当前 profile=[] 不是开发环境，
+但开启了危险开关 [app.verification.mock-accept-any-code=true]。...
+```
+
+这个决定的逻辑是：**一个静默的安全漏洞，比一个起不来的服务危险得多。**
+服务起不来，五分钟内就有人来找你；漏洞静默存在，可能要等半年后某个陌生邮箱注册进来才发现。
+
+### 为什么用 @PostConstruct 而不是 ApplicationRunner
+
+第一版我把检查写成了 `ApplicationRunner`，跟 `AuthService` 一样。写完突然意识到不对：
+`ApplicationRunner` 是容器初始化**完成之后**才跑的，那时候 `AuthService` 已经把演示账号和
+重置过的管理员密码写进库了。检查跑在写库之后，等于没检查。
+
+改成 `@PostConstruct`，在 bean 初始化阶段就拦住，早于任何 `ApplicationRunner`。
+这种「执行顺序」的坑很容易漏，因为两个写法看起来都是「启动时跑一下」。
+
+### R-3 真正的修法不是「加个判断」
+
+我一开始想的是「那就在 setPasswordHash 前加个 `if (admin.getPasswordHash() == null)`」。
+但读了一遍那段代码发现，它不只是改密码 —— 它把 nickname、avatar、level、xp、status 全部重写了一遍，
+然后无条件 `updateById`。也就是说：**管理员在后台改的昵称和头像，也会在下次重启时被悄悄改回去。**
+
+所以正确的修法是把整个块拆成两个分支：
+
+- `admin == null`：首次创建，bootstrap 配置全部生效。
+- `admin != null`：只补真正缺的字段（`publicUid` / `role` / `status`），用一个 `dirty` 标志决定要不要写库；
+  密码、昵称、头像一律不碰。
+
+验证方式我想了个比较硬的：BCrypt 每次 `encode()` 都会生成新的随机盐，所以只要重新编码过，
+哈希串一定变。于是重启前后各查一次 `password_hash`：
+
+```
+BEFORE: $2a$10$H8E2fa0U3Wp1syVQRPIyw.3NFbR47lkpvZpiROOFr.ob8yKrerLv2  2026-10-20 09:08:12
+AFTER:  $2a$10$H8E2fa0U3Wp1syVQRPIyw.3NFbR47lkpvZpiROOFr.ob8yKrerLv2  2026-10-20 09:08:12
+```
+
+完全一致 → 证明真的没重新写库。这比「登录还能成功」强，因为密码没变的情况下登录本来就会成功，
+那种验证根本区分不出「没改」和「改成了同一个值」。
+
+### 一个没绕过去的坑
+
+验证演示账号登录的时候，我用 curl 发 JSON 一直返回 400 `VALIDATION_FAILED`。
+查了半天以为是 DTO 字段名错了（`account` 还是 `email`），改成 `email` 还是 400。
+
+真正原因是 **PowerShell 5.1 传给原生程序的参数会剥掉内层双引号**。
+`-d '{"email":"..."}'` 传到 curl 手上变成了 `{email:...,password:...}`，不是合法 JSON，
+于是 `HttpMessageNotReadableException` → 400。
+
+这个坑以前在 smoke 脚本里踩过（当时的解法是 `--data-binary "@$file"`），这次又踩了一遍。
+最后把 JSON 写进临时文件，用 `--data-binary $arg` 才通过。
+
+→ **以后在 PowerShell 里给 curl 传 JSON，一律走文件，不要内联。**
+
+### 还剩什么
+
+R-1 其实只修了一半。默认值翻了、启动拦截加了，但**真实发邮件的通道还没接**。
+现在 `mock=false` 的话，验证码只会被 `System.out.printf` 打到日志里，用户根本收不到。
+所以严格说，R-1 现在是「安全但不能用」—— 要真正上线必须接 SMTP / Resend / SES。
+这一点我写进 `docs/ISSUES.md` 了，免得下次以为已经完事。
+
+---
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

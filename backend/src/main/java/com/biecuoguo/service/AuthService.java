@@ -173,9 +173,15 @@ public class AuthService implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) {
-        ensureGoodUser();
-        ensureMockOperator(XIAOBA_EMAIL, XIAOBA_PASSWORD, "24052002", "校霸情报台", "https://api.dicebear.com/8.x/initials/svg?seed=XB", "SCHOOL_OPERATOR", "school", 88, 3560);
-        ensureMockOperator(YUANHUA_EMAIL, YUANHUA_PASSWORD, "24052003", "计院院花", "https://api.dicebear.com/8.x/initials/svg?seed=YH", "COLLEGE_OPERATOR", "college", 72, 2880);
+        // 演示账号（good / xiaoba / yuanhua）默认不写。以前这里无条件执行——
+        // 等于任何人拿到源码就知道生产上有三个弱口令账号能直接登录。
+        // 现在由 app.bootstrap.seed-demo-data 控制：本地 profile 打开，生产默认关闭，
+        // 而且在生产 profile 下打开会被 StartupSafetyGuard 直接拒绝启动。
+        if (properties.bootstrap() != null && properties.bootstrap().seedDemoData()) {
+            ensureGoodUser();
+            ensureMockOperator(XIAOBA_EMAIL, XIAOBA_PASSWORD, "24052002", "校霸情报台", "https://api.dicebear.com/8.x/initials/svg?seed=XB", "SCHOOL_OPERATOR", "school", 88, 3560);
+            ensureMockOperator(YUANHUA_EMAIL, YUANHUA_PASSWORD, "24052003", "计院院花", "https://api.dicebear.com/8.x/initials/svg?seed=YH", "COLLEGE_OPERATOR", "college", 72, 2880);
+        }
         String adminEmail = normalizeEmail(properties.bootstrap().adminEmail());
         LocalDateTime now = LocalDateTime.now();
         User admin = findByEmail(adminEmail);
@@ -186,39 +192,54 @@ public class AuthService implements CommandLineRunner {
                     .eq(User::getOperatorScope, "admin")
                     .last("LIMIT 1"));
         }
-        boolean isNewAdmin = admin == null;
-        if (isNewAdmin) {
+        if (admin == null) {
+            // ---- 首次创建：用 bootstrap 配置初始化 ----
             admin = new User();
-        }
-        admin.setEmail(adminEmail);
-        if (admin.getPublicUid() == null || admin.getPublicUid().isBlank()) {
+            admin.setEmail(adminEmail);
             admin.setPublicUid(generatePublicUid());
-        }
-        admin.setPasswordHash(passwordEncoder.encode(properties.bootstrap().adminPassword()));
-        admin.setNickname("运营管理员");
-        admin.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=Admin");
-        admin.setSchoolId(1L);
-        admin.setCollege("信息运营中心");
-        admin.setMajor("校园信息运营");
-        admin.setGrade("运营");
-        admin.setVerifiedStatus("verified");
-        admin.setRole("ADMIN");
-        admin.setOperatorScope("admin");
-        admin.setLevel(100);
-        admin.setXp(99999);
-        admin.setLevelTitle("传说中的不鸽王");
-        admin.setStatus("active");
-        if (admin.getCreatedAt() == null) {
+            // 这个密码只在「账号不存在」时用一次。已存在就绝不再碰——
+            // 否则每次重启都会把线上管理员的密码覆盖回 compose 里的默认值，
+            // 等于永久保留一个公开的万能口令，而且管理员自己改了也没用。
+            admin.setPasswordHash(passwordEncoder.encode(properties.bootstrap().adminPassword()));
+            admin.setNickname("运营管理员");
+            admin.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=Admin");
+            admin.setSchoolId(1L);
+            admin.setCollege("信息运营中心");
+            admin.setMajor("校园信息运营");
+            admin.setGrade("运营");
+            admin.setVerifiedStatus("verified");
+            admin.setRole("ADMIN");
+            admin.setOperatorScope("admin");
+            admin.setLevel(100);
+            admin.setXp(99999);
+            admin.setLevelTitle("传说中的不鸽王");
+            admin.setStatus("active");
             admin.setCreatedAt(now);
-        }
-        admin.setUpdatedAt(now);
-        if (admin.getLastLoginAt() == null) {
             admin.setLastLoginAt(now);
-        }
-        if (isNewAdmin) {
+            admin.setUpdatedAt(now);
             userMapper.insert(admin);
         } else {
-            userMapper.updateById(admin);
+            // ---- 已存在：只补关键字段，不动密码、不改昵称 ----
+            // 老库可能缺 publicUid / role / status，补上即可；除此之外不该有任何写操作，
+            // 否则管理员在后台改的昵称、头像会在下次重启时被悄悄改回去。
+            boolean dirty = false;
+            if (admin.getPublicUid() == null || admin.getPublicUid().isBlank()) {
+                admin.setPublicUid(generatePublicUid());
+                dirty = true;
+            }
+            if (!"ADMIN".equals(admin.getRole())) {
+                admin.setRole("ADMIN");
+                admin.setOperatorScope("admin");
+                dirty = true;
+            }
+            if (!"active".equals(admin.getStatus())) {
+                admin.setStatus("active");
+                dirty = true;
+            }
+            if (dirty) {
+                admin.setUpdatedAt(now);
+                userMapper.updateById(admin);
+            }
         }
         preferenceFor(admin.getId());
     }

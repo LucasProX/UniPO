@@ -39,14 +39,20 @@
 
 修复（有顺序依赖）：**先接邮件通道**（SMTP / Resend / SES；现在 `mock=false` 时验证码只打日志，用户收不到），再把默认值改 `false`、本地 profile 显式 `true`，最后补齐三处配置。
 
+> **✅ 已修复（2026-10-20，commit 见 git log）**：`application.yml` 默认值已改为 `false`，本地由 `application-local.yml` 显式打开；新增 `config/StartupSafetyGuard.java`，非 `local/dev/test` profile 下打开该开关会**直接拒绝启动**（实测：无 profile + `VERIFICATION_MOCK_ACCEPT_ANY_CODE=true` → `IllegalStateException: 拒绝启动...`）。**仍待做**：接真实 SMTP 通道，否则生产环境验证码只会打日志。
+
 ### R-2 内置后门账号
 证据：`AuthService.java:22-31` 常量 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua`；`AuthService.java:176-178` 启动即创建（`CommandLineRunner`）；`AuthService.java:226-243`、`263-274` 存在即重置密码；`login()` 对这三个用户名做邮箱特判。
 影响：任何人可登录为 `SCHOOL_OPERATOR` / `COLLEGE_OPERATOR` 发"官方"帖。
 修复：删 `CommandLineRunner` 与三个 `ensure*` 方法，演示数据改为一次性 SQL 脚本。
 
+> **✅ 已修复（2026-10-20）**：三个演示账号的创建已收进 `app.bootstrap.seed-demo-data`（默认 `false`），本地由 `application-local.yml` 打开；生产 profile 打开会被 `StartupSafetyGuard` 拒绝启动。**注意**：这只阻止「新建」，已经跑过旧版本的库需要手工清理 —— 见文末 §清理存量演示账号。
+
 ### R-3 管理员密码每次启动被重置
 证据：`AuthService.java:197` 每次启动把 admin 密码写成 `BOOTSTRAP_ADMIN_PASSWORD`；`docker-compose.yml` 默认 `Admin@123456`。
 修复：仅当用户不存在时创建；加管理员改密接口；compose 去掉默认值。
+
+> **✅ 已修复（2026-10-20）**：`AuthService.run()` 现在只在管理员账号不存在时写入密码，已存在则完全不碰 `password_hash` 和 `nickname`，只在缺 `publicUid` / `role` / `status` 时补字段。实测重启前后 id=5 的 `password_hash` 与 `updated_at` 完全一致。**仍待做**：管理员改密接口、compose 去掉 `Admin@123456` 默认值。
 
 ### R-4 默认配置指向远端库（已更正，风险降级）
 证据：`application.yml:14` 与 `application-local.yml:3` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`。
@@ -84,9 +90,27 @@
 2. **建 `.env`**，把 datasource 指向本地，顺手把 `R-4` 的坑封死。
 3. **D-5 去假数据 + D-4 拆前端**：这是后续所有 Web/App 工作的地基。
 4. **D-1 / D-2 分页与批量查询**：App 上线前必须做，趁数据量小改代价最低。
-5. **`R-1 ` R-3`**：确定要部署前集中处理（R-1 依赖邮件通道，提前选型）。
+5. ~~**R-1 / R-2 / R-3**~~ ✅ **已完成（2026-10-20）**：默认值全部翻成安全的一侧 + `StartupSafetyGuard` 启动拦截。**R-1 仍欠真实 SMTP 通道**，部署前必须补。
 6. **D-7 清理 notices 域**：可与 3 并行，纯删除。
 7. **Q 项**：随功能迭代逐步补，优先"时区"与"错误码"（App 契约依赖）。
+
+## 5.1 清理存量演示账号（已部署过旧版本的库要手工做一次）
+
+R-2 修复后只是**不再新建**这三个账号。如果某个库在旧版本下启动过，`good` / `school-op@example.com` /
+`college-op@example.com` 已经躺在里面了，需要手工清掉。先查，再删：
+
+```sql
+-- 1) 确认存在（生产上应该查出来 0 行）
+SELECT id, email, role, status FROM users
+WHERE email IN ('good@biecuoguo.local', 'school-op@example.com', 'college-op@example.com');
+
+-- 2) 硬删（先备份；这三个 id 可能被 posts.author_id 引用）
+DELETE FROM users
+WHERE email IN ('good@biecuoguo.local', 'school-op@example.com', 'college-op@example.com');
+```
+
+> 删之前先看它们有没有发过帖：如果 `SELECT COUNT(*) FROM posts WHERE author_id IN (那几个 id)` 不为 0，
+> 直接硬删会留下没有作者的帖子。这种情况改成软删（`UPDATE users SET status='deleted'`）或者把帖子一并处理。
 
 ## 6. 一句话结论
 

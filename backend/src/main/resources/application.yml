@@ -49,9 +49,16 @@ app:
     expiration-minutes: ${JWT_EXPIRATION_MINUTES:10080}
   bootstrap:
     admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin@biecuoguo.local}
+    # 只在管理员账号「不存在」时用来创建一次；已存在则不再读取，不会覆盖已有密码。
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@123456}
+    # 是否写入演示账号（good / xiaoba / yuanhua）与演示数据。
+    # 默认 false——生产库里不该有这些账号。本地由 application-local.yml 打开。
+    seed-demo-data: ${BOOTSTRAP_SEED_DEMO_DATA:false}
   verification:
-    mock-accept-any-code: ${VERIFICATION_MOCK_ACCEPT_ANY_CODE:true}
+    # 默认 false。打开后任意 4 位数字都能通过验证码校验，等于人人可注册任意邮箱。
+    # 只在本地开发（还没接 SMTP）时由 application-local.yml 打开；
+    # 非 local/dev/test profile 下打开会直接启动失败，见 config/StartupSafetyGuard.java。
+    mock-accept-any-code: ${VERIFICATION_MOCK_ACCEPT_ANY_CODE:false}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}

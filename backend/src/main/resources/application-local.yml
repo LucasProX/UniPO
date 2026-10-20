@@ -14,6 +14,13 @@ spring:
 app:
   cors:
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174
+  # 下面两项是本地开发专属的开闸，生产默认值都是关的（见 application.yml 的注释）。
+  verification:
+    # 还没接 SMTP，本地注册/改密需要能随便填 4 位数字。
+    mock-accept-any-code: true
+  bootstrap:
+    # 写入 good / xiaoba / yuanhua 三个演示账号。生产不要开。
+    seed-demo-data: true
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}

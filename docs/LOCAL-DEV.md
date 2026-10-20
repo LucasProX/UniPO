@@ -94,8 +94,12 @@ MINIO_PUBLIC_READ=false
 
 | 账号 | 密码 | 来源 |
 |---|---|---|
-| `admin@biecuoguo.local` | `Admin@123456` | `.env` 的 `BOOTSTRAP_*`，启动时创建 |
-| `good` / `xiaoba` / `yuanhua` | 同用户名 | `AuthService` 硬编码（**R-2，上线前必须删**） |
+| `admin@biecuoguo.local` | `Admin@123456` | `.env` 的 `BOOTSTRAP_*`，**仅首次启动**创建；之后改的密码不会被覆盖 |
+| `good@biecuoguo.local` | `good` | 演示账号，`seed-demo-data=true` 时写入（`local` profile 已默认打开） |
+| `school-op@example.com` | `xiaoba` | 同上，`SCHOOL_OPERATOR` |
+| `college-op@example.com` | `yuanhua` | 同上，`COLLEGE_OPERATOR` |
+
+> 这三个演示账号只在 `local` / `dev` / `test` profile 下创建。生产 profile 下即使误开 `BOOTSTRAP_SEED_DEMO_DATA=true` 也会被 `config/StartupSafetyGuard.java` 拒绝启动。
 
 ## 5. 已知限制（本地）
 

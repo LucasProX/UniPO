@@ -98,9 +98,11 @@ docker compose up -d --build
 - 唯一 `v-html` 在 `components/post/PostDetailModal.vue`，内容统一过 `lib/richText.ts` 的 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
 ## 7. 硬性禁止（安全红线）
-1. **不得**把 `app.verification.mock-accept-any-code` 以 `true` 部署到生产（`application.yml:51` 默认就是 true，当前最严重漏洞）。
-2. **不得**新增硬编码账号/密码（`AuthService` 已有 `good/good`、`xiaoba/xiaoba`、`yuanhua/yuanhua` 三个后门）。
-3. **不得**在启动时重置管理员密码（`AuthService:197` 每次启动把 admin 密码改成 `BOOTSTRAP_ADMIN_PASSWORD`，compose 默认 `Admin@123456`）。
+> 2026-10-20 更新：R-1 / R-2 / R-3 三条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。
+
+1. **不得**把 `app.verification.mock-accept-any-code` 打开后部署到非开发环境。默认已是 `false`，本地由 `application-local.yml` 打开；非 `local/dev/test` profile 下打开会被 `config/StartupSafetyGuard.java` **直接拒绝启动**。这个开关一旦漏出去，任何人可以用任意邮箱注册并接管账号。
+2. **不得**新增硬编码账号/密码，也**不得**把演示账号的创建逻辑从 `app.bootstrap.seed-demo-data` 后面挪出来。`AuthService` 里那三个 `ensure*` 方法只能在这个开关为 true 时调用。
+3. **不得**让启动流程写 `password_hash` 或 `nickname`。`AuthService.run()` 只在管理员账号**不存在**时初始化，已存在只补 `publicUid` / `role` / `status`。以前无条件重置密码，等于永久保留一个公开的万能口令。
 4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。有安全默认值的可选变量可以只加前两处，但必须在 §4 记明是刻意为之（现有例外：`APP_TIME_ZONE`）。
 5. 不要在日志里打印 token / 密码 / 验证码。
 
@@ -123,7 +125,7 @@ docker compose up -d --build
 1. ~~跑通本地链路~~ ✅ **已完成（2026-10-19）**：Docker → MySQL 8.4 → 后端 → 前端，真实数据已渲染，登录/发帖链路实测通过。
 2. 去假数据 + 前端组件化（Web/App 共用的地基）。
 3. ~~后端分页 + 批量查询（替掉 N+1），`/api/v1` 版本化与统一响应包~~ ✅ **已完成**：N+1 清零 + 游标分页 + `/api/v1` + 统一响应包（`code`/`requestId`）+ `OffsetDateTime`。
-4. 上线前集中清零 **R 项**（验证码放行、后门账号、管理员密码重置）。
+4. ~~上线前集中清零 **R 项**~~ ✅ **R-1 / R-2 / R-3 已修（2026-10-20）**：默认值翻到安全侧 + `config/StartupSafetyGuard.java` 启动拦截。**R-1 仍欠真实 SMTP 通道**（现在 `mock=false` 时验证码只打日志，用户收不到），这是部署前最后一块；R-4（默认 datasource 指远端库）仍待处理。
 5. 清理 notices 遗留域。
 
 ## 10. 文档索引
