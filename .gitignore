@@ -13,3 +13,11 @@ frontend/vite.config.js
 frontend/vite.config.d.ts
 .logs/
 .DS_Store
+
+# iOS
+ios/.build/
+ios/DerivedData/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/SourcePackages/
+

@@ -121,25 +121,44 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 > 历史原因：项目最初是一套「校园通知/提醒」应用，后来整体重写成 PO 信息流，旧域从表到 Controller 保留了很久。
 > 现在只有 `posts` 一套内容模型；`analytics_events` 仍保留但当前无人写入。
 
-## 5. 前端结构
+## 5. 客户端结构
+
+### 5.1 iOS（主战场）
+
+```text
+ios/
+├─ project.yml                 XcodeGen；改设置改这里
+├─ UniPO/
+│  ├─ App/UniPOApp.swift       入口，注入 AuthStore
+│  └─ Resources/Info.plist     API_BASE_URL / ATS / 启动屏
+└─ Packages/
+   ├─ UniPOCore/               网络、鉴权、Keychain、模型
+   ├─ UniPOUI/                 Design Tokens、GlassSurface、通用组件
+   └─ UniPOFeatures/           Home / Tools / Compose / Achievements / Profile
+```
+
+- 最低 iOS 17；用 iOS 26 SDK 构建。Liquid Glass Dock 在 iOS 26+ 用 `glassEffect`，17–25 退化 `.ultraThinMaterial`。
+- 认证：Bearer + Keychain；`APIClient` 统一处理错误、401 和 token 注入；**URLSession 禁用 Cookie**，避免和后端 CSRF 过滤器打架。
+- Tab：首页 / 工具 / 发PO（中间悬浮按钮）/ 成就 / 我的。
+- 3. 新增页面：`UniPOFeatures` 下加 View，在 `RootView` 挂 Tab 或 NavigationStack。
+- 实时：WebSocket 规划中，复用 `/api/v1/realtime/ws` 的 `auth` 帧 + `lastEventId` 续传。
+
+### 5.2 Web（分享 / 兜底 / 后台）
 
 ```text
 frontend/src/
-├─ main.ts            挂载 Vue + Pinia（Pinia 装了但没用）
-├─ App.vue            4207 行，全部页面/状态/轮询/假数据
-├─ style.css / tailwind
-└─ lib/
-   ├─ api.ts          axios 实例 + 各域封装 + 本地回退
-   ├─ types.ts        手写业务类型（枚举收窄、字段必填）
-├─ api-types.ts    由后端 /v3/api-docs 生成（npm run gen:api），只读
-├─ api-contract.ts 类型断言，保证 types.ts 不落后于后端 DTO
-   └─ ...
+├─ main.ts / App.vue           外壳 + 会话引导
+├─ router/index.ts             路由（含 /admin 子树）
+├─ layouts/                    AppShell / AdminShell
+├─ views/                      Home / Compose / Messages / Profile / UserProfile / admin/*
+├─ components/                 layout / post / modals / ui / profile
+├─ stores/                     feed / auth / messages / schedule / compose / profile
+└─ lib/                        api.ts / adminApi.ts / realtime.ts / postHelpers.ts
 ```
 
-- 路由：**没有** vue-router。用 `ViewKey = 'home' | 'schedule' | 'compose' | 'messages' | 'profile' | 'user-profile'` 手写切换，无 URL、无前进后退、无深链接。
-- 组件：除 App.vue 外几乎没有页面级组件；352 个顶层声明。
-- 数据：接口失败时回落到 `fallbackPosts` / `fallbackComments` / `fallbackConversations` / `fallbackCourses`，首屏初始值也是假数据。
-- 课程表（`schedule`）、公告轮播、spotlight 全部是前端硬编码，**后端没有任何对应接口**。
+- 组件化已完成（App.vue 从 4207 行降到 61 行），路由化 + Pinia，首屏三态（loading / error / empty），不再有 fallback 假数据。
+- Web 认证用 httpOnly Cookie + CSRF；App 用 Bearer + Keychain；两套入口共用 `/api/v1`。
+- 管理后台在同一个 SPA 的 `/admin` 子树，懒加载 + 角色守卫。
 
 ## 6. 部署
 

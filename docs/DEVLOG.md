@@ -4339,6 +4339,47 @@ HomeView 有 `lg:overflow-y-auto`，但当时只给 HomeView 加了；Compose/Pr
 写这份文档最大的作用是：把「信息流产品」和「成长系统」的优先级吵清楚了。
 以后做功能先问一句：这是入口层、习惯层，还是资产层？如果都不是，先别做。
 
+## 2026-10-20 iOS 原生开工：先被 Info.plist 和 Cookie 各坑一次
+
+决定把主战场挪到 iOS：最低 17，iOS 26 SDK，Dock 用 Liquid Glass。
+工程用 XcodeGen 生成，拆了 Core / UI / Features 三个 SPM 包，App 只做组装。
+
+**坑 1：应用被上下黑边包住，像跑在兼容模式**
+
+第一版截图上下各一大块黑，内容只有中间一条。第一反应是安全区/布局写错，
+查了 `UILaunchScreen`、`UISupportedInterfaceOrientations` 都在源码 Info.plist 里。
+结果 `xcodegen generate` 把 `UniPO/Resources/Info.plist` 整个重写成了最小模板——
+因为 project.yml 里只写了 `info.path`、没写 `info.properties`。
+补上 properties 后重新生成，全屏正常。
+
+教训：**XcodeGen 的 info.path 是输出文件，不是输入文件**；要保留的键必须写进 project.yml。
+
+**坑 2：登录成功，下次打开又是未登录，而且报「请求校验失败」**
+
+日志里登录返回 403。先怀疑 ATS、再怀疑 Bearer 过期，最后发现两个独立问题叠在一起：
+
+1. 登录/刷新请求也带了旧 Authorization。后端过滤链看到过期 Bearer 会直接 403，
+   所以「重新登录」反而被旧 token 挡住。现在 login/refresh 强制不带 Authorization。
+2. 更隐蔽：后端登录响应会 `Set-Cookie: unipo_sid`，`URLSession.shared` 默认会存 Cookie。
+   下一次写请求就变成「Cookie 认证 + 没有 X-CSRF-Token」，被 `CsrfFilter` 403。
+   App 明明走 Bearer，却被 Cookie 拖下水。现在 URLSession 用 ephemeral 配置，
+   `httpShouldSetCookies = false`、`httpCookieStorage = nil`。
+
+这两个问题都表现为「登录成功但没登录」，非常容易误判成后端问题。
+
+**Liquid Glass**
+
+`glassEffect` 只在 iOS 26+ 可用，所以统一包在 `UniPOUI.GlassSurface` 里：
+26 用 `.glassEffect(.regular, interactive:)`，17–25 退 `.ultraThinMaterial`。
+Dock 是自定义的 5 个位置（首页/工具/发PO/成就/我的），中间发 PO 做悬浮圆钮，
+比系统 TabView 更好控制视觉。
+
+**调试技巧**：给 App 加了 Debug 启动参数，`-tab achievements` 直接进指定页，
+`-email/-password` 自动登录，配合 `simctl io screenshot` 可以脚本化截图验收。
+
+当前骨架：登录（Keychain + refresh 兜底）、首页真实 feed、工具入口、成就页动效、我的页、发 PO。
+待接：帖子详情/评论、消息 WebSocket、图片上传、阶段/成就真实接口、APNs。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

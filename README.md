@@ -6,10 +6,20 @@
 
 ## 技术栈
 
-- 前端：Vue 3 + Vite + TypeScript + Tailwind CSS + Pinia + Lucide
-- 后端：Java 21 + Spring Boot 3 + Spring Security/JWT + MyBatis-Plus + Flyway
-- 数据库：MySQL 8
-- 媒体存储：外部 MinIO，通过 `.env` 配置连接
+- **iOS**：Swift 6.3 / SwiftUI / Observation，最低 iOS 17，iOS 26 SDK；Liquid Glass（iOS 26+，旧系统降级）；SPM 模块化（Core / UI / Features）；Keychain + Bearer
+- **Web**：Vue 3 + Vite + TypeScript + Tailwind CSS + Pinia + Lucide
+- **后端**：Java 21 + Spring Boot 3 + Spring Security/JWT + MyBatis-Plus + Flyway
+- **数据库**：MySQL 8
+- **媒体存储**：外部 MinIO，通过 `.env` 配置连接
+
+## iOS 客户端
+
+原生 App 在 [`ios/`](ios/) 下，详情见 [`ios/README.md`](ios/README.md)。最低 iOS 17.0，当前用 iOS 26 SDK 构建；
+底部 Dock 使用 Liquid Glass（iOS 26+ 生效，17–25 退化为 `.ultraThinMaterial`）。
+
+```bash
+cd ios && xcodegen generate && open UniPO.xcodeproj
+```
 
 ## 两台服务器部署（历史方案，2026-10 起停用）
 

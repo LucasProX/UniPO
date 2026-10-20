@@ -5,7 +5,7 @@
 > **收工前必看 §11：踩过的坑要写进 [`docs/DEVLOG.md`](docs/DEVLOG.md)。**
 
 ## 0. 一句话
-UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + MinIO，iOS 原生 App 在规划中。
+UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜底）+ Spring Boot 3 后端 + MySQL 8 + MinIO。
 正在从「AI 生成的单文件 MVP」走向「Web / App 双端共用的正式产品」。
 
 **北极星（2026-10-20 确立，改之前先看 [ADR-0001](docs/adr/0001-platform-baseline.md)）**：
@@ -42,6 +42,7 @@ UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + Min
 | `frontend/src/api-contract.ts` | 契约断言：手写 `types.ts` 必须与生成类型一致，否则 `npm run build` 报错 |
 | `frontend/src/lib/postHelpers.ts` | 帖子纯函数（boardLabel/roleLabel/评分等），**零 Vue 依赖**，App 端可直接复用 |
 | `frontend/src/lib/richText.ts` | 富文本清洗（`sanitizeRichHtml` / `renderRichPostContent`），**零 Vue 依赖**，App 端可直接复用 |
+| `ios/` | **原生 iOS 客户端**：`project.yml`（XcodeGen）+ `Packages/{UniPOCore,UniPOUI,UniPOFeatures}` + `UniPO/App`。改工程设置改 `project.yml` 后跑 `xcodegen generate` |
 | `docs/` | 架构 / API / 问题清单 / 移动端方案 |
 | `deploy-*.sh`、`docker-compose.yml`、`Caddyfile` | 生产部署 |
 
@@ -61,6 +62,8 @@ UniPO：校园信息流应用，Vue 3 Web + Spring Boot 3 后端 + MySQL 8 + Min
   本地 `.env` 默认 `RATE_LIMIT_ENABLED=false`——冒烟一次注册 6 个账号，开着限流一小时跑三遍就 429；
   要验证限流行为时临时改成 true 再重启后端。
   Windows 专属的坑（`npm.cmd`、`.ps1` 必须 CRLF、PowerShell 输出编码）在 Mac 上不适用。
+- **iOS 工具链（2026-10-20 实测）**：Xcode 26.6（17F113）+ Swift 6.3.3 + iOS 26.5 模拟器（iPhone 17 系列）；
+  工程用 **XcodeGen** 生成（`brew install xcodegen`），`swift-tools-version 5.9`，语言模式 Swift 5 以减少并发摩擦。
 - 全局 git 身份已配好：`LucasProX <LucasProX@users.noreply.github.com>`，凭据管理器里有 GitHub token，可直接 push。
 
 ## 3. 命令
@@ -105,6 +108,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项
 cp .env.example .env
 docker compose up -d --build
 ```
+
+## 3.1 iOS 命令
+```bash
+cd ios
+xcodegen generate
+xcodebuild -project UniPO.xcodeproj -scheme UniPO -configuration Debug \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -derivedDataPath .build build CODE_SIGNING_ALLOWED=NO
+xcrun simctl install booted .build/Build/Products/Debug-iphonesimulator/UniPO.app
+xcrun simctl launch booted com.unipo.app
+# 调试：-tab achievements / -email ... -password ...
+```
+**不要手改 `UniPO.xcodeproj`**，改 `ios/project.yml` 后重新生成。
 
 ## 4. 后端约定
 - 分层：`web` -> `service` -> `mapper`（MyBatis-Plus）-> `domain`。Controller 不写业务，Service 不碰 HTTP。
@@ -186,6 +202,18 @@ docker compose up -d --build
   `localApi` 硬编码 `http://127.0.0.1:8080` 仅 DEV 生效，不要依赖。
 - 唯一 `v-html` 在 `components/post/PostDetailModal.vue`，内容统一过 `lib/richText.ts` 的 `sanitizeRichHtml`；新增富文本必须走同一套清洗。
 
+### 6.1 iOS 约定
+
+- **App 只走 Bearer**：`URLSession` 必须禁用 Cookie（`httpShouldSetCookies = false`、`httpCookieStorage = nil`）。
+  后端登录响应会下发 `unipo_sid`；一旦 URLSession 自动存了 Cookie，后续写请求就会以 Cookie 身份通过、
+  但缺少 `X-CSRF-Token`，后端返回 403（"请求校验失败"）。这个坑已经踩过（见 DEVLOG）。
+- **token 只进 Keychain**；不写 UserDefaults、不打印日志。
+- **登录/刷新不带旧 Authorization**，否则过期 token 会让后端直接 403。
+- **改动必须同时考虑 iOS 17**：新 API 用 `if #available`；本机 iOS 26 模拟器不代表最低版本。
+- **Liquid Glass**：`glassEffect` 只在 iOS 26+，旧系统退化 `.ultraThinMaterial`，统一走 `UniPOUI.GlassSurface`。
+- **不要手改 `UniPO.xcodeproj`**：改 `ios/project.yml` 后跑 `xcodegen generate`。
+- **Feature 不直接建 URLSession**：一律走 `UniPOCore.APIClient`，鉴权和错误映射只维护一份。
+
 ## 7. 硬性禁止（安全红线）
 > 2026-10-20 更新：R-1 / R-2 / R-3 / R-4 / R-5 五条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。
 
@@ -244,7 +272,8 @@ docker compose up -d --build
 - `docs/API.md` — 完整接口清单与调用约定
 - `docs/ISSUES.md` — 问题分级、证据、修复建议
 - `docs/MOBILE-API-PLAN.md` — Web/App 双端接口方案（**有 5 个决策待拍板**）
-- [`docs/FRONTEND.md`](docs/FRONTEND.md) — 前端目录分工、新增页面/接口的三步流程、store 与认证约定
+- [`docs/FRONTEND.md`](docs/FRONTEND.md) — Web 前端目录分工、新增页面/接口的三步流程、store 与认证约定
+- [`ios/README.md`](ios/README.md) — **iOS 工程结构、构建、调试参数、Bearer/Keychain 约定**
 - `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障
 - [`docs/adr/`](docs/adr/) — 架构决策记录（ADR）。**改架构前先读，改完补一条新 ADR**
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
