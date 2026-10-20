@@ -341,12 +341,16 @@ struct ProfileView: View {
     }
 
     private func uploadAvatar(_ image: UIImage) {
-        guard let data = image.pngData() else { return }
+        let data = image.jpegData(compressionQuality: 0.9) ?? image.pngData()
+        guard let data else {
+            avatarError = "图片处理失败，请换一张试试"
+            return
+        }
         isUploadingAvatar = true
         Task {
             defer { isUploadingAvatar = false }
             do {
-                let uploaded = try await APIClient.shared.uploadImage(data: data, filename: "avatar.png", mimeType: "image/png")
+                let uploaded = try await APIClient.shared.uploadImage(data: data, filename: "avatar.jpg", mimeType: "image/jpeg")
                 let updated = try await APIClient.shared.updateAvatar(url: uploaded.url)
                 auth.applyProfile(updated)
             } catch {

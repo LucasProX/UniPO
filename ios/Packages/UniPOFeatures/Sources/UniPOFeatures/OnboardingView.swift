@@ -414,11 +414,40 @@ struct OnboardingView: View {
         errorMessage = nil
         defer { isSaving = false }
         var avatarUrl = auth.profile?.avatarUrl
-        if let data = pickedAvatar?.pngData() ?? renderAvatar(avatars[avatarIndex]) {
-            if let uploaded = try? await APIClient.shared.uploadImage(data: data, filename: "avatar.png", mimeType: "image/png") {
-                avatarUrl = uploaded.url
+        // 相册照片优先压成 JPEG（800x800 通常 <300KB），避免大 PNG 撞 5MB 上传上限；
+        // emoji 预设还是 PNG，保留透明边缘。
+        let upload: (data: Data, filename: String, mimeType: String)?
+        if let pickedAvatar {
+            if let jpeg = pickedAvatar.jpegData(compressionQuality: 0.9) {
+                upload = (jpeg, "avatar.jpg", "image/jpeg")
+            } else if let png = pickedAvatar.pngData() {
+                upload = (png, "avatar.png", "image/png")
+            } else {
+                upload = nil
             }
+        } else if let png = renderAvatar(avatars[avatarIndex]) {
+            upload = (png, "avatar.png", "image/png")
+        } else {
+            upload = nil
         }
+
+        guard let upload else {
+            errorMessage = "头像处理失败，请重新选择一张照片"
+            return
+        }
+
+        do {
+            let uploaded = try await APIClient.shared.uploadImage(
+                data: upload.data,
+                filename: upload.filename,
+                mimeType: upload.mimeType
+            )
+            avatarUrl = uploaded.url
+        } catch {
+            errorMessage = "头像上传失败：\((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)"
+            return
+        }
+
         do {
             try await auth.completeOnboarding(OnboardingInput(
                 nickname: nickname.trimmingCharacters(in: .whitespaces),

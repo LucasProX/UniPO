@@ -4568,6 +4568,30 @@ smoke 41/41（新增 sms-code / sms-login）；iOS BUILD SUCCEEDED。
 
 验证：未登录点「我的」出现登录页；一键登录成功后直接落在个人主页。
 
+## 2026-10-21 引导里选了相册头像，主页还是默认头像
+
+用户反馈填资料时选了照片，进主页还是默认头像。先查库：`users.avatar_url` 没变，`media_objects` 也没有新记录——说明不是显示层的问题，是上传根本没成功。
+
+回看 `OnboardingView.finish()`，当时写的是：
+
+```swift
+if let uploaded = try? await APIClient.shared.uploadImage(...) {
+    avatarUrl = uploaded.url
+}
+```
+
+`try?` 把错误吞了，上传失败也照样 `completeOnboarding`，于是用旧头像完成引导。表现就是「我明明选了照片，主页却不显示」。
+
+另外相册图当时一律 PNG，800x800 的高细节照片可能很大，容易贴近 5MB 上限。
+
+改成：
+
+- 相册图先压 JPEG 0.9（通常 <300KB），emoji 预设仍用 PNG；
+- 上传失败不再静默继续，直接回显「头像上传失败」并停在当前步，让用户重试；
+- 主页换头像也走同一套 JPEG 上传。
+
+排查时用模拟器完整走了一遍：相册选图 -> 圆形裁剪 -> 点使用 -> 进入 PO 世界，`media_objects` 新增 `.jpg`，主页头像颜色和测试图一致。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：
