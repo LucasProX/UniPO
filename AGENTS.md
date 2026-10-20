@@ -129,7 +129,7 @@ docker compose up -d --build
 
 ## 8. 已知坑
 - `.gitignore` 忽略 `AGENT.md` / `agent.md`（单数），但**不忽略 `AGENTS.md`**——本文件会入库，视为团队资产。
-- 系统级 `core.autocrlf=true`，而 `.gitattributes` 只对 `*.sh` 强制 LF。改 shell 脚本注意别提交 CRLF。
+- 系统级 `core.autocrlf=true`。`.gitattributes` 现在管两件事：`*.sh` 强制 LF、`*.ps1` 强制 CRLF（2026-10-20 加，否则 Linux CI checkout 出来的 `.ps1` 是 LF）。CI 的 `files` job 会检查这两条。
 - **`.ps1` 必须是 CRLF**（2026-10-20 实测）：`edit`/`write` 工具写出来的是 LF，PowerShell 5.1 解析 LF-only 的 `.ps1` 会出现「变量赋值后仍为空」这类静默诡异行为（`scripts/smoke.ps1` 里 `$v1 = ($Base.TrimEnd('/')) + '/api/v1'` 算出空串，但同样代码单独跑没问题）。改完 `.ps1` 后统一 `(Get-Content f -Raw) -replace "`r?`n","`r`n" | Set-Content f -NoNewline` 转回 CRLF，并保持 ASCII-only。
 - **`smoke.ps1` 必须把控制台输出编码设成 UTF-8**（2026-10-20 实测）：PowerShell 5.1 捕获 `curl.exe` 输出用的是 `[Console]::OutputEncoding`，中文 Windows 下默认 OEM 936。UTF-8 的响应体被按 GBK 解码时，尾部字节会被吃掉，**连后面那个 JSON 引号一起吞**，`ConvertFrom-Json` 直接报「无效的 JSON 格式」。表现极具误导性：注册返回 200，但 token 取不到，后面所有带 token 的检查全 401。脚本开头已加 `$OutputEncoding` / `[Console]::OutputEncoding = $utf8`，别删。
 - **匿名访客的 feed 曾经是随机的**（D-3，2026-10-20 已修，别再改回去）：`PostService.defaultViewer()` 以前会随便挑一个 active 用户借人家的 `school_id`，`baseVisibleWrapper()` 再用硬编码 `1L` 兜底——同一个匿名请求两次可能返回不同内容，那个随机用户被禁用后 feed 还会突然变样。现在访客就是 `viewer = null`，学校隔离统一走 `app.default-school-id`；同一个值也用于新注册用户和演示账号的初始学校（以前 `AuthService` 里四处各写一遍 `1L`）。**这个值必须指向 `schools` 表里真实存在的行**，否则建号会撞 `fk_users_school` 外键、启动直接失败。
@@ -137,9 +137,11 @@ docker compose up -d --build
 - 前端轮询（2026-10-20 已随组件化搬进 store）：会话列表 3s（`stores/messages.ts` 的 `startConversationListPolling`）、当前会话 1.8s（`startActiveConversationPolling`）、在线心跳 10s（`stores/auth.ts` 的 `startPresenceHeartbeat`）。实时化之前别再加轮询。
 - **数据库默认值曾经指向一台已停用的服务器**（R-4，2026-10-20 已修，别再改回去）：那时候 `application.yml` / `application-local.yml` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，一旦那个端口被放开，照默认启动就会对着一台陌生库跑 Flyway + 触发 `AuthService` 启动逻辑。现在的默认值全是「本机」或「compose 服务名」：`application.yml` → `127.0.0.1:3306`，`application-local.yml` → `127.0.0.1:12306`，`docker-compose.yml` → `mysql:3306`。`deploy-app.sh` / `deploy-ip.sh` **没有默认值**，`SPRING_DATASOURCE_URL` 缺失直接退出。
 - **本机代理会让所有端口探测失真**：Clash/Mihomo TUN + fake-ip（198.18.0.0/15，网关 198.18.0.2，`HTTP_PROXY=127.0.0.1:7897`）下，连 `192.0.2.1:80` 都"连接成功"。判断真实可达性要用外部节点（check-host.net），或先关代理。
-- `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖是死代码：没有任何 profile 引用 `db/local`，H2 也没被使用。
+- `backend/src/main/resources/db/local/` 与 `pom.xml` 里的 H2 依赖已于 2026-10-20 删除（D-8）。别再往 `db/` 下加第二套 migration，只认 `db/migration`。
 - **真实模式下没有 SMTP 会启动失败**（2026-10-20 加）：`StartupSafetyGuard` 会查 `spring.mail.host`（`SMTP_HOST`），空就抛 `IllegalStateException`。这是刻意的——注册和找回密码全靠邮件，配不上就是断链，而且断得很静默（进程起得来、接口返回 200）。本地开发用 `--spring.profiles.active=local` 走 mock 模式即可，不需要 SMTP。
-- 没有测试、没有 lint、没有 CI。提交前至少 `npm.cmd run build` 绿（已实测 5.3s 通过）。
+- **CI 有了，测试和 lint 还没有**：`.github/workflows/ci.yml` 跑 mvn package / npm ci + build / 脚本换行自查 / 真 MySQL 起服务的接口冒烟。
+  但它**不能代替本地 `smoke.ps1`**——34 项全链路检查（含上传、游标分页、时区、注册验证码）只有 Windows 上那一份，CI 里没跑。
+  提交前仍然要：`npm.cmd run build` 绿 + `mvn -DskipTests package` 绿 + `smoke.ps1` 34/34。
 - **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。
 
 ## 9. 当前优先级（2026-10，本地开发模式）

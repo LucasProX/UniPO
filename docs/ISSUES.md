@@ -112,7 +112,7 @@ Docker Desktop 29.8.2 + WSL 2.7.13 起得来、MySQL 8.4（`127.0.0.1:12306`）�
 | D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
 | D-6 | 轮询过密（**仍在**） | 已随组件化挪进 store：会话列表 3s（`stores/messages.ts`）、当前会话 1.8s、在线心跳 10s | 实时化（SSE/WebSocket）之前先别再加轮询 |
 | D-7 ✅ | ~~notices 遗留域~~ **已删除（2026-10-20）** | 删掉 19 个 Java 文件（`NoticeController` / `CommentController` / `InteractionController` / `NoticeService` / `InteractionService` / `CommentService` / 5 个 domain / 5 个 mapper / 3 个 DTO）+ `V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 和 `comments.notice_id`；`AdminService` 概览改按 posts 口径 | 只剩一套内容模型，`comments` 只认 `post_id` |
-| D-8 | db/local 与 H2 是死代码 | 无任何 profile 引用 `db/local`，H2 未被使用 | 误导后来者 |
+| D-8 ✅ | ~~db/local 与 H2 是死代码~~ **已删（2026-10-20）** | `backend/src/main/resources/db/local/`（10 个文件）连目录一起删了，`pom.xml` 里的 `com.h2database:h2` 也去掉，`mvn package` 仍然绿 | — |
 
 ## 4. Q — 质量项（长期）
 
@@ -130,7 +130,10 @@ JWT 默认 secret 已删（见 **R-5**）。
 | Q-2 | **JWT 无刷新令牌** | 有效期 10080 分钟（7 天），过期就是硬过期，客户端只能重新登录；token 存 `localStorage` | 7 天内 token 被偷就等于永久会话；到期体验差 |
 | Q-3 ✅ | ~~上传只校验 `Content-Type`~~ **已修（2026-10-20）** | 新增 `service/ImageSignature.java` 按文件头识别 JPEG/PNG/GIF/WebP，扩展名和 `Content-Type` 都由识别结果决定（不再采信客户端）；上限从 20MB 收到 **5MB**；`purpose` 只允许 `[A-Za-z0-9_-]{1,20}` | 实测：HTML/SVG 改请求头冒充 `image/png` 都是 400；6MB 图片 413；真 PNG 200 |
 | Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |
-| Q-5 | **无测试、无 lint、无 CI** | 后端 0 个测试；前端没有 eslint/prettier；没有 `.github/workflows` | 唯一的回归防线是 `scripts/smoke.ps1`（34 项） |
+| Q-5 🔶 | ~~无 CI~~ **CI 已加（2026-10-20），测试和 lint 还没有** | `.github/workflows/ci.yml` 四个 job：
+`backend`（mvn package）/ `frontend`（npm ci + npm run build，vue-tsc 会抓类型错）/ `files`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
+`smoke`（真 MySQL 8.4 service + 起 jar + 打 health/feed/login/带 token/405/404 六条断言）。
+**还没有**：后端单测、前端 eslint/prettier、CI 里跑完整的 `smoke.ps1`（它依赖 Windows PowerShell + `curl.exe`，要移植成 bash 才能上 Linux runner） |
 | Q-6 | 类型手写，与后端 DTO 已漂移 | `frontend/src/lib/types.ts` 手写，无 OpenAPI 生成 | 接口改了两边容易漏改 |
 
 ### 已解决但留着记录
