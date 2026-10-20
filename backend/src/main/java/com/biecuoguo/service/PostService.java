@@ -1,5 +1,6 @@
 package com.biecuoguo.service;
 
+import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
@@ -21,6 +22,7 @@ import java.util.stream.Collectors;
 public class PostService {
     private static final Set<String> BOARDS = Set.of("recommend", "school", "college", "major");
 
+    private final AppProperties appProperties;
     private final PostMapper postMapper;
     private final PostImageMapper imageMapper;
     private final PostLikeMapper likeMapper;
@@ -35,7 +37,8 @@ public class PostService {
     private final MajorMapper majorMapper;
     private final PresenceService presenceService;
 
-    public PostService(PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService) {
+    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService) {
+        this.appProperties = appProperties;
         this.postMapper = postMapper;
         this.imageMapper = imageMapper;
         this.likeMapper = likeMapper;
@@ -69,7 +72,7 @@ public class PostService {
      * limit 上限 50、默认 20，见 docs/MOBILE-API-PLAN.md 4.3。
      */
     public PostDtos.PostPageView list(String tab, CurrentUser currentUser, String cursor, Integer requestedLimit) {
-        User viewer = currentUser == null ? defaultViewer() : userMapper.selectById(currentUser.id());
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         int limit = normalizeLimit(requestedLimit);
         LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer);
         applyTab(wrapper, normalizeBoard(tab), viewer);
@@ -180,7 +183,7 @@ public class PostService {
     }
 
     public List<PostDtos.BoardView> boards(CurrentUser currentUser) {
-        User viewer = currentUser == null ? defaultViewer() : userMapper.selectById(currentUser.id());
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         return List.of(
                 new PostDtos.BoardView("recommend", "推荐", "按热度、官方权重和发布时间混排", countForBoard("recommend", viewer)),
                 new PostDtos.BoardView("school", "校 PO", "全校同学都能看到的校园动态", countForBoard("school", viewer)),
@@ -219,7 +222,7 @@ public class PostService {
     }
 
     public List<PostDtos.PostView> dontMiss(CurrentUser currentUser) {
-        User viewer = currentUser == null ? defaultViewer() : userMapper.selectById(currentUser.id());
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer)
                 .eq(Post::getDontMiss, true)
                 .orderByDesc(Post::getPinned)
@@ -620,12 +623,18 @@ public class PostService {
 
     private LambdaQueryWrapper<Post> baseVisibleWrapper(User viewer) {
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<Post>().eq(Post::getStatus, "published");
-        if (viewer != null && viewer.getSchoolId() != null) {
-            wrapper.eq(Post::getSchoolId, viewer.getSchoolId());
-        } else {
-            wrapper.eq(Post::getSchoolId, 1L);
-        }
-        return wrapper;
+        // 学校隔离：登录用户只看自己学校；未登录（或资料里没有学校）落在配置的默认学校上。
+        // 这里以前有两个坑：访客分支借的是 defaultViewer() 随便挑的用户的 school_id，
+        // 决定看到什么帖子的是「MySQL 先返回哪一行」；再用一个 1L 兜底，等于把魔数写在 SQL 里。
+        // 现在只有一个来源：app.default-school-id。
+        Long schoolId = viewer == null || viewer.getSchoolId() == null ? defaultSchoolId() : viewer.getSchoolId();
+        return wrapper.eq(Post::getSchoolId, schoolId);
+    }
+
+    /** 未登录访客 / 没填学校的用户看到的默认学校，来自 {@code app.default-school-id}。 */
+    private Long defaultSchoolId() {
+        Long configured = appProperties.defaultSchoolId();
+        return configured == null ? 1L : configured;
     }
 
     private void applyTab(LambdaQueryWrapper<Post> wrapper, String tab, User viewer) {
@@ -890,9 +899,6 @@ public class PostService {
         return comment;
     }
 
-    private User defaultViewer() {
-        return userMapper.selectList(new LambdaQueryWrapper<User>().eq(User::getStatus, "active").last("limit 1")).stream().findFirst().orElse(null);
-    }
 
     private boolean canPostOfficial(User user, String board) {
         if ("ADMIN".equals(user.getRole())) {

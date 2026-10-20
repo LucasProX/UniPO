@@ -71,6 +71,9 @@ app:
   # 数据库 DATETIME（无时区）按这个时区解释，出参统一转成带偏移的 OffsetDateTime。
   # 显式配置而不是依赖 JVM 默认时区：换服务器时区不会改变接口语义。
   time-zone: ${APP_TIME_ZONE:Asia/Shanghai}
+  # 没有「所属学校」时的默认学校：未登录访客看 feed、新注册用户还没选学校都用它。
+  # 以前访客分支是随便挑一个 active 用户借 school_id，同一个请求两次可能不一样。
+  default-school-id: ${APP_DEFAULT_SCHOOL_ID:1}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
   jwt:

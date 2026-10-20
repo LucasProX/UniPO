@@ -672,6 +672,81 @@ README 里原本有一句「数据库连接默认就是服务器 A」，底下�
 
 改完 `mvn package` 和 `scripts/smoke.ps1` 都还是 34/34，本地链路一点没动。
 
+## 2026-10-20 匿名访客看的东西，居然是「随便挑一个人」决定的
+
+D-3 这条在清单上挂了很久，一直是「知道有问题但没空管」。真正动手是因为想加一个新用户注册，
+翻到 `AuthService` 里 `user.setSchoolId(1L)` 写了四遍，然后想起访客那边也有个 `1L`——
+再往上翻，发现访客那条路径根本不是 `1L`：
+
+```java
+private User defaultViewer() {
+    return userMapper.selectList(new LambdaQueryWrapper<User>()
+            .eq(User::getStatus, "active").last("limit 1"))
+            .stream().findFirst().orElse(null);
+}
+```
+
+`limit 1` 没有 `order by`。也就是说**未登录用户看哪批帖子，取决于 MySQL 先返回哪一行**。
+
+### 为什么一直没被发现
+
+因为库里所有账号的 `school_id` 都是 1。随便挑谁，挑出来的学校都是 1，
+所以「随机」在数据上表现为「恒定」——看起来完全正常。
+
+这个 bug 的触发条件很苛刻：得有个用户的 `school_id` 不是 1 且 id 排在最前面。
+一旦真的出现（比如给某个学院开了独立账号），表现会是「未登录首页突然少了一堆帖子」，
+而且**重启后可能又好了**——这种 bug 最难查，因为没有稳定复现路径。
+
+### 改法：把「没有学校」这件事变成一个有确定答案的状态
+
+我一开始想让访客看到**全部**帖子。想了想不对：这是校园 PO，混着不同校区的帖子比缺帖子更糟。
+访客应该有确定的一个学校可看，那就把「默认学校」显式化：
+
+```java
+Long schoolId = viewer == null || viewer.getSchoolId() == null
+        ? defaultSchoolId() : viewer.getSchoolId();
+return wrapper.eq(Post::getSchoolId, schoolId);
+```
+
+`defaultViewer()` 直接删掉，三个调用点全部改成 `currentUser == null ? null : ...`。
+
+顺带把 `AuthService` 里四处 `setSchoolId(1L)` 也收进同一个配置 `app.default-school-id`。
+它们本来就是同一个概念（「这个人属于哪个学校」的默认值），分在五个地方写死纯属没想过。
+
+### 怎么证明这个配置真的被读到了
+
+改完这种事最容易假验证：启动成功、接口 200、数据看着对——但**可能根本没读那个配置**。
+所以我没用默认值测，而是把它设成 `999`（库里不存在的学校），预期匿名 feed 变成 0 条。
+
+第一次试就翻了两个坑：
+
+**坑一：环境变量压不过 profile yml 里的字面值。**
+我用 `APP_DEFAULT_SCHOOL_ID=999 BOOTSTRAP_SEED_DEMO_DATA=false` 起，结果启动直接失败：
+
+```
+java.sql.SQLIntegrityConstraintViolationException: Cannot add or update a child row:
+a foreign key constraint fails (`biecuoguo`.`users`, CONSTRAINT `fk_users_school`
+FOREIGN KEY (`school_id`) REFERENCES `schools` (`id`))
+```
+
+这说明 999 确实被用到了（不然不会撞外键），但也说明 `BOOTSTRAP_SEED_DEMO_DATA=false` **没生效**——
+演示账号还是被建了。原因是我把它塞在 `application.yml` 的 `${...}` 占位符里，
+而 `application-local.yml` 有一行字面的 `seed-demo-data: true`，那份文件优先级更高，
+占位符根本轮不到。要压过它只能用命令行参数 `--app.bootstrap.seed-demo-data=false`。
+
+**坑二：`school_id` 是有外键的。**
+这条其实是个有用的副产品——它证明这个配置不能乱填。设成不存在的学校，
+启动时建号就撞 `fk_users_school`。这算 fail fast，比悄悄写进去一个孤儿 school_id 好。
+现在 AGENTS §4 和 §8 都写了这一条。
+
+用命令行参数重测：`--app.default-school-id=999 --app.bootstrap.seed-demo-data=false`，
+结果 feed 0 条、四个板块计数全 0、游标分页 0 条 `hasMore=false`，三条读路径全部跟着配置走。
+
+### 一个顺带的教训
+
+要验证「配置有没有生效」，别用默认值测。把配置改成一个**必然产生可见差异**的值，
+再断言那个差异。这次如果我用默认的 1 去测，改前改后一模一样，什么问题都发现不了。
+
 ---
 
 ## 怎么写这篇文档

@@ -82,7 +82,7 @@ public class AuthService implements CommandLineRunner {
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setNickname(nickname);
         user.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=" + nickname);
-        user.setSchoolId(1L);
+        user.setSchoolId(defaultSchoolId());
         user.setGrade("大二");
         user.setMajor("未设置专业");
         user.setVerifiedStatus("none");
@@ -111,6 +111,17 @@ public class AuthService implements CommandLineRunner {
      */
     private boolean mockVerification() {
         return verificationService.mockMode();
+    }
+
+    /**
+     * 新账号还没选学校时落在哪。
+     *
+     * <p>以前这里写死 {@code 1L}（管理员、演示账号、注册用户四处各写一遍），
+     * 和访客 feed 的默认学校是同一个概念却分在两处维护。现在统一走 {@code app.default-school-id}。
+     */
+    private Long defaultSchoolId() {
+        Long configured = properties.defaultSchoolId();
+        return configured == null ? 1L : configured;
     }
 
     /**
@@ -253,7 +264,7 @@ public class AuthService implements CommandLineRunner {
             admin.setPasswordHash(passwordEncoder.encode(properties.bootstrap().adminPassword()));
             admin.setNickname("运营管理员");
             admin.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=Admin");
-            admin.setSchoolId(1L);
+            admin.setSchoolId(defaultSchoolId());
             admin.setCollege("信息运营中心");
             admin.setMajor("校园信息运营");
             admin.setGrade("运营");
@@ -312,7 +323,7 @@ public class AuthService implements CommandLineRunner {
         user.setPasswordHash(passwordEncoder.encode(GOOD_PASSWORD));
         user.setNickname("good");
         user.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=good");
-        user.setSchoolId(1L);
+        user.setSchoolId(defaultSchoolId());
         user.setCollegeId(1L);
         user.setMajorId(1L);
         user.setCollege("计算机学院");
@@ -345,7 +356,7 @@ public class AuthService implements CommandLineRunner {
         user.setPasswordHash(passwordEncoder.encode(password));
         user.setNickname(nickname);
         user.setAvatarUrl(avatarUrl);
-        user.setSchoolId(1L);
+        user.setSchoolId(defaultSchoolId());
         user.setCollegeId(1L);
         user.setMajorId(1L);
         user.setCollege("计算机学院");

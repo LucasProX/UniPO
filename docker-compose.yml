@@ -63,6 +63,8 @@ services:
       # 默认走 compose 网络里的 mysql 服务（整栈 docker compose up 时用这个）；
       # 连外部库请显式设 SPRING_DATASOURCE_URL，别再指望一个写死的远端地址。
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:mysql://mysql:3306/biecuoguo?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+      # 没有「所属学校」时的默认学校；必须指向 schools 表里真实存在的行。
+      APP_DEFAULT_SCHOOL_ID: ${APP_DEFAULT_SCHOOL_ID:-1}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-${MYSQL_USER:-biecuoguo}}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-${MYSQL_PASSWORD:-biecuoguo_password_change_me}}
       JWT_SECRET: ${JWT_SECRET:-please-change-this-to-a-very-long-random-secret-32}

@@ -89,7 +89,7 @@
 |---|---|---|---|
 | D-1 | **N+1 查询** | `PostService.java:502-519` `toViews` 逐条调 `toView`，每条 7 次 SQL（author + images + like + favorite + school/college/major） | 100 条 feed ≈ 700 次查询，本地都卡 |
 | D-2 | **列表无分页** | `PostService.java:53-64` `selectList` 无 limit；`MessageService.messages()` 全量加载 | 数据一多前端直接卡死 |
-| D-3 | 匿名视角取随机用户 | `PostService.java:470-478` 未登录硬编码 `school_id = 1`；`:646` `defaultViewer()` 随机取 active 用户 | 未登录看到的 feed 不可控 |
+| D-3 | ~~匿名视角取随机用户~~ ✅ **已修复（2026-10-20）** | 未登录现在就是 `viewer = null`，学校隔离统一走 `app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 1）；`defaultViewer()` 已删除，`AuthService` 里四处硬编码的 `1L` 也收进同一个配置 | 匿名 feed 确定且可配置 |
 | D-4 | 前端 4207 行单文件 | `frontend/src/App.vue`，6 个 `ViewKey` 手写状态机，无 vue-router | 无法多人协作，也无法复用到 App |
 | D-5 ✅ | ~~前端假数据兜底~~ **已删除（2026-10-19）** | 原来 `fallbackPosts` / `fallbackComments` / `fallbackCourses` 共 380 行假数据全部移除；首屏改为 **加载中 / 加载失败+重试 / 空态** 三态 | 接口挂了会明确报错，不再伪装 |
 | D-6 | 轮询过密 | `App.vue:1987` 3s、`:3205` 1.8s、`:2208` 10s | 放大 D-1/D-2 |

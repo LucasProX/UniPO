@@ -3,7 +3,15 @@ package com.biecuoguo.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "app")
- public record AppProperties(Cors cors, Jwt jwt, Bootstrap bootstrap, Minio minio, Verification verification) {
+ /**
+  * 默认学校 id。
+  *
+  * <p>只有两种场景会用到它：未登录访客看 feed、新注册用户还没选学校。
+  * 以前这两处各自硬编码 {@code 1L}，访客那边更糟——随便挑一个 active 用户借人家的
+  * school_id（见 docs/ISSUES.md D-3），同一个请求两次可能看到不同内容。
+  */
+ public record AppProperties(Cors cors, Jwt jwt, Bootstrap bootstrap, Minio minio, Verification verification,
+                             Long defaultSchoolId) {
     public record Cors(String allowedOrigins) {}
     public record Jwt(String secret, long expirationMinutes) {}
     /**

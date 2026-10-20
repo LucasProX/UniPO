@@ -85,10 +85,11 @@ docker compose up -d --build
     `false`（真实）时生成随机码 -> 存 BCrypt 哈希 -> 走 SMTP 发信 -> 校验后消费（10 分钟有效）。
     **两种模式下都调用 `verifyCode()`**，不要再写 `if (mock) skip` —— 那样本地和线上的调用链不一致。
   - **密码上限是 72 字节，不是 72 个字符**：BCrypt 的有效输入只有 72 字节，超出会被静默忽略（两个不同的长密码可能算出同一个哈希）。`AuthService.assertPasswordAcceptable()` 显式拒绝超长，不要改成截断。
+- **「默认学校」只有一个来源**：`app.default-school-id`（`APP_DEFAULT_SCHOOL_ID`，默认 `1`）。未登录访客看 feed、新注册用户还没选学校、演示账号初始化，全都读它。**不要再在代码里写 `1L`**，也不要再写「随便挑一个用户代表访客」那种兜底（那正是 D-3）。该值必须存在于 `schools` 表，否则建号时会撞 `fk_users_school`。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
-- 新增环境变量：`APP_TIME_ZONE` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它有空值也安全的默认 `Asia/Shanghai`，强制必填会让老部署直接起不来。
+- 新增环境变量：`APP_TIME_ZONE` 与 `APP_DEFAULT_SCHOOL_ID` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值（`Asia/Shanghai` / `1`），强制必填会让老部署直接起不来。
 
 ## 5. 数据库
 - Flyway 管 schema：已发布的 V1–V11 禁止修改，新增 `V12__xxx.sql`。
@@ -118,7 +119,7 @@ docker compose up -d --build
 - 系统级 `core.autocrlf=true`，而 `.gitattributes` 只对 `*.sh` 强制 LF。改 shell 脚本注意别提交 CRLF。
 - **`.ps1` 必须是 CRLF**（2026-10-20 实测）：`edit`/`write` 工具写出来的是 LF，PowerShell 5.1 解析 LF-only 的 `.ps1` 会出现「变量赋值后仍为空」这类静默诡异行为（`scripts/smoke.ps1` 里 `$v1 = ($Base.TrimEnd('/')) + '/api/v1'` 算出空串，但同样代码单独跑没问题）。改完 `.ps1` 后统一 `(Get-Content f -Raw) -replace "`r?`n","`r`n" | Set-Content f -NoNewline` 转回 CRLF，并保持 ASCII-only。
 - **`smoke.ps1` 必须把控制台输出编码设成 UTF-8**（2026-10-20 实测）：PowerShell 5.1 捕获 `curl.exe` 输出用的是 `[Console]::OutputEncoding`，中文 Windows 下默认 OEM 936。UTF-8 的响应体被按 GBK 解码时，尾部字节会被吃掉，**连后面那个 JSON 引号一起吞**，`ConvertFrom-Json` 直接报「无效的 JSON 格式」。表现极具误导性：注册返回 200，但 token 取不到，后面所有带 token 的检查全 401。脚本开头已加 `$OutputEncoding` / `[Console]::OutputEncoding = $utf8`，别删。
-- `PostService.baseVisibleWrapper`（`PostService.java:470-478`）在用户没选学校或未登录时**硬编码 `school_id = 1`**；`defaultViewer()`（`PostService.java:646`）还会随便挑一个 active 用户当"匿名视角"。这是 bug，不是设计。
+- **匿名访客的 feed 曾经是随机的**（D-3，2026-10-20 已修，别再改回去）：`PostService.defaultViewer()` 以前会随便挑一个 active 用户借人家的 `school_id`，`baseVisibleWrapper()` 再用硬编码 `1L` 兜底——同一个匿名请求两次可能返回不同内容，那个随机用户被禁用后 feed 还会突然变样。现在访客就是 `viewer = null`，学校隔离统一走 `app.default-school-id`；同一个值也用于新注册用户和演示账号的初始学校（以前 `AuthService` 里四处各写一遍 `1L`）。**这个值必须指向 `schools` 表里真实存在的行**，否则建号会撞 `fk_users_school` 外键、启动直接失败。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - 前端轮询（2026-10-20 已随组件化搬进 store）：会话列表 3s（`stores/messages.ts` 的 `startConversationListPolling`）、当前会话 1.8s（`startActiveConversationPolling`）、在线心跳 10s（`stores/auth.ts` 的 `startPresenceHeartbeat`）。实时化之前别再加轮询。
 - **数据库默认值曾经指向一台已停用的服务器**（R-4，2026-10-20 已修，别再改回去）：那时候 `application.yml` / `application-local.yml` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`，一旦那个端口被放开，照默认启动就会对着一台陌生库跑 Flyway + 触发 `AuthService` 启动逻辑。现在的默认值全是「本机」或「compose 服务名」：`application.yml` → `127.0.0.1:3306`，`application-local.yml` → `127.0.0.1:12306`，`docker-compose.yml` → `mysql:3306`。`deploy-app.sh` / `deploy-ip.sh` **没有默认值**，`SPRING_DATASOURCE_URL` 缺失直接退出。
