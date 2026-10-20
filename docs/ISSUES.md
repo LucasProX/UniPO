@@ -136,7 +136,7 @@ JWT 默认 secret 已删（见 **R-5**）。
 `redis` 模式下启动就 ping，连不上直接拒绝启动；三个接口调用点（`TokenBlacklistService` / `PresenceService` / `RateLimitService`）签名未变。
 **实测**：两个实例（8080/8081）共用 Redis 时，A 退出登录后同一 token 在 B 上 401；memory 模式下是 200（这就是原来的 bug）。
 **仍待做**：默认还是 memory（单实例够用），起多副本要显式 `STATE_BACKEND=redis` + `--profile redis`；Redis 挂了限流放行、拉黑失败按未登录处理 | — |
-| Q-5 🔶 | ~~无 CI~~ **CI 已加并跑绿（2026-10-20）** | `.github/workflows/ci.yml` 四个 job，GitHub Actions run `39360886056` **4/4 全绿**：
+| Q-5 ✅ | ~~无 CI~~ **CI + 单测 + lint 全部落地（2026-10-20）** | `.github/workflows/ci.yml` 四个 job，GitHub Actions 最新 run `39363868902` **4/4 全绿**（首次绿是 `39360886056`）：
 `后端编译`（mvn package）/ `前端类型检查与构建`（npm ci + npm run build，vue-tsc 抓类型错）/ `脚本与换行自查`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
 `启动 + 接口冒烟`（真 MySQL 8.4 service + 起 jar + health/feed 游标/登录拿 token/带 token 调用/405/404 六条断言）。
 **已补（2026-10-20）**：后端单测 **22 个**（`backend/src/test/java/`：JWT 两种 token 不可混用 + 短密钥拒签 + 过期拒收、
