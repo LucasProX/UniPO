@@ -126,10 +126,20 @@ jobs:
           set -euo pipefail
           base=http://127.0.0.1:8080
 
-          health=$(curl -fsS "$base/actuator/health")
+          health=$(curl -fsS --retry 3 --retry-connrefused --retry-delay 2 "$base/actuator/health")
           echo "$health" | grep -q '"status":"UP"' || { echo "::error::health 不是 UP: $health"; exit 1; }
 
-          feed=$(curl -fsS "$base/api/v1/posts/page?tab=all&limit=2")
+          # health 过了不代表连接池热了：紧接着的第一个业务请求偶发 5xx / 连接重置（CI 上撞过一次，
+          # 同一个 commit 的上一版 run 是绿的）。冷启动不该把整个 run 判红，所以先重试预热再断言。
+          for attempt in $(seq 1 10); do
+            if curl -fsS --retry 3 --retry-connrefused --retry-delay 2 \
+              "$base/api/v1/posts/page?tab=all&limit=2" -o /tmp/feed.json; then
+              break
+            fi
+            echo "第 $attempt 次预热请求失败，2 秒后重试"
+            sleep 2
+          done
+          feed=$(cat /tmp/feed.json)
           echo "$feed" | grep -q '"code":"OK"' || { echo "::error::feed 响应包不对"; exit 1; }
           echo "$feed" | grep -q '"nextCursor"' || { echo "::error::feed 缺 nextCursor（游标分页契约）"; exit 1; }
 
