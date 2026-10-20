@@ -1,32 +1,23 @@
 import SwiftUI
+import UniPOCore
 import UniPOUI
 
 struct AchievementsView: View {
+    @Environment(AuthStore.self) private var auth
+
+    @State private var achievement: AchievementView?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
     @State private var appeared = false
     @State private var pulse = false
-
-    private let stages: [StageNode] = [
-        StageNode(title: "大一上", caption: "适应与探索", state: .current),
-        StageNode(title: "大一下", caption: "四级 · 社团 · 转专业", state: .locked),
-        StageNode(title: "大二", caption: "竞赛 · 实验室", state: .locked),
-        StageNode(title: "大三", caption: "实习 · 交换", state: .locked),
-        StageNode(title: "大四", caption: "求职 / 考研 / 考公", state: .boss)
-    ]
-
-    private let badges: [BadgeItem] = [
-        BadgeItem(title: "初来乍到", rarity: "普通", icon: "sparkles", tint: UniColor.secondary),
-        BadgeItem(title: "四级报名", rarity: "稀有", icon: "checkmark.seal.fill", tint: UniColor.blue),
-        BadgeItem(title: "社团面试", rarity: "稀有", icon: "person.3.fill", tint: UniColor.blueBright),
-        BadgeItem(title: "图书馆常客", rarity: "史诗", icon: "books.vertical.fill", tint: UniColor.gold),
-        BadgeItem(title: "迎新志愿者", rarity: "限定", icon: "heart.fill", tint: UniColor.danger),
-        BadgeItem(title: "???", rarity: "传说", icon: "lock.fill", tint: UniColor.tertiary)
-    ]
+    @State private var completingId: Int64?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 hero
                 stagePath
+                currentTasks
                 badgeGrid
             }
             .padding(.horizontal, 18)
@@ -34,6 +25,7 @@ struct AchievementsView: View {
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
+        .task(id: auth.isAuthenticated) { await load() }
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                 appeared = true
@@ -42,6 +34,16 @@ struct AchievementsView: View {
                 pulse = true
             }
         }
+    }
+
+    private var progress: Double {
+        guard let achievement, achievement.totalTasks > 0 else { return 0 }
+        return Double(achievement.completedTasks) / Double(achievement.totalTasks)
+    }
+
+    private var currentStage: AchievementStageView? {
+        guard let achievement else { return nil }
+        return achievement.stages.first { $0.code == achievement.currentStageCode } ?? achievement.stages.last
     }
 
     private var hero: some View {
@@ -56,7 +58,7 @@ struct AchievementsView: View {
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 Spacer()
-                Text("预览")
+                Text("MVP")
                     .font(.uniLabel(10))
                     .foregroundStyle(.white.opacity(0.7))
                     .padding(.horizontal, 9)
@@ -66,18 +68,16 @@ struct AchievementsView: View {
 
             HStack(spacing: 16) {
                 ZStack {
+                    Circle().stroke(.white.opacity(0.14), lineWidth: 9)
                     Circle()
-                        .stroke(.white.opacity(0.14), lineWidth: 9)
-                    Circle()
-                        .trim(from: 0, to: appeared ? 0.42 : 0)
-                        .stroke(UniColor.blueBright,
-                                style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                        .trim(from: 0, to: appeared ? progress : 0)
+                        .stroke(UniColor.blueBright, style: StrokeStyle(lineWidth: 9, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: 1) {
-                        Text("42%")
+                        Text("\(Int(progress * 100))%")
                             .font(.system(size: 20, weight: .heavy))
                             .foregroundStyle(.white)
-                        Text("大一上")
+                        Text(currentStage?.title ?? "—")
                             .font(.uniLabel(10))
                             .foregroundStyle(.white.opacity(0.6))
                     }
@@ -85,19 +85,25 @@ struct AchievementsView: View {
                 .frame(width: 94, height: 94)
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("当前阶段：大一上 · 第 3 周")
+                    Text(achievement.map { "Lv.\($0.level) · \($0.completedTasks)/\($0.totalTasks) 个任务" } ?? "登录后同步进度")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
-                    Text("还有 2 个任务没完成")
+                    Text(currentStage.map { "当前阶段：\($0.title)" } ?? (isLoading ? "加载中…" : "还没有阶段数据"))
                         .font(.uniBody(12))
                         .foregroundStyle(.white.opacity(0.62))
                     HStack(spacing: 6) {
-                        Image(systemName: "flame.fill")
-                        Text("连签 6 天")
+                        Image(systemName: "bolt.fill")
+                        Text("\(achievement?.xp ?? 0) XP")
                     }
                     .font(.uniLabel(11))
                     .foregroundStyle(UniColor.gold)
                 }
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.uniLabel(11))
+                    .foregroundStyle(.white.opacity(0.8))
             }
         }
         .padding(22)
@@ -124,20 +130,20 @@ struct AchievementsView: View {
                 .foregroundStyle(UniColor.ink)
 
             VStack(spacing: 0) {
-                ForEach(Array(stages.enumerated()), id: \.offset) { index, stage in
+                ForEach(Array((achievement?.stages ?? []).enumerated()), id: \.offset) { index, stage in
                     HStack(alignment: .top, spacing: 14) {
                         VStack(spacing: 0) {
                             ZStack {
                                 Circle()
-                                    .fill(stage.state == .locked ? UniColor.mist : UniColor.ink)
+                                    .fill(nodeState(stage) == .locked ? UniColor.mist : UniColor.ink)
                                     .frame(width: 30, height: 30)
-                                Image(systemName: stage.state.icon)
+                                Image(systemName: nodeState(stage).icon)
                                     .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(stage.state == .locked ? UniColor.tertiary : .white)
+                                    .foregroundStyle(nodeState(stage) == .locked ? UniColor.tertiary : .white)
                             }
-                            if index < stages.count - 1 {
+                            if index < (achievement?.stages.count ?? 0) - 1 {
                                 Rectangle()
-                                    .fill(stage.state == .done ? UniColor.blue.opacity(0.5) : UniColor.mist)
+                                    .fill(nodeState(stage) == .done ? UniColor.blue.opacity(0.5) : UniColor.mist)
                                     .frame(width: 2, height: 40)
                             }
                         }
@@ -145,8 +151,8 @@ struct AchievementsView: View {
                             HStack(spacing: 6) {
                                 Text(stage.title)
                                     .font(.system(size: 15, weight: .bold))
-                                    .foregroundStyle(stage.state == .locked ? UniColor.tertiary : UniColor.ink)
-                                if stage.state == .current {
+                                    .foregroundStyle(nodeState(stage) == .locked ? UniColor.tertiary : UniColor.ink)
+                                if stage.code == achievement?.currentStageCode {
                                     Text("进行中")
                                         .font(.uniLabel(9))
                                         .foregroundStyle(UniColor.blue)
@@ -154,15 +160,18 @@ struct AchievementsView: View {
                                         .padding(.vertical, 2)
                                         .background(UniColor.blue.opacity(0.1), in: Capsule())
                                 }
-                                if stage.state == .boss {
+                                if stage.boss {
                                     Text("BOSS")
                                         .font(.uniLabel(9))
                                         .foregroundStyle(UniColor.danger)
                                 }
                             }
-                            Text(stage.caption)
+                            Text(stage.subtitle ?? "")
                                 .font(.uniBody(12))
                                 .foregroundStyle(UniColor.secondary)
+                            Text("\(stage.completedCount)/\(stage.totalCount)")
+                                .font(.uniLabel(10))
+                                .foregroundStyle(UniColor.tertiary)
                         }
                         Spacer()
                     }
@@ -178,6 +187,73 @@ struct AchievementsView: View {
         }
     }
 
+    private var currentTasks: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("当前阶段任务")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(UniColor.ink)
+                Spacer()
+                if let currentStage {
+                    Text("\(currentStage.completedCount)/\(currentStage.totalCount)")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(UniColor.tertiary)
+                }
+            }
+
+            if let currentStage {
+                VStack(spacing: 0) {
+                    ForEach(currentStage.tasks) { task in
+                        HStack(spacing: 10) {
+                            Button {
+                                guard !task.completed else { return }
+                                Task { await complete(task) }
+                            } label: {
+                                Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(task.completed ? UniColor.blue : UniColor.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(task.completed || completingId == task.id)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.title)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(task.completed ? UniColor.secondary : UniColor.ink)
+                                    .strikethrough(task.completed, color: UniColor.tertiary)
+                                if let description = task.description, !description.isEmpty {
+                                    Text(description)
+                                        .font(.uniLabel(11))
+                                        .foregroundStyle(UniColor.tertiary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            Spacer()
+                            Text("+\(task.xp)")
+                                .font(.uniLabel(10))
+                                .foregroundStyle(UniColor.gold)
+                        }
+                        .padding(.vertical, 10)
+                        if task.id != currentStage.tasks.last?.id {
+                            Divider().padding(.leading, 30)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(UniColor.mist.opacity(0.7), lineWidth: 1)
+                )
+            } else {
+                Text(isLoading ? "加载中…" : "登录后查看你的阶段任务")
+                    .font(.uniBody(13))
+                    .foregroundStyle(UniColor.secondary)
+                    .padding(.vertical, 20)
+            }
+        }
+    }
+
     private var badgeGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -185,48 +261,96 @@ struct AchievementsView: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(UniColor.ink)
                 Spacer()
-                Text("6 / 24")
-                    .font(.uniLabel(11))
-                    .foregroundStyle(UniColor.tertiary)
+                if let achievement {
+                    Text("\(achievement.badges.filter(\.earned).count) / \(achievement.badges.count)")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(UniColor.tertiary)
+                }
             }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                ForEach(badges) { badge in
+                ForEach((achievement?.badges ?? []).prefix(12)) { badge in
                     VStack(spacing: 8) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(badge.tint.opacity(0.10))
+                                .fill(badgeTint(badge.rarity).opacity(badge.earned ? 0.12 : 0.05))
                                 .frame(width: 58, height: 58)
                             Image(systemName: badge.icon)
                                 .font(.system(size: 22, weight: .semibold))
-                                .foregroundStyle(badge.tint)
+                                .foregroundStyle(badge.earned ? badgeTint(badge.rarity) : UniColor.tertiary.opacity(0.6))
                         }
-                        Text(badge.title)
+                        Text(badge.earned ? badge.title : "未解锁")
                             .font(.uniLabel(11))
-                            .foregroundStyle(UniColor.ink)
+                            .foregroundStyle(badge.earned ? UniColor.ink : UniColor.tertiary)
                             .lineLimit(1)
-                        Text(badge.rarity)
+                        Text(rarityLabel(badge.rarity))
                             .font(.uniLabel(9))
-                            .foregroundStyle(badge.tint)
+                            .foregroundStyle(badgeTint(badge.rarity))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(badge.tint.opacity(0.18), lineWidth: 1)
+                            .stroke(badgeTint(badge.rarity).opacity(badge.earned ? 0.2 : 0.08), lineWidth: 1)
                     )
                     .scaleEffect(appeared ? 1 : 0.92)
                 }
             }
         }
     }
-}
 
-private struct StageNode {
-    let title: String
-    let caption: String
-    let state: StageState
+    private func nodeState(_ stage: AchievementStageView) -> StageState {
+        if stage.code == achievement?.currentStageCode { return .current }
+        if stage.totalCount > 0 && stage.completedCount == stage.totalCount { return .done }
+        if stage.boss { return .boss }
+        return .locked
+    }
+
+    private func badgeTint(_ rarity: String) -> Color {
+        switch rarity {
+        case "RARE": return UniColor.blue
+        case "EPIC": return UniColor.gold
+        case "LEGENDARY": return UniColor.danger
+        case "LIMITED": return Color(hex: 0x8B5CF6)
+        default: return UniColor.secondary
+        }
+    }
+
+    private func rarityLabel(_ rarity: String) -> String {
+        switch rarity {
+        case "RARE": return "稀有"
+        case "EPIC": return "史诗"
+        case "LEGENDARY": return "传说"
+        case "LIMITED": return "限定"
+        default: return "普通"
+        }
+    }
+
+    private func load() async {
+        guard auth.isAuthenticated else {
+            isLoading = false
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+        do {
+            achievement = try await APIClient.shared.achievements()
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription
+        }
+        isLoading = false
+    }
+
+    private func complete(_ task: AchievementTaskView) async {
+        completingId = task.id
+        do {
+            achievement = try await APIClient.shared.completeTask(id: task.id)
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription
+        }
+        completingId = nil
+    }
 }
 
 private enum StageState {
@@ -240,12 +364,4 @@ private enum StageState {
         case .boss: return "crown.fill"
         }
     }
-}
-
-private struct BadgeItem: Identifiable {
-    let id = UUID()
-    let title: String
-    let rarity: String
-    let icon: String
-    let tint: Color
 }

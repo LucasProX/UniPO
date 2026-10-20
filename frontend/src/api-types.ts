@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/achievements/tasks/{taskId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/posts/{id}": {
         parameters: {
             query?: never;
@@ -1028,6 +1044,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/achievements/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/me/followers/{followerUid}": {
         parameters: {
             query?: never;
@@ -1497,6 +1529,59 @@ export interface components {
         LoginRequest: {
             email: string;
             password: string;
+        };
+        AchievementView: {
+            /** Format: int32 */
+            level?: number;
+            /** Format: int32 */
+            xp?: number;
+            /** Format: int32 */
+            completedTasks?: number;
+            /** Format: int32 */
+            totalTasks?: number;
+            currentStageCode?: string;
+            stages?: components["schemas"]["StageView"][];
+            badges?: components["schemas"]["BadgeView"][];
+        };
+        ApiResponseAchievementView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["AchievementView"];
+            requestId?: string;
+        };
+        BadgeView: {
+            code?: string;
+            title?: string;
+            description?: string;
+            rarity?: string;
+            icon?: string;
+            earned?: boolean;
+            earnedAt?: string;
+        };
+        StageView: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            title?: string;
+            subtitle?: string;
+            /** Format: int32 */
+            order?: number;
+            boss?: boolean;
+            tasks?: components["schemas"]["TaskView"][];
+            /** Format: int32 */
+            completedCount?: number;
+            /** Format: int32 */
+            totalCount?: number;
+        };
+        TaskView: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+            description?: string;
+            /** Format: int32 */
+            xp?: number;
+            completed?: boolean;
+            completedAt?: string;
         };
         ModerateRequest: {
             pinned?: boolean;
@@ -2801,6 +2886,28 @@ export interface operations {
             };
         };
     };
+    complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAchievementView"];
+                };
+            };
+        };
+    };
     moderate: {
         parameters: {
             query?: never;
@@ -3561,6 +3668,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseAnalyticsOverview"];
+                };
+            };
+        };
+    };
+    me_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAchievementView"];
                 };
             };
         };

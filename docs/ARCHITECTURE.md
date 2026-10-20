@@ -113,7 +113,16 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 `media_objects`：`bucket` / `object_key` / `url` / `content_type` / `size_bytes` / `purpose`。
 `url` 先存 `minio://bucket/key`，再由 `minio.publicEndpoint` 拼成可访问 URL 回写。
 
-### 4.5 已删除的遗留域
+### 4.5 成就域（V15）
+| 表 | 说明 |
+|---|---|
+| `achievement_stages` | 阶段（大一上…大四），`stage_order`、`boss` |
+| `achievement_tasks` | 阶段任务，`xp`、`badge_code` |
+| `achievement_progress` | 用户任务完成记录，唯一键 `(user_id, task_id)` |
+| `badges` | 徽章字典：`rarity` / `icon` / `sort_order` |
+| `user_badges` | 用户已获徽章，唯一键 `(user_id, badge_code)` |
+
+### 4.6 已删除的遗留域
 ~~`notices`、`notice_tags`、`user_notice_status`、`favorites`、`reminders`~~ —— 2026-10-20 由
 `V11__drop_notices_domain.sql` 整体删除，对应 Java 文件（`NoticeController` / `NoticeService` /
 `InteractionController` / `CommentController` 等 19 个）一并移除。

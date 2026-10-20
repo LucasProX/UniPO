@@ -108,3 +108,84 @@ public struct PostPage: Codable {
     public let hasMore: Bool
     public let limit: Int
 }
+
+public struct CommentView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let postId: Int64
+    public let parentId: Int64?
+    public let content: String
+    public let likeCount: Int?
+    public let replyCount: Int?
+    public let liked: Bool?
+    public let createdAt: String?
+    public let author: AuthorView
+}
+
+public struct ConversationView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let peer: AuthorView
+    public let lastMessage: String?
+    public let unreadCount: Int?
+    public let lastMessageAt: String?
+    public let updatedAt: String?
+}
+
+public struct MessageView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let conversationId: Int64
+    public let senderId: Int64
+    public let receiverId: Int64
+    public let content: String
+    public let read: Bool?
+    public let createdAt: String?
+}
+
+public struct UploadResponse: Codable {
+    public let id: Int64
+    public let url: String
+    public let objectKey: String?
+    public let contentType: String?
+    public let sizeBytes: Int?
+}
+
+public struct AchievementTaskView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let title: String
+    public let description: String?
+    public let xp: Int
+    public let completed: Bool
+    public let completedAt: String?
+}
+
+public struct AchievementStageView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let code: String
+    public let title: String
+    public let subtitle: String?
+    public let order: Int
+    public let boss: Bool
+    public let tasks: [AchievementTaskView]
+    public let completedCount: Int
+    public let totalCount: Int
+}
+
+public struct AchievementBadgeView: Codable, Identifiable, Hashable {
+    public var id: String { code }
+    public let code: String
+    public let title: String
+    public let description: String?
+    public let rarity: String
+    public let icon: String
+    public let earned: Bool
+    public let earnedAt: String?
+}
+
+public struct AchievementView: Codable {
+    public let level: Int
+    public let xp: Int
+    public let completedTasks: Int
+    public let totalTasks: Int
+    public let currentStageCode: String?
+    public let stages: [AchievementStageView]
+    public let badges: [AchievementBadgeView]
+}

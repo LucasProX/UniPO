@@ -43,7 +43,7 @@ struct PostCardView: View {
                     .multilineTextAlignment(.leading)
             }
 
-            if let cover = post.coverUrl, let url = URL(string: cover) {
+            if let cover = post.coverUrl, let url = AppConfig.absoluteURL(cover) {
                 AsyncImage(url: url) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()

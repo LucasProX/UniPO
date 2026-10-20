@@ -145,7 +145,7 @@ JWT 默认 secret 已删（见 **R-5**）。
 **已补（2026-10-20）**：后端单测 **22 个**（`backend/src/test/java/`：JWT 两种 token 不可混用 + 短密钥拒签 + 过期拒收、
 图片文件头识别 + HTML/SVG 拒绝、时区边界、限流窗口/fail-open、三个内存 store），CI 的 `后端编译` job 改成 `mvn -B package`（跑测试）；
 前端加了 **eslint 基线**（`frontend/eslint.config.js`，只开 no-debugger / no-var / prefer-const / eqeqeq 等一小撮，`npm run lint`），CI `前端` job 加一步。
-**已补（2026-10-20，macOS 迁移）**：`scripts/smoke.ps1` 移植成 **`scripts/smoke.sh`**（bash + curl + jq，同一批 37 项断言，macOS/Linux 可直接跑），CI 的 `启动 + 接口冒烟` job 里新增一步跑它（`SMOKE_SKIP_UPLOAD=1`——CI 只起 MySQL 没有 MinIO）；脚本不再写死演示账号 id，`ADMIN_UID` 缺省时用 bootstrap 管理员登录取 `data.user.publicUid`。
+**已补（2026-10-20，macOS 迁移）**：`scripts/smoke.ps1` 移植成 **`scripts/smoke.sh`**（bash + curl + jq，同一批 39 项断言，macOS/Linux 可直接跑），CI 的 `启动 + 接口冒烟` job 里新增一步跑它（`SMOKE_SKIP_UPLOAD=1`——CI 只起 MySQL 没有 MinIO）；脚本不再写死演示账号 id，`ADMIN_UID` 缺省时用 bootstrap 管理员登录取 `data.user.publicUid`。
 **故意没上**：官方 recommended（几百条纯风格告警）、prettier（会和现有手写风格打架） |
 | Q-6 ✅ | ~~类型手写，与后端 DTO 已漂移~~ **已上契约（2026-10-20）** | `npm run gen:api` 用 `openapi-typescript` 把 `/v3/api-docs` 生成到
 `frontend/src/api-types.ts`；`frontend/src/api-contract.ts` 用类型断言要求手写 `types.ts` 与生成类型字段名/类型完全一致，

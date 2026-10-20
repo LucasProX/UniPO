@@ -299,6 +299,34 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 前端据此隐藏关注/私信入口。**信息流过滤还没接**（被拉黑用户的帖子仍可能出现在推荐里），
 下一步在 `PostService` 的可见性条件里排除双向拉黑关系。
 
+### 9.5 成就系统
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/achievements/me` | 当前用户阶段、任务、进度、徽章（需登录） |
+| POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章 |
+
+返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[] }`。
+任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。
+
+```json
+{
+  "code": "OK",
+  "data": {
+    "level": 100,
+    "xp": 100055,
+    "completedTasks": 1,
+    "totalTasks": 12,
+    "currentStageCode": "freshman-1",
+    "stages": [{ "title": "大一上", "tasks": [{ "id": 1, "title": "完成报到", "completed": false }] }],
+    "badges": [{ "code": "freshman-start", "rarity": "COMMON", "earned": false }]
+  }
+}
+```
+
+徽章稀有度：`COMMON` / `RARE` / `EPIC` / `LEGENDARY` / `LIMITED`。
+第一阶段只做通用主线；专业支线、活动徽章、算法推荐后续加表，不改接口。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

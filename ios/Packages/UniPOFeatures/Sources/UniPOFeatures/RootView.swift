@@ -11,6 +11,7 @@ public struct RootView: View {
     @State private var tab: AppTab = .home
     @State private var showCompose = false
     @State private var showAuth = false
+    @State private var showMessages = false
 
     public init() {
         // 调试用：xcrun simctl launch booted com.unipo.app -tab achievements
@@ -26,6 +27,9 @@ public struct RootView: View {
         if ProcessInfo.processInfo.arguments.contains("-compose") {
             _showCompose = State(initialValue: true)
         }
+        if ProcessInfo.processInfo.arguments.contains("-messages") {
+            _showMessages = State(initialValue: true)
+        }
     }
 
     public var body: some View {
@@ -36,7 +40,8 @@ public struct RootView: View {
                 switch tab {
                 case .home:
                     HomeView(onRequestAuth: { showAuth = true },
-                             onOpenAchievements: { tab = .achievements })
+                             onOpenAchievements: { tab = .achievements },
+                             onOpenMessages: { showMessages = true })
                 case .tools:
                     ToolsView()
                 case .achievements:
@@ -70,6 +75,12 @@ public struct RootView: View {
                 .environment(auth)
                 .presentationDetents([.medium, .large])
                 .presentationCornerRadius(32)
+        }
+        .sheet(isPresented: $showMessages) {
+            MessagesView()
+                .environment(auth)
+                .presentationDetents([.large])
+                .presentationCornerRadius(30)
         }
         .tint(UniColor.blue)
         .task {

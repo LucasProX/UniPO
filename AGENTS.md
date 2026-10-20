@@ -28,6 +28,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/taxonomy/` | 分类字典模块（学校/学院/专业/标签/分类）：`api/`（TaxonomyDtos）+ `internal/`（Controller/Service）。**实体与 Mapper 暂时仍在共享的 domain/mapper 包**，等 post/user 模块迁移时再收进来 |
 | `backend/src/main/java/com/biecuoguo/message/` | 私信模块：`api/`（MessageDtos）+ `internal/`（Controller/Service/会话/消息实体/Mapper）。依赖共享的 `UserMapper` 与 `PostDtos`，等 user 模块迁移时收口 |
 | `backend/src/main/java/com/biecuoguo/admin/` | 管理后台模块：`api/`（AdminAuditApi）+ `internal/`（审计日志、报表聚合、监控摘要、后台 Controller）。同 SPA 的 `/admin` 页面在 `frontend/src/views/admin/` |
+| `backend/src/main/java/com/biecuoguo/achievement/` | 成就系统：`api/`（Dtos）+ `internal/`（阶段/任务/进度/徽章、Service、Controller）。V15 建表并种入通用主线 |
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
@@ -58,7 +59,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
   （`/opt/homebrew/opt/openjdk@21`，`JAVA_HOME` 写进 `~/.zshrc`），Node 在 `~/local/node-v22.12.0/bin`。
   **Docker 用 colima 提供，本地库走 `docker compose --profile local-db`（MySQL 12306 / MinIO 9000 / 9001），
   与服务器形态保持一致**；brew 原生 MySQL/MinIO 只作 colima 拉镜像太慢时的应急备选（端口 3306）。
-  `scripts/smoke.ps1` 在 Mac 上跑不了，用 `bash scripts/smoke.sh`（37 项，同一批断言）。
+  `scripts/smoke.ps1` 在 Mac 上跑不了，用 `bash scripts/smoke.sh`（39 项，同一批断言）。
   本地 `.env` 默认 `RATE_LIMIT_ENABLED=false`——冒烟一次注册 6 个账号，开着限流一小时跑三遍就 429；
   要验证限流行为时临时改成 true 再重启后端。
   Windows 专属的坑（`npm.cmd`、`.ps1` 必须 CRLF、PowerShell 输出编码）在 Mac 上不适用。
@@ -101,7 +102,7 @@ docker compose --profile observability up -d prometheus   # 仅需要看指标�
 
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 37 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码、refresh token）
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 39 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码、refresh token）
 ```
 全栈（需要 Docker）：
 ```bash
@@ -251,8 +252,8 @@ xcrun simctl launch booted com.unipo.app
 - **CI 有测试和 lint 了（2026-10-20），但 `smoke.ps1` 还是只在 Windows 上跑**：`.github/workflows/ci.yml` 跑
   `mvn -B package`（含 22 个单测）/ `npm ci` + `npm run lint` + `npm run build` / 脚本换行自查 /
   真 MySQL 起服务的接口冒烟 / 重生成 `api-types.ts` 后 `git diff --exit-code`。
-  但它**不能代替本地 `smoke.ps1`**——37 项全链路检查（含上传、游标分页、时区、注册验证码、refresh token）只有 Windows 上那一份，CI 里没跑。
-  提交前仍然要：`npm.cmd run lint` + `npm.cmd run build` 绿 + `mvn test` 绿 + `smoke.ps1` 37/37。
+  但它**不能代替本地 `smoke.ps1`**——39 项全链路检查（含上传、游标分页、时区、注册验证码、refresh token、成就）只有 Windows 上那一份，CI 里没跑。
+  提交前仍然要：`npm.cmd run lint` + `npm.cmd run build` 绿 + `mvn test` 绿 + `smoke.ps1` 39/39。
   改 workflow 后先在本地跑 `actionlint .github/workflows/ci.yml`——GitHub 的 YAML 报错要到网页 logs 里看，
   而「解析就失败」的那种 run 连 job 都没有（`total_count == 0`、`created_at == updated_at`），没有 logs 可看。
 - **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。

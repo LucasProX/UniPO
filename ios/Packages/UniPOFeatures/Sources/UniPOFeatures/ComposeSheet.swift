@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UIKit
 import UniPOCore
 import UniPOUI
 
@@ -11,6 +13,9 @@ struct ComposeSheet: View {
     @State private var content = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var imageURLs: [String] = []
+    @State private var isUploading = false
 
     private let boards = [("school", "校 PO"), ("college", "院 PO"), ("major", "专业 PO")]
 
@@ -29,6 +34,18 @@ struct ComposeSheet: View {
                 }
             }
             .navigationTitle("发一条校园 PO")
+            .onChange(of: pickerItem) { _, item in
+                Task { await upload(item) }
+            }
+            .task(id: auth.isAuthenticated) {
+                #if DEBUG
+                if auth.isAuthenticated,
+                   ProcessInfo.processInfo.arguments.contains("-upload-image"),
+                   imageURLs.isEmpty {
+                    await uploadGeneratedImage()
+                }
+                #endif
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -76,6 +93,37 @@ struct ComposeSheet: View {
 
                 Divider()
 
+                HStack(spacing: 10) {
+                    PhotosPicker(selection: $pickerItem, matching: .images) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                            Text(imageURLs.isEmpty ? "添加图片" : "换一张")
+                        }
+                        .font(.uniLabel(12))
+                        .foregroundStyle(UniColor.blue)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(UniColor.blue.opacity(0.08), in: Capsule())
+                    }
+
+                    if isUploading {
+                        ProgressView().tint(UniColor.ink)
+                    }
+
+                    ForEach(imageURLs, id: \.self) { url in
+                        AsyncImage(url: AppConfig.absoluteURL(url)) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().scaledToFill()
+                            } else {
+                                UniColor.mist
+                            }
+                        }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Spacer()
+                }
+
                 TextEditor(text: $content)
                     .font(.uniBody(15))
                     .frame(minHeight: 220)
@@ -108,6 +156,46 @@ struct ComposeSheet: View {
         }
     }
 
+    #if DEBUG
+    private func uploadGeneratedImage() async {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400))
+        let image = renderer.image { context in
+            UIColor(red: 0.18, green: 0.42, blue: 1, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 600, height: 400))
+            let text = "UniPO" as NSString
+            text.draw(at: CGPoint(x: 40, y: 170), withAttributes: [
+                .font: UIFont.systemFont(ofSize: 56, weight: .bold),
+                .foregroundColor: UIColor.white
+            ])
+        }
+        guard let data = image.pngData() else { return }
+        isUploading = true
+        defer { isUploading = false }
+        do {
+            let result = try await APIClient.shared.uploadImage(data: data, filename: "test.png", mimeType: "image/png")
+            imageURLs = [result.url]
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
+        }
+    }
+    #endif
+
+    private func upload(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        isUploading = true
+        defer { isUploading = false }
+        do {
+            guard let data = try await item.loadTransferable(type: Data.self) else {
+                errorMessage = "读取图片失败"
+                return
+            }
+            let result = try await APIClient.shared.uploadImage(data: data)
+            imageURLs = [result.url]
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
+        }
+    }
+
     private func submit() async {
         isSubmitting = true
         errorMessage = nil
@@ -115,7 +203,8 @@ struct ComposeSheet: View {
             _ = try await APIClient.shared.createPost(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
-                board: board
+                board: board,
+                images: imageURLs
             )
             dismiss()
         } catch {

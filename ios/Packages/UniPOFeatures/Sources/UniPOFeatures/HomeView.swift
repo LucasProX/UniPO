@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(AuthStore.self) private var auth
     let onRequestAuth: () -> Void
     let onOpenAchievements: () -> Void
+    let onOpenMessages: () -> Void
 
     @State private var board = "recommend"
     @State private var posts: [PostView] = []
@@ -13,6 +14,7 @@ struct HomeView: View {
     @State private var hasMore = false
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var selectedPost: PostView?
 
     private let boards = [
         ("recommend", "推荐"),
@@ -36,6 +38,20 @@ struct HomeView: View {
         .scrollIndicators(.hidden)
         .refreshable { await load(reset: true) }
         .task { await load(reset: true) }
+        .task {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-post-detail"), selectedPost == nil {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                selectedPost = posts.first
+            }
+            #endif
+        }
+        .sheet(item: $selectedPost) { post in
+            PostDetailView(post: post)
+                .environment(auth)
+                .presentationDetents([.large])
+                .presentationCornerRadius(30)
+        }
     }
 
     private var header: some View {
@@ -57,6 +73,14 @@ struct HomeView: View {
                     .foregroundStyle(UniColor.secondary)
             }
             Spacer()
+            Button(action: onOpenMessages) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(UniColor.ink)
+                    .frame(width: 40, height: 40)
+                    .background(UniColor.mist.opacity(0.75), in: Circle())
+            }
+            .buttonStyle(.plain)
             Button {
                 if auth.isAuthenticated { onOpenAchievements() } else { onRequestAuth() }
             } label: {
@@ -199,6 +223,7 @@ struct HomeView: View {
         } else {
             ForEach(posts) { post in
                 PostCardView(post: post)
+                    .onTapGesture { selectedPost = post }
                     .onAppear {
                         if post.id == posts.last?.id, hasMore {
                             Task { await load(reset: false) }

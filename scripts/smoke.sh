@@ -123,6 +123,13 @@ call_api POST "$BASE/api/users/me/check-in" "" "$TOK"
 check check-in
 call_api GET "$BASE/api/users/me/stats" "" "$TOK"
 check stats
+call_api GET "$V1/achievements/me" "" "$TOK"
+check achievements
+ACH_TASK="$(jget '.data.stages[0].tasks[0].id')"
+if [ -n "$ACH_TASK" ]; then
+  call_api POST "$V1/achievements/tasks/$ACH_TASK/complete" "" "$TOK"
+  check achievement-complete
+fi
 call_api GET "$BASE/api/posts/hot-today" "" "$TOK"
 check hot-today
 call_api GET "$BASE/api/posts/dont-miss" "" "$TOK"

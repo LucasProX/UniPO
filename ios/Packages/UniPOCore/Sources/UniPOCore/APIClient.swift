@@ -71,7 +71,8 @@ public actor APIClient {
         return try await request(path: "posts/page", query: query)
     }
 
-    public func createPost(title: String, content: String, board: String = "school", tags: [String] = []) async throws -> PostView {
+    public func createPost(title: String, content: String, board: String = "school",
+                           tags: [String] = [], images: [String] = []) async throws -> PostView {
         try await request(
             path: "posts",
             method: "POST",
@@ -79,9 +80,106 @@ public actor APIClient {
                 "board": board,
                 "title": title,
                 "content": content,
-                "tags": tags
+                "tags": tags,
+                "images": images
             ]
         )
+    }
+
+    public func comments(postId: Int64) async throws -> [CommentView] {
+        try await request(path: "posts/\(postId)/comments")
+    }
+
+    public func addComment(postId: Int64, content: String, parentId: Int64? = nil) async throws -> CommentView {
+        var body: [String: Any] = ["content": content]
+        if let parentId { body["parentId"] = parentId }
+        return try await request(path: "posts/\(postId)/comments", method: "POST", body: body)
+    }
+
+    @discardableResult
+    public func likePost(id: Int64, liked: Bool) async throws -> Bool {
+        try await request(path: "posts/\(id)/like", method: liked ? "DELETE" : "POST")
+    }
+
+    @discardableResult
+    public func favoritePost(id: Int64, favorited: Bool) async throws -> Bool {
+        try await request(path: "posts/\(id)/favorite", method: favorited ? "DELETE" : "POST")
+    }
+
+    public func conversations() async throws -> [ConversationView] {
+        try await request(path: "messages/conversations")
+    }
+
+    public func messages(conversationId: Int64) async throws -> [MessageView] {
+        try await request(path: "messages/conversations/\(conversationId)/messages")
+    }
+
+    public func sendMessage(conversationId: Int64, content: String) async throws -> MessageView {
+        try await request(
+            path: "messages/conversations/\(conversationId)/messages",
+            method: "POST",
+            body: ["content": content]
+        )
+    }
+
+    public func createConversation(peerUid: String) async throws -> ConversationView {
+        try await request(path: "messages/conversations", method: "POST", body: ["peerUid": peerUid])
+    }
+
+    public func achievements() async throws -> AchievementView {
+        try await request(path: "achievements/me")
+    }
+
+    public func completeTask(id: Int64) async throws -> AchievementView {
+        try await request(path: "achievements/tasks/\(id)/complete", method: "POST")
+    }
+
+    public func uploadImage(data: Data, filename: String = "photo.jpg",
+                            mimeType: String = "image/jpeg") async throws -> UploadResponse {
+        guard var components = URLComponents(string: AppConfig.apiBaseURL.absoluteString + "/media/upload") else {
+            throw APIError.invalidURL
+        }
+        components.queryItems = [URLQueryItem(name: "purpose", value: "post")]
+        guard let url = components.url else { throw APIError.invalidURL }
+
+        let boundary = "UniPO-\(UUID().uuidString)"
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue("ios", forHTTPHeaderField: "X-Client")
+        if let accessToken {
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        let (responseData, response): (Data, URLResponse)
+        do {
+            (responseData, response) = try await session.data(for: request)
+        } catch {
+            throw APIError.transport(error)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status == 401 {
+            throw APIError.unauthorized("")
+        }
+        do {
+            let envelope = try JSONDecoder().decode(APIEnvelope<UploadResponse>.self, from: responseData)
+            guard envelope.code == "OK", let payload = envelope.data else {
+                throw APIError.server(code: envelope.code, message: envelope.message, status: status)
+            }
+            return payload
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw APIError.decoding(error)
+        }
     }
 
     public func logout(refreshToken: String?) async {

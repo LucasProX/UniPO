@@ -4380,6 +4380,40 @@ Dock 是自定义的 5 个位置（首页/工具/发PO/成就/我的），中间
 当前骨架：登录（Keychain + refresh 兜底）、首页真实 feed、工具入口、成就页动效、我的页、发 PO。
 待接：帖子详情/评论、消息 WebSocket、图片上传、阶段/成就真实接口、APNs。
 
+## 2026-10-20 iOS MVP 收口：详情/评论、私信、图片、成就一次补齐
+
+一天里把 iOS 四个缺口补完，按顺序：
+
+1. **帖子详情 + 评论 + 点赞/收藏**：详情用列表里已有的 PostView，不再额外请求单帖；评论独立拉取，
+   点赞/收藏本地先改再请求，失败只弹提示。
+2. **消息 + WebSocket**：会话列表 + 私聊 + 发送；连上后发 auth 帧，event 到达时只累加一个 tick，
+   由 onChange 刷新列表和当前会话。
+3. **图片上传**：PhotosPicker -> Data -> multipart -> MinIO，拿到相对 URL 后随 POST /posts 的 images 一起提交。
+4. **成就真实数据**：V15 建 achievement_stages/tasks/progress + badges/user_badges，
+   GET /api/achievements/me 和 POST /tasks/{id}/complete；完成任务发经验、按 badge_code 发徽章，重复调用幂等。
+
+**踩到的坑 1：task 比登录早**
+
+调试用 -email/-password 自动登录时，成就/消息/发 PO 的 task 先跑，auth.isAuthenticated 还是 false，
+于是「登录后同步进度」/上传 401。改成 .task(id: auth.isAuthenticated)，登录状态变化后自动重跑；
+上传还加了 guard auth.isAuthenticated。这不是调试专属问题——冷启动会话恢复慢时真机也会遇到。
+
+**踩到的坑 2：相对媒体 URL**
+
+上传返回 /api/media/19/content?v=...，直接 URL(string:) 会当成无 scheme 的路径，AsyncImage 静默失败。
+加了 AppConfig.absoluteURL，用 scheme/host/port 拼 origin，再 relative 解析，保留 query。
+
+**验证**：
+
+- 后端 GET /achievements/me 返回 5 阶段/12 任务/6 徽章，完成任务后 XP +20、徽章 freshman-start 到账；
+- smoke 加到 39 项（新增 achievements / achievement-complete）；
+- iOS 模拟器实测：详情评论加载、私信发送、图片上传缩略图、成就进度与任务列表；
+- WebSocket 指标 unipo_realtime_connections 1.0；
+- mvn test 43 绿，iOS BUILD SUCCEEDED。
+
+**没做的**：APNs、账号注销、TestFlight、成就任务自动完成（现在只有手动勾选）、
+活动徽章发放、专业支线。这些留到下一阶段。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：
