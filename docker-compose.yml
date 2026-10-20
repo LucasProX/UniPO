@@ -69,6 +69,9 @@ services:
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-${MYSQL_PASSWORD:-biecuoguo_password_change_me}}
       # 没有默认值：compose 缺这个变量就直接报错，不要让它悄悄用一个公开的密钥启动。
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET 必须显式配置（openssl rand -base64 48）}
+      # 整栈一定带 Caddy，后端只从 Caddy 收流量，所以这里必须按 X-Forwarded-For 取真实 IP；
+      # 否则所有人的 remoteAddr 都是 Caddy，限流会退化成「全站共用一个桶」。
+      RATE_LIMIT_TRUST_FORWARDED_FOR: ${RATE_LIMIT_TRUST_FORWARDED_FOR:-true}
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-10080}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@biecuoguo.local}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@123456}

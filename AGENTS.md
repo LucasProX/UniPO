@@ -90,10 +90,14 @@ docker compose up -d --build
   存进 MinIO 的扩展名和 `Content-Type` 都由识别结果决定。以前只看请求头是不是 `image/` 开头，
   一个 HTML 或带 `<script>` 的 SVG 改个请求头就能存进来，再被 `/api/media/{id}/content` 原样吐回浏览器。
   **故意不支持 SVG**（它是 XML，能带脚本），也不要把校验降级成「看后缀」。上限由 `MAX_UPLOAD_FILE_SIZE` 控制，默认 5MB。
+- **限流规则表在 `web/RateLimitFilter.java`**：按「来源 IP + 接口」做固定窗口，命中回 429 + `Retry-After`。
+  新增「能被刷出成本」的接口（发邮件、上传、写库）要往 `RULES` 里加一条。
+  数值是「挡脚本」不是「精确配额」，本地连着跑三四遍 `smoke.ps1` 有可能撞到，等窗口过去或临时 `RATE_LIMIT_ENABLED=false`。
+  **部署在代理后面时必须开 `RATE_LIMIT_TRUST_FORWARDED_FOR`**（compose 里默认 true）：否则所有请求的 `remoteAddr` 都是代理地址，全站共用一个桶。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
 - 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
-- 新增环境变量：`APP_TIME_ZONE` 与 `APP_DEFAULT_SCHOOL_ID` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值（`Asia/Shanghai` / `1`），强制必填会让老部署直接起不来。
+- 新增环境变量：`APP_TIME_ZONE`、`APP_DEFAULT_SCHOOL_ID`、`RATE_LIMIT_ENABLED`、`RATE_LIMIT_TRUST_FORWARDED_FOR` 只加在 `.env.example` 与 `docker-compose.yml`，**故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值，强制必填会让老部署直接起不来。
 
 ## 5. 数据库
 - Flyway 管 schema：已发布的 V1–V11 禁止修改，新增 `V12__xxx.sql`。

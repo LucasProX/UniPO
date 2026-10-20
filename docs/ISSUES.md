@@ -124,7 +124,9 @@ JWT 默认 secret 已删（见 **R-5**）。
 
 | 编号 | 问题 | 现状 | 影响 |
 |---|---|---|---|
-| Q-1 | **无限流** | 登录、验证码、发帖、上传都没有任何限流或锁定 | 验证码接口可以拿来刷邮件、刷成本；登录可以无限次撞库 |
+| Q-1 ✅ | ~~无限流~~ **已修（2026-10-20）** | `web/RateLimitFilter.java` 按「来源 IP + 接口」限流，命中回 429 + `Retry-After`：
+登录 30/5min、验证码 20/10min、注册 20/1h、改密 20/10min、上传 30/5min、发帖 20/5min。
+实现是进程内固定窗口（`service/RateLimitService.java`） | 脚本刷不动了；**仍待做**：按账号锁定（防单账号慢速撞库）、多实例后要换 Redis（Q-4）、私信发送还没限 |
 | Q-2 | **JWT 无刷新令牌** | 有效期 10080 分钟（7 天），过期就是硬过期，客户端只能重新登录；token 存 `localStorage` | 7 天内 token 被偷就等于永久会话；到期体验差 |
 | Q-3 ✅ | ~~上传只校验 `Content-Type`~~ **已修（2026-10-20）** | 新增 `service/ImageSignature.java` 按文件头识别 JPEG/PNG/GIF/WebP，扩展名和 `Content-Type` 都由识别结果决定（不再采信客户端）；上限从 20MB 收到 **5MB**；`purpose` 只允许 `[A-Za-z0-9_-]{1,20}` | 实测：HTML/SVG 改请求头冒充 `image/png` 都是 400；6MB 图片 413；真 PNG 200 |
 | Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |

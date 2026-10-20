@@ -84,7 +84,7 @@
 | `VALIDATION_FAILED` | 400 | 参数不完整/格式错（含非法分页游标） |
 | `DUPLICATE` | 400 | 名称或账号已被占用 |
 | `NOT_FOUND` | 404 | 通用资源不存在 |
-| `RATE_LIMITED` | 429 | 操作太频繁（限流尚未实现，码已预留） |
+| `RATE_LIMITED` | 429 | 触发限流；响应头带 `Retry-After`（秒），`message` 里也写了要等多久 |
 | `INTERNAL` | 500 | 服务端未预期异常（不会回显异常详情，详情在日志） |
 
 ## 2. 认证 `/api/auth`

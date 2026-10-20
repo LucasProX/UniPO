@@ -76,6 +76,14 @@ app:
   default-school-id: ${APP_DEFAULT_SCHOOL_ID:1}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
+  rate-limit:
+    # 登录 / 验证码 / 注册 / 改密 / 上传 / 发帖 按「来源 IP + 接口」限流，命中回 429。
+    # 规则表在 web/RateLimitFilter.java，实现是进程内的固定窗口（多实例时各算一份，见 ISSUES Q-4）。
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    # 只有「前面确实有代理、外部连不到后端」时才打开：打开后按 X-Forwarded-For 第一段取 IP。
+    # 关闭时用 remoteAddr——但部署在 Caddy 后面时那是 Caddy 的地址，会让所有人共用一个桶。
+    # docker-compose 里默认 true（因为它一定带 Caddy），本地直连后端时保持 false。
+    trust-forwarded-for: ${RATE_LIMIT_TRUST_FORWARDED_FOR:false}
   jwt:
     # 没有默认值：签名密钥一旦公开，任何人都能伪造一个 role=ADMIN 的 token。
     # 缺失/还是示例值/短于 32 字符时 StartupSafetyGuard 会拒绝启动（见 config/StartupSafetyGuard.java）。
