@@ -1,13 +1,10 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.biecuoguo.domain.Comment;
-import com.biecuoguo.domain.Post;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.dto.AdminDtos;
-import com.biecuoguo.mapper.CommentMapper;
-import com.biecuoguo.mapper.PostMapper;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.post.api.PostQueryApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,24 +14,26 @@ import java.util.List;
 @Service
 public class AdminService {
     private final UserMapper userMapper;
-    private final PostMapper postMapper;
-    private final CommentMapper commentMapper;
+    private final PostQueryApi postQueryApi;
 
-    public AdminService(UserMapper userMapper, PostMapper postMapper, CommentMapper commentMapper) {
+    public AdminService(UserMapper userMapper, PostQueryApi postQueryApi) {
         this.userMapper = userMapper;
-        this.postMapper = postMapper;
-        this.commentMapper = commentMapper;
+        this.postQueryApi = postQueryApi;
     }
 
     /**
      * 管理端概览。notices 域已整体删除，这里只统计 posts 侧的数据。
+     *
+     * <p>帖子相关的计数走 {@link PostQueryApi}，不直接注入 PostMapper ——
+     * 否则后台会和帖子表结构永久耦合（ADR-0002）。
      */
     public AdminDtos.AnalyticsOverview overview() {
+        PostQueryApi.AdminPostStats stats = postQueryApi.adminStats();
         return new AdminDtos.AnalyticsOverview(
                 userMapper.selectCount(null),
-                postMapper.selectCount(null),
-                postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getStatus, "published")),
-                commentMapper.selectCount(new LambdaQueryWrapper<Comment>().isNotNull(Comment::getPostId))
+                stats.posts(),
+                stats.publishedPosts(),
+                stats.comments()
         );
     }
 

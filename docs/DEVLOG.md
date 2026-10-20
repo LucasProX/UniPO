@@ -4138,6 +4138,32 @@ AxiosError，兜底逻辑改看 cause。这个 bug 不会报错、只会多打�
 
 `npm run lint` + `npm run build` 绿。
 
+## 2026-10-20 post 收口：先设计 facade，再搬实体
+
+上次搬 post 只搬了 Controller/DTO，卡在 UserService / AdminService 直接注入帖子 Mapper。
+这次先把 facade 定下来，再整体搬。
+
+**facade 不是「把 Service 包一层」**。第一版想让 PostQueryApi 直接暴露实体，被自己否了：
+那样调用方还是能拿到实体去拼 SQL，边界等于没画。最后定成：
+
+- 统计返回 record（UserPostStats / AdminPostStats），不给实体；
+- 列表返回 PostView（本来就是要给前端的形状）；
+- 只暴露「个人主页 / 后台概览 / 用户资料页」真正需要的七种查询，不多加一个。
+
+搬的过程里，编译错误基本都来自「同包 import 消失 / 跨包 import 需要补」：
+
+- PostService 从 service 搬到 post.internal，原来同包的 PresenceService 要补 import；
+- Post 实体/Mapper 搬进 post.internal 后，原来 import com.biecuoguo.domain.Post 之类的要删
+  （同包），但 User、SchoolMapper 等留在共享包，反而要显式 import；
+- 两个 Controller 原来 import service.PostService，搬完同包，import 要删；
+- PublicUserController/UserController 改为依赖 PostQueryApi，字段名也从 postService 改成 postQueryApi。
+
+一个值得记的取舍：**facade 放在 post.api，实现是 PostService 本身**（implements PostQueryApi），
+没有再包一层 PostQueryServiceImpl。多一层只是多一个转发方法，等真要拆服务时再抽实现类不迟。
+
+验证：stats 返回真实数字（followers/posts 都对），后台概览 users/posts/publishedPosts/comments 正确，
+smoke 37/37，mvn test 42 绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

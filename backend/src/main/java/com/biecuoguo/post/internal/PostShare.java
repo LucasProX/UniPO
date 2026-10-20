@@ -1,20 +1,19 @@
-package com.biecuoguo.domain;
+package com.biecuoguo.post.internal;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Data
-@TableName("post_daily_stats")
-public class PostDailyStat {
+@TableName("post_shares")
+public class PostShare {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long userId;
     private Long postId;
-    private LocalDate statDate;
-    private Integer likeCount;
-    private Integer commentCount;
-    private Integer shareCount;
+    private String channel;
+    private LocalDateTime createdAt;
 }

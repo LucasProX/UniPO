@@ -2,7 +2,6 @@ package com.biecuoguo.post.internal;
 
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.security.CurrentUser;
-import com.biecuoguo.service.PostService;
 import com.biecuoguo.web.ApiResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;

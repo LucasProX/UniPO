@@ -143,30 +143,43 @@ com.biecuoguo.mapper + media.internal + message.internal。
 
 验证：mvn test 41 绿；smoke 的会话/发信/未读全部 200；WebSocket 实测仍能收到 event:message；CI 全绿。
 
-### post（2026-10-20，部分迁移）
+### post（2026-10-20，已通过 facade 收口）
 
 结构：
 
     com.biecuoguo.post
       api/PostDtos.java
+      api/PostQueryApi.java          ← 唯一的跨模块出口
+      internal/PostService.java
       internal/PostController.java
       internal/PostV1Controller.java
+      internal/{Post,PostImage,PostLike,PostFavorite,PostShare,PostDailyStat,Comment,CommentLike}.java
+      internal/{...}Mapper.java
 
-**只搬了 Controller 与 DTO**，PostService（951 行）和 10 个帖子相关 Mapper/实体仍在共享包。
-原因：
+第一次只搬了 Controller/DTO，因为 UserService / AdminService 直接注入 5 个帖子 Mapper。
+这次先设计 facade，再整体收口：
 
-- UserService 直接注入 PostMapper / PostLikeMapper / PostFavoriteMapper / PostShareMapper / CommentMapper
-  来算个人主页统计与列表；
-- AdminService 直接用 PostMapper / CommentMapper 做后台计数；
-- PublicUserController / UserController 直接调 PostService。
+    public interface PostQueryApi {
+        record UserPostStats(long posts, long comments, long likes, long favorites, long shares) {}
+        record AdminPostStats(long posts, long publishedPosts, long comments) {}
+        UserPostStats statsForUser(long userId);
+        AdminPostStats adminStats();
+        ... userPosts / likedPosts / favoritePosts（含 byUid 变体）
+    }
 
-要整体搬走，得先设计 post.api 的查询 facade（统计、作者视图、批量帖子），
-再改 UserService / AdminService / 两个用户相关 Controller。这是下一刀，不是这一刀。
+调用方变化：
 
-好处是：PostDtos 先归位，message.api 对它的依赖变成「跨模块依赖 api」（合法方向），
-Controller 也先归位，边界规则可以先立起来。@MapperScan 这次不用动（没有 Mapper 搬）。
+- UserService：5 个 Mapper 字段换成 1 个 PostQueryApi，stats() 只拼 following/followers；
+- AdminService：PostMapper/CommentMapper 换成 PostQueryApi；
+- PublicUserController / UserController：直接依赖 PostQueryApi 而不是 PostService。
 
-验证：mvn test 42 绿；smoke 的 create-post/comment/like/favorite/v1 分页全 200；CI 全绿。
+facade 的边界刻意定得窄：只暴露「页面需要的问题」，不暴露实体、不暴露 Mapper。
+统计用 record 返回，避免调用方拿到实体后自己再拼 SQL。
+
+@MapperScan 第四次扩包：加 com.biecuoguo.post.internal。
+
+验证：mvn test 42 绿；/users/me/stats 返回真实计数；
+/api/admin/analytics/overview 返回 users/posts/publishedPosts/comments；smoke 37/37；CI 全绿。
 
 ## 8. 代价
 

@@ -1,10 +1,15 @@
-package com.biecuoguo.service;
+package com.biecuoguo.post.internal;
+
+import com.biecuoguo.service.PresenceService;
+
+import com.biecuoguo.domain.User;
 
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.post.api.PostDtos;
+import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.security.access.AccessDeniedException;
@@ -19,7 +24,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
-public class PostService {
+public class PostService implements PostQueryApi {
     private static final Set<String> BOARDS = Set.of("recommend", "school", "college", "major");
 
     private final AppProperties appProperties;
@@ -433,6 +438,27 @@ public class PostService {
         postMapper.updateById(post);
         upsertDailyStat(postId, 0, 0, 1);
         return new PostDtos.ShareResponse("/posts/" + postId, post.getShareCount());
+    }
+
+    @Override
+    public UserPostStats statsForUser(long userId) {
+        long comments = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getUserId, userId)
+                .isNotNull(Comment::getPostId));
+        long likes = likeMapper.selectCount(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, userId));
+        long favorites = favoriteMapper.selectCount(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, userId));
+        long shares = shareMapper.selectCount(new LambdaQueryWrapper<PostShare>().eq(PostShare::getUserId, userId));
+        long posts = postMapper.selectCount(new LambdaQueryWrapper<Post>()
+                .eq(Post::getAuthorId, userId).eq(Post::getStatus, "published"));
+        return new UserPostStats(posts, comments, likes, favorites, shares);
+    }
+
+    @Override
+    public AdminPostStats adminStats() {
+        long posts = postMapper.selectCount(null);
+        long published = postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getStatus, "published"));
+        long comments = commentMapper.selectCount(new LambdaQueryWrapper<Comment>().isNotNull(Comment::getPostId));
+        return new AdminPostStats(posts, published, comments);
     }
 
     public List<PostDtos.PostView> userPosts(Long userId, CurrentUser currentUser) {

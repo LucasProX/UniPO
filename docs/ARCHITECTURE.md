@@ -25,7 +25,7 @@
 | Web httpOnly Cookie 会话 + CSRF 双提交 | ✅ 前后端完成（前端不再持有 token；写请求自动带 X-CSRF-Token） |
 | 会话滑动过期 / 退出所有设备 | ✅ 已完成（`SessionStore` memory / redis 双实现） |
 | WebSocket 实时通道 | ✅ 已完成（auth / resume / 心跳；Redis Stream + Pub/Sub） |
-| 模块化拆包 + ArchUnit | 🔄 规则已立（9 条边界测试）；**media、message 完整迁移；taxonomy、post 部分迁移**，其余按 ADR-0002 继续 |
+| 模块化拆包 + ArchUnit | 🔄 规则已立（9 条边界测试）；**media、message、post 完整迁移**（post 通过 PostQueryApi 收口），taxonomy 实体待随 user 迁移收口 |
 | 可观测性（metrics / 告警） | 🔄 已接 Micrometer + `/actuator/prometheus`、liveness/readiness、自定义业务指标；Prometheus 走 compose `observability` profile。**Grafana 面板与告警规则未做** |
 
 ## 1. 拓扑

@@ -1,0 +1,42 @@
+package com.biecuoguo.post.api;
+
+import com.biecuoguo.security.CurrentUser;
+
+import java.util.List;
+
+/**
+ * post 模块对外提供的只读查询（ADR-0002）。
+ *
+ * <p>为什么需要它：个人主页统计、后台概览、用户资料页都需要读帖子数据，
+ * 但它们不应该直接注入 PostMapper / CommentMapper —— 那会让 post 模块的实体和表结构
+ * 变成全局共享，永远拆不出去。这里只暴露「问题」，不暴露「表」。
+ *
+ * <p>实现是 {@code post.internal.PostService}；调用方（UserService / AdminService / 用户相关 Controller）
+ * 只依赖这个接口，post 内部怎么查、查几张表都不关它们的事。
+ */
+public interface PostQueryApi {
+
+    /** 个人主页统计里与帖子相关的部分；following/followers 仍归 user 模块。 */
+    record UserPostStats(long posts, long comments, long likes, long favorites, long shares) {
+    }
+
+    /** 后台概览需要的总量。 */
+    record AdminPostStats(long posts, long publishedPosts, long comments) {
+    }
+
+    UserPostStats statsForUser(long userId);
+
+    AdminPostStats adminStats();
+
+    List<PostDtos.PostView> userPosts(Long userId, CurrentUser viewer);
+
+    List<PostDtos.PostView> userPostsByUid(String uid, CurrentUser viewer);
+
+    List<PostDtos.PostView> likedPosts(CurrentUser viewer);
+
+    List<PostDtos.PostView> likedPostsByUid(String uid, CurrentUser viewer);
+
+    List<PostDtos.PostView> favoritePosts(CurrentUser viewer);
+
+    List<PostDtos.PostView> favoritePostsByUid(String uid, CurrentUser viewer);
+}

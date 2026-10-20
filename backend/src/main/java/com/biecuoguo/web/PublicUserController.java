@@ -3,7 +3,7 @@ package com.biecuoguo.web;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.security.CurrentUser;
-import com.biecuoguo.service.PostService;
+import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.service.UserService;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -14,11 +14,11 @@ import java.util.List;
 @RequestMapping("/api/users")
 public class PublicUserController {
     private final UserService userService;
-    private final PostService postService;
+    private final PostQueryApi postQueryApi;
 
-    public PublicUserController(UserService userService, PostService postService) {
+    public PublicUserController(UserService userService, PostQueryApi postQueryApi) {
         this.userService = userService;
-        this.postService = postService;
+        this.postQueryApi = postQueryApi;
     }
 
     @GetMapping("/{uid}")
@@ -29,17 +29,17 @@ public class PublicUserController {
 
     @GetMapping("/{uid}/posts")
     public ApiResponse<List<PostDtos.PostView>> posts(@PathVariable String uid, Authentication authentication) {
-        return ApiResponse.ok(postService.userPostsByUid(uid, currentUser(authentication)));
+        return ApiResponse.ok(postQueryApi.userPostsByUid(uid, currentUser(authentication)));
     }
 
     @GetMapping("/{uid}/likes")
     public ApiResponse<List<PostDtos.PostView>> likes(@PathVariable String uid, Authentication authentication) {
-        return ApiResponse.ok(postService.likedPostsByUid(uid, currentUser(authentication)));
+        return ApiResponse.ok(postQueryApi.likedPostsByUid(uid, currentUser(authentication)));
     }
 
     @GetMapping("/{uid}/post-favorites")
     public ApiResponse<List<PostDtos.PostView>> postFavorites(@PathVariable String uid, Authentication authentication) {
-        return ApiResponse.ok(postService.favoritePostsByUid(uid, currentUser(authentication)));
+        return ApiResponse.ok(postQueryApi.favoritePostsByUid(uid, currentUser(authentication)));
     }
 
     private CurrentUser currentUser(Authentication authentication) {

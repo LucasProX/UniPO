@@ -5,6 +5,7 @@ import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.mapper.*;
+import com.biecuoguo.post.api.PostQueryApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,26 +17,20 @@ import java.util.NoSuchElementException;
 public class UserService {
     private final UserMapper userMapper;
     private final UserPreferenceMapper preferenceMapper;
-    private final CommentMapper commentMapper;
-    private final PostFavoriteMapper postFavoriteMapper;
-    private final PostLikeMapper postLikeMapper;
-    private final PostShareMapper postShareMapper;
     private final UserFollowMapper userFollowMapper;
-    private final PostMapper postMapper;
     private final UserCheckInMapper checkInMapper;
     private final PresenceService presenceService;
+    /** 帖子统计走 facade，不直接注入 PostMapper（ADR-0002）。 */
+    private final PostQueryApi postQueryApi;
 
-    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, CommentMapper commentMapper, PostFavoriteMapper postFavoriteMapper, PostLikeMapper postLikeMapper, PostShareMapper postShareMapper, UserFollowMapper userFollowMapper, PostMapper postMapper, UserCheckInMapper checkInMapper, PresenceService presenceService) {
+    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
+                       UserCheckInMapper checkInMapper, PresenceService presenceService, PostQueryApi postQueryApi) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
-        this.commentMapper = commentMapper;
-        this.postFavoriteMapper = postFavoriteMapper;
-        this.postLikeMapper = postLikeMapper;
-        this.postShareMapper = postShareMapper;
         this.userFollowMapper = userFollowMapper;
-        this.postMapper = postMapper;
         this.checkInMapper = checkInMapper;
         this.presenceService = presenceService;
+        this.postQueryApi = postQueryApi;
     }
 
     public UserProfile profile(Long userId) {
@@ -89,17 +84,12 @@ public class UserService {
     }
 
     public UserDtos.UserStats stats(Long userId) {
-        long comments = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
-                .eq(Comment::getUserId, userId)
-                .isNotNull(Comment::getPostId));
-        long likedPosts = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, userId));
-        long favoritePosts = postFavoriteMapper.selectCount(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, userId));
-        long sharedPosts = postShareMapper.selectCount(new LambdaQueryWrapper<PostShare>().eq(PostShare::getUserId, userId));
+        PostQueryApi.UserPostStats postStats = postQueryApi.statsForUser(userId);
         long following = userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowerId, userId));
         long followers = userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowingId, userId));
-        long posts = postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getAuthorId, userId).eq(Post::getStatus, "published"));
         // completed / upcoming / avoidedRisks 恒为 0：notices 域已删除，字段仅为兼容旧契约保留。
-        return new UserDtos.UserStats(favoritePosts, likedPosts, sharedPosts, 0, comments, 0, 0, following, followers, posts);
+        return new UserDtos.UserStats(postStats.favorites(), postStats.likes(), postStats.shares(), 0,
+                postStats.comments(), 0, 0, following, followers, postStats.posts());
     }
 
     public UserDtos.CheckInView checkInStatus(Long userId) {

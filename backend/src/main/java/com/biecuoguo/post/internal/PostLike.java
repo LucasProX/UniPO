@@ -1,4 +1,4 @@
-package com.biecuoguo.domain;
+package com.biecuoguo.post.internal;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -8,11 +8,11 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("comment_likes")
-public class CommentLike {
+@TableName("post_likes")
+public class PostLike {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
-    private Long commentId;
+    private Long postId;
     private LocalDateTime createdAt;
 }

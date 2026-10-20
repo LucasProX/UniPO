@@ -1,6 +1,5 @@
-package com.biecuoguo.mapper;
+package com.biecuoguo.post.internal;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.biecuoguo.domain.PostLike;
 
 public interface PostLikeMapper extends BaseMapper<PostLike> {}
