@@ -160,6 +160,19 @@ jobs:
           [ "$code" = "401" ] || { echo "::error::access token 不该能当 refresh token 用，实际 $code"; exit 1; }
 
           echo "接口冒烟全部通过"
+      - name: 生成的接口类型是否与后端一致
+        # 后端还活着，正好拿它的 /v3/api-docs 重生成一遍，和仓库里的比。
+        # 后端改了 DTO 却忘了 `npm run gen:api` + 同步 types.ts，这一步会红。
+        run: |
+          set -euo pipefail
+          cd frontend
+          npm ci
+          npm run gen:api
+          cd ..
+          if ! git diff --exit-code -- frontend/src/api-types.ts; then
+            echo "::error::frontend/src/api-types.ts 与后端 DTO 不一致：本地跑 cd frontend && npm run gen:api 后一起提交"
+            exit 1
+          fi
       - name: 失败时打印后端日志
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP/app.log" || true

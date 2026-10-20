@@ -137,6 +137,27 @@ export interface UserProfile {
   levelTitle: string;
   status: string;
   online?: boolean;
+  // ---- 偏好与通知设置（后端 UserProfile 一直在返回，前端类型以前漏了）----
+  /** 目标标签，逗号分隔，如 `奖学金,保研` */
+  goalTags?: string;
+  /** 兴趣分类，逗号分隔 */
+  interestCategories?: string;
+  preferUrgent?: boolean;
+  preferHighRisk?: boolean;
+  preferSameMajor?: boolean;
+  emailNotificationEnabled?: boolean;
+  browserNotificationEnabled?: boolean;
+  remindBeforeHours?: number;
+  createdAt?: string;
+  lastLoginAt?: string;
+}
+
+/** 登录 / 注册 / 刷新三处共用的返回包（后端 AuthResponse）。 */
+export interface AuthSessionView {
+  token: string;
+  refreshToken: string;
+  expiresInSeconds: number;
+  user: UserProfile;
 }
 
 export interface UserStats {

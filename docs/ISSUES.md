@@ -140,7 +140,12 @@ JWT 默认 secret 已删（见 **R-5**）。
 `后端编译`（mvn package）/ `前端类型检查与构建`（npm ci + npm run build，vue-tsc 抓类型错）/ `脚本与换行自查`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
 `启动 + 接口冒烟`（真 MySQL 8.4 service + 起 jar + health/feed 游标/登录拿 token/带 token 调用/405/404 六条断言）。
 **还没有**：后端单测、前端 eslint/prettier、CI 里跑完整 `smoke.ps1`（依赖 Windows PowerShell + `curl.exe`，要移植成 bash） |
-| Q-6 | 类型手写，与后端 DTO 已漂移 | `frontend/src/lib/types.ts` 手写，无 OpenAPI 生成 | 接口改了两边容易漏改 |
+| Q-6 ✅ | ~~类型手写，与后端 DTO 已漂移~~ **已上契约（2026-10-20）** | `npm run gen:api` 用 `openapi-typescript` 把 `/v3/api-docs` 生成到
+`frontend/src/api-types.ts`；`frontend/src/api-contract.ts` 用类型断言要求手写 `types.ts` 与生成类型字段名/类型完全一致，
+`npm run build` 不过就是漂移；CI 冒烟 job 会重生成并 `git diff --exit-code`。
+**第一次跑就抓到真漂移**：`UserProfile` 少 10 个字段（goalTags / interestCategories / preferUrgent / preferHighRisk /
+preferSameMajor / emailNotificationEnabled / browserNotificationEnabled / remindBeforeHours / createdAt / lastLoginAt），已补。
+**没做的**：没把 `types.ts` 直接换成生成类型（生成的全是可选字段、枚举退化成 `string`，组件里会丢类型安全），也没换 `openapi-fetch` 调用层 | —
 
 ### 已解决但留着记录
 

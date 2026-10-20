@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-import type { ApiErrorBody, ApiResponse, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
+import type { ApiErrorBody, ApiResponse, AuthSessionView, BoardView, CheckInView, CommentView, ConversationView, InteractionNoticeView, MessageView, PagedResponse, PostView, PublicProfileView, UserProfile, UserStats } from '../types';
 
 /**
  * API 版本前缀。
@@ -177,7 +177,7 @@ export function isAuthError(error: unknown) {
  * 「密码错」和「网络断了」——现在两者都只是 message 不一样，
  * 而 message 是用来展示的，不该拿来做分支。
  */
-async function unwrapLogin(request: Promise<{ data: ApiResponse<{ token: string; refreshToken?: string; expiresInSeconds?: number; user: UserProfile }> }>) {
+async function unwrapLogin(request: Promise<{ data: ApiResponse<AuthSessionView> }>) {
   try {
     return await unwrap(request);
   } catch (error) {
@@ -257,7 +257,7 @@ export const authApi = {
   logout: (refreshToken?: string) => unwrap<boolean>(api.post('/auth/logout', refreshToken ? { refreshToken } : {})),
   heartbeat: () => unwrap<boolean>(api.post('/auth/heartbeat')),
   register: (payload: { email: string; password: string; confirmPassword: string; nickname: string; verificationCode: string }) =>
-    unwrap<{ token: string; refreshToken?: string; expiresInSeconds?: number; user: UserProfile }>(publicApi.post('/auth/register', payload)),
+    unwrap<AuthSessionView>(publicApi.post('/auth/register', payload)),
   requestVerificationCode: (payload: { email: string; purpose: 'register' | 'reset-password' }) =>
     unwrap<boolean>(publicApi.post('/auth/verification-code', payload)),
   emailAvailability: (email: string, purpose: 'register' | 'reset-password' = 'register') =>

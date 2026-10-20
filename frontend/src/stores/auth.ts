@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { apiErrorMessage, authApi, authRefreshToken, campusApi, clearAuthToken, hasAuthToken, isAuthError, saveAuthToken } from '../lib/api';
 import { describeError } from '../lib/postHelpers';
-import type { UserProfile, UserStats } from '../types';
+import type { AuthSessionView, UserProfile, UserStats } from '../types';
 import { useFeedStore } from './feed';
 import { useMessagesStore } from './messages';
 import { useProfileStore } from './profile';
@@ -288,7 +288,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!password) { authErrors.value.login.password = '请输入密码'; hasError = true; }
     if (hasError) return;
     authSubmitting.value = true;
-    let result: { token: string; refreshToken?: string; user: UserProfile };
+    let result: AuthSessionView;
     try {
       result = await authApi.login(email, password);
     } catch (error) {

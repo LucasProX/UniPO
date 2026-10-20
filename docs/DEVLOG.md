@@ -3479,6 +3479,64 @@ key 里那个数字是固定窗口编号——这样 memory 实现靠它分桶�
 2. refresh token 轮换依然没做。现在有了共享拉黑表，技术上可以做轮换了，但轮换还要求「同一标签页之外的并发刷新」
   不被误伤，前端单飞刷新只能管住一个页面。等真的要做多设备管理时再一起设计。
 
+## 2026-10-20 第一次跑「前后端类型契约」就抓到 UserProfile 少了 10 个字段
+
+Q-6 的原话是「`types.ts` 手写，与后端 DTO 已开始漂移」。但「已开始」是估的——
+没人知道具体漂了几个字段，因为漏掉的字段在前端根本不报错，只是永远是 `undefined`。
+
+所以先做生成：`npm run gen:api`（`openapi-typescript`）+ 后端 `/v3/api-docs` -> `src/api-types.ts`。
+然后写 `src/api-contract.ts`，用类型断言要求手写的 `types.ts` 和生成的类型字段名、字段类型完全一致。
+
+### 断言本身先错了一次
+
+第一版直接拿两边做双向 `extends`，结果 13 个类型里 11 个报错。看着像「全线漂移」，其实是生成类型的特点：
+
+- **所有字段都是可选的**——springdoc 只按 `@NotNull` 标 required，我们的 record 没有校验注解；
+- **枚举全退化成 `string`**——`role` / `board` / `sourceType` 在后端就是普通 String，生成不出字面量联合。
+
+于是 `{ level: number }` 和 `{ level?: number }` 互相不可赋值，`'USER' | 'OPERATOR'` 和 `string` 也是。
+改成「先抹平再比」：字面量联合 -> 基础类型、可选 -> 必填、可空 -> 去空，只比结构和字段类型。
+这样既不误报，又能抓住真正会出事的两类改动：**字段名变了、字段类型变了**。
+
+### 抹平之后，剩下的报错是真的
+
+`UserProfile` 红了，另外 `PublicProfileView` / `CheckInView` / `AuthResponse` 跟着红（它们内嵌 `UserProfile`）。
+对比两边字段名，后端多出 10 个，前端一个都不认识：
+
+```text
+goalTags, interestCategories, preferUrgent, preferHighRisk, preferSameMajor,
+emailNotificationEnabled, browserNotificationEnabled, remindBeforeHours,
+createdAt, lastLoginAt
+```
+
+这些字段后端 `UserProfile.from()` 一直在返回（`/auth/me` 实测有值），前端只是从来没声明过。
+换句话说：以后做「通知设置」「偏好设置」页面时，会以为是后端没接口，其实是类型里看不见。
+这就是「漂移」最难受的地方——它不报错，只是让你以为没有。
+
+顺带发现文档里写的路径是 `frontend/src/lib/types.ts`，实际文件在 `frontend/src/types.ts`（`lib/` 里只有 api/format 那几个）。
+已经一起改了。
+
+### 为什么没把 types.ts 整个换成生成类型
+
+技术上可以，`components['schemas']['PostView']` 直接就能用。但换完会丢掉两样东西：
+
+1. **必填性**：全可选意味着 `post.author.nickname` 也要写 `?.`，组件里到处是空判断；
+2. **枚举收窄**：`switch (post.board)` 没有穷尽性检查了，后端加一个 board 前端不会提醒。
+
+生成的类型当「事实来源」用来对账，手写的类型当「业务视图」用来写代码，两边用断言钉住——
+这是取舍后的选择，不是没做完。真要做全生成，得先给后端 DTO 补 `@NotNull` / `@Schema(enumeration=...)`，那是另一件事。
+
+### 验证：故意改坏两次
+
+```text
+删掉 types.ts 里的 remindBeforeHours  -> build 红（UserProfile 及其嵌套类型）
+把 AuthorView.level 改成 string       -> build 红（AuthorView / PostView / CommentView 连带报错）
+恢复                                 -> build 绿
+```
+
+CI 的冒烟 job 里也加了一步：后端起着的时候重新生成一遍，`git diff --exit-code` 比对仓库里的 `api-types.ts`。
+这样「后端改了 DTO 但忘了 gen:api」会在 CI 红，而不是等前端在真机上发现字段是 undefined。
+
 ---
 
 ## 怎么写这篇文档

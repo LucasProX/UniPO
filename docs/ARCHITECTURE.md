@@ -103,7 +103,9 @@ frontend/src/
 ├─ style.css / tailwind
 └─ lib/
    ├─ api.ts          axios 实例 + 各域封装 + 本地回退
-   ├─ types.ts        与后端 DTO 重复的类型
+   ├─ types.ts        手写业务类型（枚举收窄、字段必填）
+├─ api-types.ts    由后端 /v3/api-docs 生成（npm run gen:api），只读
+├─ api-contract.ts 类型断言，保证 types.ts 不落后于后端 DTO
    └─ ...
 ```
 

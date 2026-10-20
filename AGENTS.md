@@ -21,7 +21,9 @@
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
 | `frontend/src/components/` | `layout/` 布局件、`modals/` 弹窗、`post/` 帖子件、`ui/` 三态 |
 | `frontend/src/stores/` | Pinia：`feed` / `auth` / `messages` / `schedule` / `compose` / `profile`，Web/App 两端复用 |
-| `frontend/src/lib/api.ts` | 手写 axios 封装（187 行），类型在 `types.ts` |
+| `frontend/src/lib/api.ts` | 手写 axios 封装，类型在 `frontend/src/types.ts` |
+| `frontend/src/api-types.ts` | **生成文件**：后端 `/v3/api-docs` 的 OpenAPI 类型，别手改 |
+| `frontend/src/api-contract.ts` | 契约断言：手写 `types.ts` 必须与生成类型一致，否则 `npm run build` 报错 |
 | `frontend/src/lib/postHelpers.ts` | 帖子纯函数（boardLabel/roleLabel/评分等），**零 Vue 依赖**，App 端可直接复用 |
 | `frontend/src/lib/richText.ts` | 富文本清洗（`sanitizeRichHtml` / `renderRichPostContent`），**零 Vue 依赖**，App 端可直接复用 |
 | `docs/` | 架构 / API / 问题清单 / 移动端方案 |
@@ -122,7 +124,12 @@ docker compose up -d --build
 ## 6. 前端约定
 - `App.vue` 已是 61 行外壳（AppShell + 全局弹窗）。**新功能写到 `views/` + `stores/`，不要再往 App.vue 堆**；新增页面流程：`views/XxxView.vue` → `router/index.ts` 加路由 → `DockNav.vue` 加入口。
 - 纯展示组件放 `frontend/src/components/`，共享纯函数放 `frontend/src/lib/*.ts`（**不能 import Vue**，否则 App 端复用不了）。
-- 类型在 `frontend/src/lib/types.ts` 手写，与后端 DTO 已开始漂移。接口改动要两边一起改，直到换 OpenAPI 生成。
+- 类型分两层（2026-10-20 起）：
+  - `frontend/src/api-types.ts` 是 **`npm run gen:api` 从后端 `/v3/api-docs` 生成的**，只读、别手改；
+  - `frontend/src/types.ts` 是手写的业务类型（字段必填、枚举收窄成字面量联合，组件里 switch 才有穷尽性检查）。
+  - `frontend/src/api-contract.ts` 用类型断言把两者钉死：后端加/删字段、改类型，`npm run build` 直接报错。
+  **后端改了 DTO 就要跑一次 `cd frontend && npm run gen:api`**（后端得先起来），再按报错同步 `types.ts`。
+  CI 的冒烟 job 会重生成一遍并 `git diff --exit-code`，忘了提交生成文件会红。
 - **禁止新增 fallback 假数据**。`fallbackPosts` / `fallbackComments` / `fallbackCourses` 已于 2026-10-19 删除，首屏现在是 `feedLoading` / `feedError`（带重试按钮）/ 空态三态。接口失败必须显式报错，不能假装有数据。`fallbackAvatar()` / `fallbackCover()` 是占位图生成器，不算假数据，可继续用。
 - token 存 `localStorage['bcg_token']`（access）+ `localStorage['bcg_refresh_token']`（refresh）；
   `lib/api.ts` 的响应拦截器在 401 时**单飞**刷新并重放原请求（同一时刻只发一个 `/auth/refresh`），
