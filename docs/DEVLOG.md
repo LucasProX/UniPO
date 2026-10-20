@@ -4112,6 +4112,32 @@ WebSocket 也验了代理升级：连 ws://127.0.0.1:5173/api/v1/realtime/ws 能
 一个仍然存在的取舍：`lib/api.ts` 的 localApi 兜底（DEV 直连 8080）保留着，
 它现在也必须 withCredentials，否则兜底路径会「登录成功但没登录」——这类问题很容易在本地测不出来。
 
+## 2026-10-20 前端框架整理：把「基础设施」和「端点清单」拆开
+
+Cookie 切完之后顺手整理前端结构。原来 lib/api.ts 一个文件 260 行，混着 axios 实例、
+CSRF、错误包解析、五个领域的端点、登录兜底——加一个接口要先在 260 行里找位置。
+
+拆法：
+
+- lib/http.ts：axios 实例、withCredentials、CSRF 拦截器、401 广播、错误包解析
+- lib/api.ts：只留端点定义（campus / auth / post / user / media），从 http.ts 拿工具
+
+这样「加一个接口」变成往对应分组里加一行，不需要理解传输层。
+
+**拆的时候踩到一个自己挖的坑**：登录兜底逻辑原来靠
+`axios.isAxiosError(error) && !error.response` 判断「是不是网络不通」。
+但拆完之后 unwrapLogin 抛的是包装过的 Error，不是 AxiosError，条件永远为 false，
+于是「密码错误」也会去直连 8080 重试一次。修法是给包装后的 Error 挂 `cause` 指回原始
+AxiosError，兜底逻辑改看 cause。这个 bug 不会报错、只会多打一次请求，很难在 review 里看出来。
+
+另外补了：
+
+- main.ts 的 app.config.errorHandler + unhandledrejection：全局兜底只打日志，
+  接 Sentry 时在这里上报，别在每个组件里写 try/catch
+- docs/FRONTEND.md：目录分工、新增页面三步、新增接口放哪、store 约定、认证与实时约定
+
+`npm run lint` + `npm run build` 绿。
+
 ## 怎么写这篇文档
 
 几条自定的规矩：

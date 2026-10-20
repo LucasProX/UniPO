@@ -241,6 +241,7 @@ docker compose up -d --build
 - `docs/API.md` — 完整接口清单与调用约定
 - `docs/ISSUES.md` — 问题分级、证据、修复建议
 - `docs/MOBILE-API-PLAN.md` — Web/App 双端接口方案（**有 5 个决策待拍板**）
+- [`docs/FRONTEND.md`](docs/FRONTEND.md) — 前端目录分工、新增页面/接口的三步流程、store 与认证约定
 - `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障
 - [`docs/adr/`](docs/adr/) — 架构决策记录（ADR）。**改架构前先读，改完补一条新 ADR**
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
