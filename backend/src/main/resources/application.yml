@@ -151,6 +151,9 @@ app:
     # 只在本地开发（还没接 SMTP）时由 application-local.yml 打开；
     # 非 local/dev/test profile 下打开会直接启动失败，见 config/StartupSafetyGuard.java。
     mock-accept-any-code: ${VERIFICATION_MOCK_ACCEPT_ANY_CODE:false}
+  sms:
+    # 真实短信通道未接；只有 local/dev/test 可以打开 mock（固定码 123456）。
+    mock-accept-any-code: ${SMS_MOCK_ACCEPT_ANY_CODE:false}
   minio:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}

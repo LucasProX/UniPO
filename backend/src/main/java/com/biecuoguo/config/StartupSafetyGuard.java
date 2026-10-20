@@ -80,6 +80,8 @@ public class StartupSafetyGuard {
 
         boolean mockVerification = properties.verification() != null
                 && properties.verification().mockAcceptAnyCode();
+        boolean mockSms = Boolean.TRUE.equals(environment.getProperty(
+                "app.sms.mock-accept-any-code", Boolean.class, false));
         boolean seedDemo = properties.bootstrap() != null && properties.bootstrap().seedDemoData();
 
         // 1) 真实模式下必须有可用的 SMTP。这条不区分 profile：只要验证码是真实模式，
@@ -98,6 +100,10 @@ public class StartupSafetyGuard {
                 log.warn("⚠ 验证码处于 mock 模式：任意 4 位数字都能通过校验，任何人可以注册任意邮箱。"
                         + "当前 profile={}，只允许本地使用。", active);
             }
+            if (mockSms) {
+                log.warn("⚠ 短信验证码处于 mock 模式：固定码 123456 可登录任意手机号。"
+                        + "当前 profile={}，只允许本地使用。", active);
+            }
             if (seedDemo) {
                 log.warn("⚠ 演示数据写入已开启：启动时会创建 good / xiaoba / yuanhua 三个弱口令账号。"
                         + "当前 profile={}，只允许本地使用。", active);
@@ -106,9 +112,11 @@ public class StartupSafetyGuard {
         }
 
         // 3) 非开发环境下一律拒绝。
-        if (mockVerification || seedDemo) {
+        if (mockVerification || seedDemo || mockSms) {
             String detail = (mockVerification ? "app.verification.mock-accept-any-code=true" : "")
-                    + (mockVerification && seedDemo ? "，" : "")
+                    + (mockVerification && mockSms ? "，" : "")
+                    + (mockSms ? "app.sms.mock-accept-any-code=true" : "")
+                    + ((mockVerification || mockSms) && seedDemo ? "，" : "")
                     + (seedDemo ? "app.bootstrap.seed-demo-data=true" : "");
             throw new IllegalStateException("拒绝启动：当前 profile=" + active
                     + " 不是开发环境，但开启了危险开关 [" + detail + "]。"

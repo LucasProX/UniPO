@@ -230,7 +230,7 @@ struct PostDetailView: View {
 
     private func startChat() async {
         guard auth.isAuthenticated else {
-            errorMessage = "登录后才能私信"
+            auth.requireLogin()
             return
         }
         if post.author.uid == auth.profile?.publicUid {
@@ -256,7 +256,7 @@ struct PostDetailView: View {
 
     private func sendComment() async {
         guard auth.isAuthenticated else {
-            errorMessage = "登录后才能评论"
+            auth.requireLogin()
             return
         }
         let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -273,7 +273,7 @@ struct PostDetailView: View {
     }
 
     private func toggleLike() {
-        guard auth.isAuthenticated else { errorMessage = "登录后才能点赞"; return }
+        guard auth.isAuthenticated else { auth.requireLogin(); return }
         Task {
             do {
                 try await APIClient.shared.likePost(id: post.id, liked: liked)
@@ -286,7 +286,7 @@ struct PostDetailView: View {
     }
 
     private func toggleFavorite() {
-        guard auth.isAuthenticated else { errorMessage = "登录后才能收藏"; return }
+        guard auth.isAuthenticated else { auth.requireLogin(); return }
         Task {
             do {
                 try await APIClient.shared.favoritePost(id: post.id, favorited: favorited)

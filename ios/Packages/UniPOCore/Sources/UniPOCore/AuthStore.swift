@@ -9,7 +9,10 @@ public final class AuthStore {
     public private(set) var session: AuthSession?
     public private(set) var isRestoring = true
     public private(set) var isLoggingIn = false
+    public private(set) var isSendingCode = false
     public var errorMessage: String?
+    /// 任何需要登录的入口都把它置 true，RootView 用 fullScreenCover 弹登录页。
+    public var loginRequested = false
 
     private let keychain = KeychainStore(service: "com.unipo.app")
     private let api = APIClient.shared
@@ -21,6 +24,42 @@ public final class AuthStore {
     }
 
     public var isAuthenticated: Bool { session != nil }
+
+    public func requireLogin() {
+        if !isAuthenticated {
+            errorMessage = nil
+            loginRequested = true
+        }
+    }
+
+    public func requestSmsCode(phone: String) async -> Bool {
+        guard !phone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            errorMessage = "请输入手机号"
+            return false
+        }
+        isSendingCode = true
+        errorMessage = nil
+        defer { isSendingCode = false }
+        do {
+            _ = try await api.requestSmsCode(phone: phone)
+            return true
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "验证码发送失败"
+            return false
+        }
+    }
+
+    public func smsLogin(phone: String, code: String, nickname: String? = nil) async {
+        isLoggingIn = true
+        errorMessage = nil
+        defer { isLoggingIn = false }
+        do {
+            let result = try await api.smsLogin(phone: phone, code: code, nickname: nickname)
+            await persist(result)
+        } catch {
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "登录失败，请稍后再试"
+        }
+    }
     public var profile: UserProfile? { session?.user }
 
     public func restore() async {
@@ -74,6 +113,7 @@ public final class AuthStore {
         await api.setAccessToken(result.token)
         session = result
         errorMessage = nil
+        loginRequested = false
     }
 
     private func clear() {

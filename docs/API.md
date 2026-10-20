@@ -327,6 +327,21 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 徽章稀有度：`COMMON` / `RARE` / `EPIC` / `LEGENDARY` / `LIMITED`。
 第一阶段只做通用主线；专业支线、活动徽章、算法推荐后续加表，不改接口。
 
+### 9.6 手机号登录（iOS 主入口）
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/auth/sms-code` | 发送短信验证码，body `{ "phone": "13800138000" }` |
+| POST | `/api/auth/sms-login` | 手机号 + 验证码登录；未注册自动建号，body `{ "phone": "...", "code": "123456", "nickname": "可选" }` |
+
+- **本地 mock**：`app.sms.mock-accept-any-code=true` 时固定码 `123456`，不真的发短信；
+  非 local/dev/test 打开会被 `StartupSafetyGuard` 拒绝启动。
+- **真实短信通道还没接**（阿里云/腾讯云），非 mock 模式调用 `/sms-code` 会返回「短信服务未配置」。
+  上线前必须接 provider + 短信签名/模板审核。
+- 手机号用户 `users.email` 存手机号（该列本来就不校验邮箱格式），`password_hash` 是随机值。
+- **本机号码一键登录**需要运营商号码认证 SDK（移动/联通/电信），iOS 没有原生 API 能直接读手机号；
+  当前 App 里是入口占位，点击会引导到手机号验证码登录。
+
 ## 10. 前端调用映射（`frontend/src/lib/api.ts`）
 
 | 前端方法 | 实际请求 |

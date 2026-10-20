@@ -340,6 +340,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/sms-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["smsLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sms-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["requestSmsCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/reset-password": {
         parameters: {
             query?: never;
@@ -1494,18 +1526,10 @@ export interface components {
             purpose: string;
             code: string;
         };
-        ResetPasswordRequest: {
-            email: string;
-            verificationCode?: string;
-            password: string;
-            confirmPassword?: string;
-        };
-        RegisterRequest: {
-            email: string;
-            password: string;
-            confirmPassword?: string;
+        SmsLoginRequest: {
+            phone: string;
+            code: string;
             nickname?: string;
-            verificationCode?: string;
         };
         ApiResponseAuthResponse: {
             code?: string;
@@ -1519,6 +1543,33 @@ export interface components {
             /** Format: int64 */
             expiresInSeconds?: number;
             user?: components["schemas"]["UserProfile"];
+        };
+        SmsCodeRequest: {
+            phone: string;
+        };
+        ApiResponseSmsCodeResponse: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["SmsCodeResponse"];
+            requestId?: string;
+        };
+        SmsCodeResponse: {
+            sent?: boolean;
+            /** Format: int32 */
+            expiresInSeconds?: number;
+        };
+        ResetPasswordRequest: {
+            email: string;
+            verificationCode?: string;
+            password: string;
+            confirmPassword?: string;
+        };
+        RegisterRequest: {
+            email: string;
+            password: string;
+            confirmPassword?: string;
+            nickname?: string;
+            verificationCode?: string;
         };
         RefreshRequest: {
             refreshToken: string;
@@ -2698,6 +2749,54 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    smsLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmsLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAuthResponse"];
+                };
+            };
+        };
+    };
+    requestSmsCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmsCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseSmsCodeResponse"];
                 };
             };
         };

@@ -48,6 +48,13 @@ public final class AuthDtos {
 
     public record RefreshRequest(@NotBlank String refreshToken) {}
 
+    /** 手机号验证码登录；phone 允许 +86 / 空格，服务端统一 normalize。 */
+    public record SmsCodeRequest(@NotBlank String phone) {}
+
+    public record SmsLoginRequest(@NotBlank String phone, @NotBlank String code, String nickname) {}
+
+    public record SmsCodeResponse(boolean sent, int expiresInSeconds) {}
+
     /** 退出登录时可选地带上 refresh token，一起拉黑。 */
     public record LogoutRequest(String refreshToken) {}
 

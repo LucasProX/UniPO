@@ -140,6 +140,11 @@ public struct MessageView: Codable, Identifiable, Hashable {
     public let createdAt: String?
 }
 
+public struct SmsCodeResponse: Codable {
+    public let sent: Bool
+    public let expiresInSeconds: Int
+}
+
 public struct UploadResponse: Codable {
     public let id: Int64
     public let url: String

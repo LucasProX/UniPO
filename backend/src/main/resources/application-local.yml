@@ -27,6 +27,9 @@ app:
   verification:
     # 还没接 SMTP，本地注册/改密需要能随便填 4 位数字。
     mock-accept-any-code: true
+  sms:
+    # 本地没有真实短信通道，固定码 123456；非 local 环境禁止打开。
+    mock-accept-any-code: true
   bootstrap:
     # 写入 good / xiaoba / yuanhua 三个演示账号。生产不要开。
     seed-demo-data: true

@@ -40,8 +40,9 @@ public class AuthService implements CommandLineRunner {
     private final JwtService jwtService;
     private final TokenBlacklistService tokenBlacklistService;
     private final PresenceService presenceService;
+    private final SmsService smsService;
 
-    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService) {
+    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService, SmsService smsService) {
         this.properties = properties;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
@@ -50,6 +51,7 @@ public class AuthService implements CommandLineRunner {
         this.jwtService = jwtService;
         this.tokenBlacklistService = tokenBlacklistService;
         this.presenceService = presenceService;
+        this.smsService = smsService;
     }
 
     @Transactional
@@ -132,6 +134,80 @@ public class AuthService implements CommandLineRunner {
             throw new InsufficientAuthenticationException("账号不存在或已被禁用");
         }
         return issueTokens(user, preferenceFor(user.getId()));
+    }
+
+    public AuthDtos.SmsCodeResponse requestSmsCode(String phone) {
+        smsService.send(phone);
+        return new AuthDtos.SmsCodeResponse(true, SmsService.expireMinutes() * 60);
+    }
+
+    /**
+     * 手机号验证码登录：没有账号就自动注册。
+     * 手机号用户的 email 列存手机号（该列本来就不校验邮箱格式），password 是随机值。
+     */
+    @Transactional
+    public AuthDtos.AuthResponse smsLogin(AuthDtos.SmsLoginRequest request) {
+        String phone = SmsService.normalize(request.phone());
+        smsService.verify(phone, request.code());
+        User user = findByPhone(phone);
+        if (user == null) {
+            User byEmail = findByEmail(phone);
+            if (byEmail != null) {
+                user = byEmail;
+                user.setPhone(phone);
+            }
+        }
+        if (user == null) {
+            user = createPhoneUser(phone, request.nickname());
+        }
+        if (!"active".equals(user.getStatus())) {
+            throw new IllegalArgumentException("账号已被停用");
+        }
+        user.setLastLoginAt(LocalDateTime.now());
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+        presenceService.markOnline(user.getId());
+        return issueTokens(user, preferenceFor(user.getId()));
+    }
+
+    private User createPhoneUser(String phone, String requestedNickname) {
+        LocalDateTime now = LocalDateTime.now();
+        String nickname = requestedNickname == null ? "" : requestedNickname.trim();
+        if (nickname.isBlank()) {
+            nickname = "同学" + phone.substring(phone.length() - 4);
+        }
+        String unique = nickname;
+        int suffix = 2;
+        while (findByNickname(unique) != null) {
+            unique = nickname + suffix++;
+        }
+        User user = new User();
+        user.setEmail(phone);
+        user.setPhone(phone);
+        user.setPublicUid(generatePublicUid());
+        user.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        user.setNickname(unique);
+        user.setAvatarUrl("https://api.dicebear.com/8.x/initials/svg?seed=" + unique);
+        user.setSchoolId(defaultSchoolId());
+        user.setGrade("大一");
+        user.setMajor("未设置专业");
+        user.setVerifiedStatus("none");
+        user.setRole("USER");
+        user.setOperatorScope("student");
+        user.setLevel(1);
+        user.setXp(0);
+        user.setLevelTitle("萌新探路员");
+        user.setStatus("active");
+        user.setCreatedAt(now);
+        user.setUpdatedAt(now);
+        user.setLastLoginAt(now);
+        userMapper.insert(user);
+        createDefaultPreference(user.getId(), now);
+        return user;
+    }
+
+    private User findByPhone(String phone) {
+        return userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPhone, phone));
     }
 
     /** 签发 access + refresh 并组装返回。登录、注册、刷新三条路径都走这里，别各写一遍。 */

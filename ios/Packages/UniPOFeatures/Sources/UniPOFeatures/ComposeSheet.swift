@@ -150,7 +150,10 @@ struct ComposeSheet: View {
             Text("登录后可以发帖、评论、关注同学。")
                 .font(.uniBody(13))
                 .foregroundStyle(UniColor.secondary)
-            Button("去登录") { dismiss() }
+            Button("去登录") {
+                dismiss()
+                auth.requireLogin()
+            }
                 .buttonStyle(UniPrimaryButtonStyle())
                 .padding(.horizontal, 40)
         }

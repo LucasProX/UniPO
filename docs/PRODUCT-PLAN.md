@@ -159,7 +159,7 @@
 
 | 端 | 角色 | 认证 | 当前状态 |
 |---|---|---|---|
-| **iOS** | 主战场：留存、通知、相机、Keychain | Bearer + Keychain | ✅ 骨架：登录 / 首页 / 工具 / 成就 / 我的 / 发 PO |
+| **iOS** | 主战场：留存、通知、相机、Keychain | Bearer + Keychain（手机号验证码登录） | ✅ 登录页 / 首页 / 帖子详情 / 私信 / 工具 / 成就 / 发 PO |
 | **Web** | 分享落地页、SEO、兜底、管理后台 | httpOnly Cookie + CSRF | ✅ 信息流 / 社交 / 轮播 / 后台 |
 | 未来 Android | 复制 iOS 的 `/api/v1` 契约 | Bearer + Keystore | 规划中 |
 

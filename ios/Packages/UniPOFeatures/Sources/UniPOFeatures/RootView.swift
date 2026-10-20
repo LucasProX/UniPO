@@ -10,7 +10,6 @@ public struct RootView: View {
     @Environment(AuthStore.self) private var auth
     @State private var tab: AppTab = .home
     @State private var showCompose = false
-    @State private var showAuth = false
     @State private var showMessages = false
 
     public init() {
@@ -39,15 +38,17 @@ public struct RootView: View {
             Group {
                 switch tab {
                 case .home:
-                    HomeView(onRequestAuth: { showAuth = true },
+                    HomeView(onRequestAuth: { auth.requireLogin() },
                              onOpenAchievements: { tab = .achievements },
-                             onOpenMessages: { showMessages = true })
+                             onOpenMessages: {
+                                 if auth.isAuthenticated { showMessages = true } else { auth.requireLogin() }
+                             })
                 case .tools:
                     ToolsView()
                 case .achievements:
                     AchievementsView()
                 case .profile:
-                    ProfileView(onRequestAuth: { showAuth = true })
+                    ProfileView(onRequestAuth: { auth.requireLogin() })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -60,7 +61,9 @@ public struct RootView: View {
             .frame(height: 150)
             .allowsHitTesting(false)
 
-            DockBar(tab: $tab, onCompose: { showCompose = true })
+            DockBar(tab: $tab, onCompose: {
+                if auth.isAuthenticated { showCompose = true } else { auth.requireLogin() }
+            })
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
         }
@@ -70,11 +73,12 @@ public struct RootView: View {
                 .presentationDetents([.large])
                 .presentationCornerRadius(32)
         }
-        .sheet(isPresented: $showAuth) {
-            AuthSheet()
+        .fullScreenCover(isPresented: Binding(
+            get: { auth.loginRequested },
+            set: { auth.loginRequested = $0 }
+        )) {
+            LoginView()
                 .environment(auth)
-                .presentationDetents([.medium, .large])
-                .presentationCornerRadius(32)
         }
         .sheet(isPresented: $showMessages) {
             MessagesView()
@@ -87,6 +91,9 @@ public struct RootView: View {
             #if DEBUG
             // 调试登录：xcrun simctl launch booted com.unipo.app -email a@b.com -password xxx
             let args = ProcessInfo.processInfo.arguments
+            if args.contains("-login") {
+                auth.loginRequested = true
+            }
             if let ei = args.firstIndex(of: "-email"), args.indices.contains(ei + 1),
                let pi = args.firstIndex(of: "-password"), args.indices.contains(pi + 1) {
                 await auth.login(email: args[ei + 1], password: args[pi + 1])

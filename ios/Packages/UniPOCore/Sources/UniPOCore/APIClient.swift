@@ -59,6 +59,16 @@ public actor APIClient {
         )
     }
 
+    public func requestSmsCode(phone: String) async throws -> SmsCodeResponse {
+        try await request(path: "auth/sms-code", method: "POST", body: ["phone": phone])
+    }
+
+    public func smsLogin(phone: String, code: String, nickname: String? = nil) async throws -> AuthSession {
+        var body: [String: Any] = ["phone": phone, "code": code]
+        if let nickname, !nickname.isEmpty { body["nickname"] = nickname }
+        return try await request(path: "auth/sms-login", method: "POST", body: body)
+    }
+
     public func me() async throws -> UserProfile {
         try await request(path: "auth/me")
     }

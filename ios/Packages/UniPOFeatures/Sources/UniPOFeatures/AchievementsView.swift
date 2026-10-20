@@ -100,6 +100,20 @@ struct AchievementsView: View {
                 }
             }
 
+            if !auth.isAuthenticated {
+                Button {
+                    auth.requireLogin()
+                } label: {
+                    Text("登录后同步进度")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+
             if let errorMessage {
                 Text(errorMessage)
                     .font(.uniLabel(11))

@@ -61,7 +61,7 @@ public class SecurityConfig {
                         // （Caddy 只反代 /api，公网访问不到 /actuator）。
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
                                 "/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verification-code", "/api/auth/verification-code/verify", "/api/auth/reset-password", "/api/auth/email-availability", "/api/auth/nickname-availability", "/api/auth/refresh").permitAll()
+                        .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verification-code", "/api/auth/verification-code/verify", "/api/auth/reset-password", "/api/auth/email-availability", "/api/auth/nickname-availability", "/api/auth/refresh", "/api/auth/sms-code", "/api/auth/sms-login").permitAll()
                         // 首页轮播位是公开只读；写入在 /api/admin/spotlights（已受角色保护）。
                         .requestMatchers(HttpMethod.GET, "/api/categories", "/api/tags", "/api/schools", "/api/spotlights", "/api/v1/spotlights").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/options/**").permitAll()

@@ -67,6 +67,19 @@ public class AuthController {
         return ApiResponse.ok(true);
     }
 
+    @PostMapping("/sms-code")
+    public ApiResponse<AuthDtos.SmsCodeResponse> requestSmsCode(@Valid @RequestBody AuthDtos.SmsCodeRequest request) {
+        return ApiResponse.ok(authService.requestSmsCode(request.phone()));
+    }
+
+    @PostMapping("/sms-login")
+    public ApiResponse<AuthDtos.AuthResponse> smsLogin(@Valid @RequestBody AuthDtos.SmsLoginRequest request,
+                                                       HttpServletResponse response) {
+        AuthDtos.AuthResponse auth = authService.smsLogin(request);
+        issueWebSession(auth, response);
+        return ApiResponse.ok(auth);
+    }
+
     @PostMapping("/login")
     public ApiResponse<AuthDtos.AuthResponse> login(@Valid @RequestBody AuthDtos.LoginRequest request,
                                                     HttpServletResponse response) {

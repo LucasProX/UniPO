@@ -22,7 +22,9 @@ struct MessagesView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let selected {
+                if !auth.isAuthenticated {
+                    signedOut
+                } else if let selected {
                     thread(selected)
                 } else {
                     list
@@ -53,6 +55,21 @@ struct MessagesView: View {
             }
             .onDisappear { RealtimeClient.shared.disconnect() }
         }
+    }
+
+    private var signedOut: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 34))
+                .foregroundStyle(UniColor.tertiary)
+            Text("登录后查看私信")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(UniColor.ink)
+            Button("去登录") { auth.requireLogin() }
+                .buttonStyle(UniPrimaryButtonStyle())
+                .padding(.horizontal, 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var list: some View {

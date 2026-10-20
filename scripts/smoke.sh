@@ -89,6 +89,10 @@ if [ -z "$TOK" ]; then
 fi
 call_api GET "$BASE/api/auth/me" "" "$TOK"
 check me
+call_api POST "$BASE/api/auth/sms-code" '{"phone":"13900001111"}'
+check sms-code
+call_api POST "$BASE/api/auth/sms-login" '{"phone":"13900001111","code":"123456"}'
+check sms-login
 
 # refresh token: exchange refresh -> new access; an access token must be rejected.
 REFRESH_TOK="$(printf '%s' "$AUTH_RESP" | jq -r '.data.refreshToken // empty' 2>/dev/null || true)"
