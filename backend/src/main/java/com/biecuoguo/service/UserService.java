@@ -16,10 +16,7 @@ import java.util.NoSuchElementException;
 public class UserService {
     private final UserMapper userMapper;
     private final UserPreferenceMapper preferenceMapper;
-    private final FavoriteMapper favoriteMapper;
-    private final UserNoticeStatusMapper statusMapper;
     private final CommentMapper commentMapper;
-    private final ReminderMapper reminderMapper;
     private final PostFavoriteMapper postFavoriteMapper;
     private final PostLikeMapper postLikeMapper;
     private final PostShareMapper postShareMapper;
@@ -28,13 +25,10 @@ public class UserService {
     private final UserCheckInMapper checkInMapper;
     private final PresenceService presenceService;
 
-    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, FavoriteMapper favoriteMapper, UserNoticeStatusMapper statusMapper, CommentMapper commentMapper, ReminderMapper reminderMapper, PostFavoriteMapper postFavoriteMapper, PostLikeMapper postLikeMapper, PostShareMapper postShareMapper, UserFollowMapper userFollowMapper, PostMapper postMapper, UserCheckInMapper checkInMapper, PresenceService presenceService) {
+    public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, CommentMapper commentMapper, PostFavoriteMapper postFavoriteMapper, PostLikeMapper postLikeMapper, PostShareMapper postShareMapper, UserFollowMapper userFollowMapper, PostMapper postMapper, UserCheckInMapper checkInMapper, PresenceService presenceService) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
-        this.favoriteMapper = favoriteMapper;
-        this.statusMapper = statusMapper;
         this.commentMapper = commentMapper;
-        this.reminderMapper = reminderMapper;
         this.postFavoriteMapper = postFavoriteMapper;
         this.postLikeMapper = postLikeMapper;
         this.postShareMapper = postShareMapper;
@@ -95,17 +89,17 @@ public class UserService {
     }
 
     public UserDtos.UserStats stats(Long userId) {
-        long favorites = favoriteMapper.selectCount(new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, userId));
-        long completed = statusMapper.selectCount(new LambdaQueryWrapper<UserNoticeStatus>().eq(UserNoticeStatus::getUserId, userId).eq(UserNoticeStatus::getStatus, "completed"));
-        long comments = commentMapper.selectCount(new LambdaQueryWrapper<Comment>().eq(Comment::getUserId, userId));
-        long upcoming = reminderMapper.selectCount(new LambdaQueryWrapper<Reminder>().eq(Reminder::getUserId, userId).eq(Reminder::getStatus, "pending"));
+        long comments = commentMapper.selectCount(new LambdaQueryWrapper<Comment>()
+                .eq(Comment::getUserId, userId)
+                .isNotNull(Comment::getPostId));
         long likedPosts = postLikeMapper.selectCount(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, userId));
         long favoritePosts = postFavoriteMapper.selectCount(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, userId));
         long sharedPosts = postShareMapper.selectCount(new LambdaQueryWrapper<PostShare>().eq(PostShare::getUserId, userId));
         long following = userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowerId, userId));
         long followers = userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowingId, userId));
         long posts = postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getAuthorId, userId).eq(Post::getStatus, "published"));
-        return new UserDtos.UserStats(favorites + favoritePosts, likedPosts, sharedPosts, completed, comments, upcoming, completed, following, followers, posts);
+        // completed / upcoming / avoidedRisks 恒为 0：notices 域已删除，字段仅为兼容旧契约保留。
+        return new UserDtos.UserStats(favoritePosts, likedPosts, sharedPosts, 0, comments, 0, 0, following, followers, posts);
     }
 
     public UserDtos.CheckInView checkInStatus(Long userId) {

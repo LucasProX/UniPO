@@ -1,7 +1,7 @@
 package com.biecuoguo.web;
 
 import com.biecuoguo.domain.School;
-import com.biecuoguo.dto.NoticeDtos;
+import com.biecuoguo.dto.TaxonomyDtos;
 import com.biecuoguo.dto.OptionDtos;
 import com.biecuoguo.service.TaxonomyService;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -19,12 +19,12 @@ public class TaxonomyController {
     }
 
     @GetMapping("/api/categories")
-    public ApiResponse<List<NoticeDtos.CategoryView>> categories() {
+    public ApiResponse<List<TaxonomyDtos.CategoryView>> categories() {
         return ApiResponse.ok(taxonomyService.categories());
     }
 
     @GetMapping("/api/tags")
-    public ApiResponse<List<NoticeDtos.TagView>> tags() {
+    public ApiResponse<List<TaxonomyDtos.TagView>> tags() {
         return ApiResponse.ok(taxonomyService.tags());
     }
 

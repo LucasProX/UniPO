@@ -58,7 +58,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verification-code", "/api/auth/verification-code/verify", "/api/auth/reset-password", "/api/auth/email-availability", "/api/auth/nickname-availability").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/notices/**", "/api/categories", "/api/tags", "/api/schools").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categories", "/api/tags", "/api/schools").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/options/**").permitAll()
                         // ApiVersionPrefixFilter 只改写「/api 上也存在」的路径，
                         // /api/v1/posts/page 这类 v1 独有端点会保留原样进来，
@@ -66,7 +66,6 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/notices/*/comments").permitAll()
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
                         .anyRequest().authenticated()
                 )

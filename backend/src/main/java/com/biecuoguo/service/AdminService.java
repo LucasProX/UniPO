@@ -1,9 +1,13 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.biecuoguo.domain.*;
+import com.biecuoguo.domain.Comment;
+import com.biecuoguo.domain.Post;
+import com.biecuoguo.domain.User;
 import com.biecuoguo.dto.AdminDtos;
-import com.biecuoguo.mapper.*;
+import com.biecuoguo.mapper.CommentMapper;
+import com.biecuoguo.mapper.PostMapper;
+import com.biecuoguo.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,27 +17,24 @@ import java.util.List;
 @Service
 public class AdminService {
     private final UserMapper userMapper;
-    private final NoticeMapper noticeMapper;
+    private final PostMapper postMapper;
     private final CommentMapper commentMapper;
-    private final FavoriteMapper favoriteMapper;
-    private final ReminderMapper reminderMapper;
 
-    public AdminService(UserMapper userMapper, NoticeMapper noticeMapper, CommentMapper commentMapper, FavoriteMapper favoriteMapper, ReminderMapper reminderMapper) {
+    public AdminService(UserMapper userMapper, PostMapper postMapper, CommentMapper commentMapper) {
         this.userMapper = userMapper;
-        this.noticeMapper = noticeMapper;
+        this.postMapper = postMapper;
         this.commentMapper = commentMapper;
-        this.favoriteMapper = favoriteMapper;
-        this.reminderMapper = reminderMapper;
     }
 
+    /**
+     * 管理端概览。notices 域已整体删除，这里只统计 posts 侧的数据。
+     */
     public AdminDtos.AnalyticsOverview overview() {
         return new AdminDtos.AnalyticsOverview(
                 userMapper.selectCount(null),
-                noticeMapper.selectCount(null),
-                noticeMapper.selectCount(new LambdaQueryWrapper<Notice>().eq(Notice::getStatus, "published")),
-                commentMapper.selectCount(null),
-                favoriteMapper.selectCount(null),
-                reminderMapper.selectCount(null)
+                postMapper.selectCount(null),
+                postMapper.selectCount(new LambdaQueryWrapper<Post>().eq(Post::getStatus, "published")),
+                commentMapper.selectCount(new LambdaQueryWrapper<Comment>().isNotNull(Comment::getPostId))
         );
     }
 

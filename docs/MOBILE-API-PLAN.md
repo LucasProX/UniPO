@@ -6,7 +6,7 @@
 
 **不要加 `/app` 路径拆分。走 `/api/v1` 单一契约 + 少量"客户端能力"端点。**
 
-一句话理由：Web 和 App 的业务是同一套，差异在**能力**（刷新令牌、推送、直传、版本门槛），不在**领域**。按端拆路径会让业务逻辑复制一份，而这正是当前 notices / posts 双域已经踩过的坑（同一张 `comments` 表两套接口、两套 Controller）。
+一句话理由：Web 和 App 的业务是同一套，差异在**能力**（刷新令牌、推送、直传、版本门槛），不在**领域**。按端拆路径会让业务逻辑复制一份，而这正是 notices / posts 双域曾经踩过的坑（notices 已于 2026-10-20 删除，同一张 `comments` 表两套接口、两套 Controller）。
 
 ## 2. 四种方案对比
 
@@ -109,7 +109,7 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 现状：会话列表 3s、当前会话 1.8s、心跳 10s 轮询。
 
 建议：**SSE 优先**。
-- 服务端 `SseEmitter` / WebFlux，事件：`message.new` / `conversation.updated` / `unread.count` / `notice.new`。
+- 服务端 `SseEmitter` / WebFlux，事件：`message.new` / `conversation.updated` / `unread.count` / `post.new`。
 - Web 与 App 都能用（App 用 http 流，断线重连 + `Last-Event-ID` 补发）。
 - 写操作仍走 REST。
 - 只有在需要双向低延迟（如正在输入、语音）时才上 WebSocket。
@@ -146,7 +146,7 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 2. **App 技术栈**：Flutter / React Native(Expo) / 原生？后端方案不受影响，但影响 SDK 生成与团队学习成本。
 3. **Web 认证**：是否接受从 `localStorage` 迁到 `httpOnly cookie`？（更安全，但要改前端与 CORS 配置）
 4. **实时**：SSE 够用（推荐），还是一步到位 WebSocket？
-5. **notices 遗留域**：删除（推荐，减一半代码量），还是保留改造成"官方公告 CMS"？
+5. ~~**notices 遗留域**：删除还是保留？~~ ✅ **已定：删除（2026-10-20 执行完毕）**。19 个 Java 文件 + 5 张表下线，见 `V11__drop_notices_domain.sql`。
 
 ## 12. 风险
 

@@ -7,7 +7,7 @@ import com.biecuoguo.domain.Major;
 import com.biecuoguo.domain.School;
 import com.biecuoguo.domain.Tag;
 import com.biecuoguo.dto.OptionDtos;
-import com.biecuoguo.dto.NoticeDtos;
+import com.biecuoguo.dto.TaxonomyDtos;
 import com.biecuoguo.mapper.CategoryMapper;
 import com.biecuoguo.mapper.CollegeMapper;
 import com.biecuoguo.mapper.MajorMapper;
@@ -35,17 +35,17 @@ public class TaxonomyService {
         this.majorMapper = majorMapper;
     }
 
-    public List<NoticeDtos.CategoryView> categories() {
+    public List<TaxonomyDtos.CategoryView> categories() {
         return categoryMapper.selectList(new LambdaQueryWrapper<Category>().orderByAsc(Category::getSortOrder))
                 .stream()
-                .map(NoticeDtos.CategoryView::from)
+                .map(TaxonomyDtos.CategoryView::from)
                 .toList();
     }
 
-    public List<NoticeDtos.TagView> tags() {
+    public List<TaxonomyDtos.TagView> tags() {
         return tagMapper.selectList(new LambdaQueryWrapper<Tag>().orderByAsc(Tag::getType).orderByAsc(Tag::getId))
                 .stream()
-                .map(NoticeDtos.TagView::from)
+                .map(TaxonomyDtos.TagView::from)
                 .toList();
     }
 

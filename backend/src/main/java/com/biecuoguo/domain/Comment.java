@@ -13,7 +13,6 @@ import java.time.LocalDateTime;
 public class Comment {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long noticeId;
     private Long postId;
     private Long userId;
     private Long parentId;

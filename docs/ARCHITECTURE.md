@@ -61,7 +61,7 @@ backend :8080  --->  MySQL :3306 (profile local-db) / 远程 MySQL
 | `post_images` | 帖子图片 | `post_id`、`url`、`sort_order`（最多 9 张） |
 | `post_likes` / `post_favorites` / `post_shares` | 互动 | 唯一键避重 |
 | `post_daily_stats` | 每日热度 | `stat_date` + 计数，`hot-today` 依赖它 |
-| `comments` | 评论（notice 与 post 共用） | `post_id`（V3 新增）、`notice_id`（可空）、`parent_id`、`featured` |
+| `comments` | 帖子评论 | `post_id`、`parent_id`、`featured`（`notice_id` 已随 V11 删除） |
 | `comment_likes` | 评论点赞 | V5 |
 
 ### 4.2 用户与组织域
@@ -72,6 +72,7 @@ backend :8080  --->  MySQL :3306 (profile local-db) / 远程 MySQL
 | `user_follows` | 关注关系 |
 | `user_checkins` | 每日签到 |
 | `schools` / `colleges` / `majors` | 学校 / 学院 / 专业三级组织 |
+| `categories` / `tags` | 分类 / 标签字典，`/api/categories`、`/api/tags` 只读 |
 | `verification_codes` | 邮箱验证码（V7） |
 
 ### 4.3 消息域
@@ -81,10 +82,13 @@ backend :8080  --->  MySQL :3306 (profile local-db) / 远程 MySQL
 `media_objects`：`bucket` / `object_key` / `url` / `content_type` / `size_bytes` / `purpose`。
 `url` 先存 `minio://bucket/key`，再由 `minio.publicEndpoint` 拼成可访问 URL 回写。
 
-### 4.5 遗留域（前端零调用）
-`notices`、`notice_tags`、`categories`、`tags`、`favorites`、`reminders`、`user_notice_status`、`analytics_events`。
+### 4.5 已删除的遗留域
+~~`notices`、`notice_tags`、`user_notice_status`、`favorites`、`reminders`~~ —— 2026-10-20 由
+`V11__drop_notices_domain.sql` 整体删除，对应 Java 文件（`NoticeController` / `NoticeService` /
+`InteractionController` / `CommentController` 等 19 个）一并移除。
 
-> 历史原因：项目最初是一套"校园通知/提醒"应用，后来整体重写成 PO 信息流，但旧域从表到 Controller 全部保留。`comments` 是唯一被两套共用的表。
+> 历史原因：项目最初是一套「校园通知/提醒」应用，后来整体重写成 PO 信息流，旧域从表到 Controller 保留了很久。
+> 现在只有 `posts` 一套内容模型；`analytics_events` 仍保留但当前无人写入。
 
 ## 5. 前端结构
 
@@ -121,5 +125,5 @@ frontend/src/
 
 - 安全：见 `docs/ISSUES.md` §1。
 - 性能：`PostService.toView` 每条 7 次 SQL；列表无 limit；私信全量加载。
-- 结构：notices / posts 双域；前端单文件；无测试无 CI。
+- 结构：单内容域（posts）；前端已组件化；无测试无 CI。
 - 可演进性：接口无版本；时间无时区；响应无分页元数据 —— 这三项会直接卡住 App 开发，方案见 `docs/MOBILE-API-PLAN.md`。
