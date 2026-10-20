@@ -142,6 +142,8 @@ docker compose up -d --build
 - **CI 有了，测试和 lint 还没有**：`.github/workflows/ci.yml` 跑 mvn package / npm ci + build / 脚本换行自查 / 真 MySQL 起服务的接口冒烟。
   但它**不能代替本地 `smoke.ps1`**——34 项全链路检查（含上传、游标分页、时区、注册验证码）只有 Windows 上那一份，CI 里没跑。
   提交前仍然要：`npm.cmd run build` 绿 + `mvn -DskipTests package` 绿 + `smoke.ps1` 34/34。
+  改 workflow 后先在本地跑 `actionlint .github/workflows/ci.yml`——GitHub 的 YAML 报错要到网页 logs 里看，
+  而「解析就失败」的那种 run 连 job 都没有（`total_count == 0`、`created_at == updated_at`），没有 logs 可看。
 - **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。
 
 ## 9. 当前优先级（2026-10，本地开发模式）

@@ -130,10 +130,10 @@ JWT 默认 secret 已删（见 **R-5**）。
 | Q-2 | **JWT 无刷新令牌** | 有效期 10080 分钟（7 天），过期就是硬过期，客户端只能重新登录；token 存 `localStorage` | 7 天内 token 被偷就等于永久会话；到期体验差 |
 | Q-3 ✅ | ~~上传只校验 `Content-Type`~~ **已修（2026-10-20）** | 新增 `service/ImageSignature.java` 按文件头识别 JPEG/PNG/GIF/WebP，扩展名和 `Content-Type` 都由识别结果决定（不再采信客户端）；上限从 20MB 收到 **5MB**；`purpose` 只允许 `[A-Za-z0-9_-]{1,20}` | 实测：HTML/SVG 改请求头冒充 `image/png` 都是 400；6MB 图片 413；真 PNG 200 |
 | Q-4 | **单机状态** | `TokenBlacklistService` / `PresenceService` 都是进程内 `ConcurrentHashMap` | 多实例部署后登出和在线状态全部失效 |
-| Q-5 🔶 | ~~无 CI~~ **CI 已加（2026-10-20），测试和 lint 还没有** | `.github/workflows/ci.yml` 四个 job：
-`backend`（mvn package）/ `frontend`（npm ci + npm run build，vue-tsc 会抓类型错）/ `files`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
-`smoke`（真 MySQL 8.4 service + 起 jar + 打 health/feed/login/带 token/405/404 六条断言）。
-**还没有**：后端单测、前端 eslint/prettier、CI 里跑完整的 `smoke.ps1`（它依赖 Windows PowerShell + `curl.exe`，要移植成 bash 才能上 Linux runner） |
+| Q-5 🔶 | ~~无 CI~~ **CI 已加并跑绿（2026-10-20）** | `.github/workflows/ci.yml` 四个 job，GitHub Actions run `39360886056` **4/4 全绿**：
+`后端编译`（mvn package）/ `前端类型检查与构建`（npm ci + npm run build，vue-tsc 抓类型错）/ `脚本与换行自查`（.sh 必须 LF、.ps1 必须 CRLF、`.env` 不能入库）/
+`启动 + 接口冒烟`（真 MySQL 8.4 service + 起 jar + health/feed 游标/登录拿 token/带 token 调用/405/404 六条断言）。
+**还没有**：后端单测、前端 eslint/prettier、CI 里跑完整 `smoke.ps1`（依赖 Windows PowerShell + `curl.exe`，要移植成 bash） |
 | Q-6 | 类型手写，与后端 DTO 已漂移 | `frontend/src/lib/types.ts` 手写，无 OpenAPI 生成 | 接口改了两边容易漏改 |
 
 ### 已解决但留着记录
