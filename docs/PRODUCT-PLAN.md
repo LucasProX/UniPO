@@ -2,6 +2,7 @@
 
 > 版本：v0.1（2026-10-20）
 > 状态：方向已定，核心端已有可运行雏形；单校成长闭环仍待验证。详细现状与执行门槛见 [PRODUCT-EXECUTION-PLAN](PRODUCT-EXECUTION-PLAN.md)
+> 本期范围与排期以 [DEVELOPMENT-PLAN](DEVELOPMENT-PLAN.md) 为准；本文中的五工具、金币、附件等愿景不等于当前试点必交范围。
 > 读者：创始人、未来团队、投资人、合作方
 > 关联文档：[ARCHITECTURE](ARCHITECTURE.md)、[API](API.md)、[ADR-0001](adr/0001-platform-baseline.md)、[DEVLOG](DEVLOG.md)
 

@@ -1,6 +1,8 @@
 # UniPO
 
 > 产品定位与完整规划：[docs/PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md)
+>
+> 本期开发规划与任务台账：[docs/DEVELOPMENT-PLAN.md](docs/DEVELOPMENT-PLAN.md)
 
 校园 PO 信息流应用，包含 Vue 3 前端、Spring Boot 后端和 MySQL 数据库。默认部署只启动前后端，MySQL 和 MinIO 作为外部已部署服务接入。
 

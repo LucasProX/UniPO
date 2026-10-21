@@ -4662,3 +4662,19 @@ if let uploaded = try? await APIClient.shared.uploadImage(...) {
 **另外两件顺手做的：** 3.7G 内存跑 Maven 容器构建容易 OOM，先加了 2G swap（`/swapfile` + 写进 `/etc/fstab`）；Docker 用腾讯云自己的 apt 源装（`mirrors.cloud.tencent.com/docker-ce`），国内比 get.docker.com 稳。
 
 **这次的部署形态：** `/opt/unipo` 是解压出来的目录（不是 git checkout，因为服务器上不了 GitHub），四个容器 `unipo-mysql`（127.0.0.1:12306）/ `unipo-minio`（127.0.0.1:9000-9001）/ `unipo-backend`（仅 compose 内网 8080）/ `unipo-frontend`（0.0.0.0:80 反代 /api）。数据库和对象存储都只绑本机，公网只开 80 和 22。更新代码得重新打包上传再 `docker compose build`，具体步骤写进 docs/DEPLOY-SERVER.md 了。
+
+## 2026-10-21 开发排期不能把成长阶段卡当成单纯接接口
+
+把分析整理成开发规划书时，最初容易按“首页把 Achievement API 接上”估一个前端任务。但对照 `OnboardingView.swift`、`AchievementDtos.java` 和任务表，发现引导没有学校和专业选择，任务也没有校历、适用范围、来源、有效期或攻略关联。只接当前 API，仍然无法解释为什么这个学生应该看到这个阶段。
+
+问题不在卡片画法，而在它依赖的成长背景与内容规则尚未齐全。新的 `DEVELOPMENT-PLAN.md` 先排成长模型和契约，再排引导、任务、首页和埋点；设计状态与运营真实内容样本也要在契约评审时进入。任务自报完成与系统确认分开，不能为了“验证成长”额外收学生证明材料。
+
+另一个排期冲突是旧产品规划首阶段同时列了五工具、金币与附件，而审查计划已建议缩小范围。以后本期范围、排期和工作包统一在开发规划书维护，旧文档保留方向和分析来源；每次修改同步生成 Word，避免三份路线图各说各话。人日是待实施校准的估算，不把多代理并行当成真实工程人力或外部审核承诺。
+
+## 2026-10-21 Word 渲染成功不代表中文字体真的可用
+
+开发规划书第一次用 bundled LibreOffice 渲染，命令成功生成了 15 页，但打开 PNG 后中文几乎全空白，标题变成方框，英文还在。起初以为 `pypdf` 抽取出来的重复汉字只是 PDF 字符映射问题，截图证明实际显示也坏了。
+
+构建脚本用了 macOS 的 `PingFang SC`，headless 渲染环境没有正确解析它。改用本机存在的 `Arial Unicode MS`，给本次渲染单独的 fontconfig，显式加入系统字体与 bundled 字体目录；同时清除模板字体主题和标题段落边框后，中文、表格与目录才正常，实际排到了 26 页。整个过程仍使用 bundled LibreOffice，没有切换到用户桌面应用。
+
+以后生成 Word 要同时检查 OOXML 内容、PDF 文字和每页 PNG；不能因为导出命令退出码为 0 就交付。重生成入口是 `scripts/docs/build_development_plan.py`，源文档是 `docs/DEVELOPMENT-PLAN.md`。如果换机器，先确认字体与渲染环境，再做分页和布局判断。
