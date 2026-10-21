@@ -43,13 +43,15 @@ public struct UserProfile: Codable, Identifiable, Hashable {
     public let showAge: Bool?
     public let showGrade: Bool?
     public let onboardingCompleted: Bool?
+    public let backgroundUrl: String?
+    public let status: String?
 
     public init(id: Int64, publicUid: String, nickname: String, avatarUrl: String?, role: String,
                 level: Int, levelTitle: String?, xp: Int?, bio: String?, college: String?,
                 major: String?, grade: String?, online: Bool?,
                 gender: String? = nil, birthYear: Int? = nil, zodiac: String? = nil, mbti: String? = nil,
                 showGender: Bool? = nil, showAge: Bool? = nil, showGrade: Bool? = nil,
-                onboardingCompleted: Bool? = nil) {
+                onboardingCompleted: Bool? = nil, backgroundUrl: String? = nil, status: String? = nil) {
         self.id = id
         self.publicUid = publicUid
         self.nickname = nickname
@@ -71,6 +73,8 @@ public struct UserProfile: Codable, Identifiable, Hashable {
         self.showAge = showAge
         self.showGrade = showGrade
         self.onboardingCompleted = onboardingCompleted
+        self.backgroundUrl = backgroundUrl
+        self.status = status
     }
 }
 
@@ -100,6 +104,44 @@ public struct UserStatsView: Codable {
     public let following: Int
     public let followers: Int
     public let posts: Int
+}
+
+public enum FollowRelationship: Equatable {
+    case notFollowing, following, friends
+
+    public init(following: Bool, followedBy: Bool) {
+        self = following ? (followedBy ? .friends : .following) : .notFollowing
+    }
+
+    public var title: String {
+        switch self {
+        case .notFollowing: return "关注"
+        case .following: return "已关注"
+        case .friends: return "朋友"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .notFollowing: return "plus"
+        case .following: return "checkmark"
+        case .friends: return "arrow.left.arrow.right"
+        }
+    }
+}
+
+public struct PublicUserProfile: Codable {
+    public let profile: UserProfile
+    public let stats: UserStatsView
+    public let following: Bool
+    public let mine: Bool
+    public let blocked: Bool
+    public let blockedBy: Bool
+    public let followedBy: Bool?
+
+    public var relationship: FollowRelationship {
+        FollowRelationship(following: following, followedBy: followedBy == true)
+    }
 }
 
 public struct PostView: Codable, Identifiable, Hashable {

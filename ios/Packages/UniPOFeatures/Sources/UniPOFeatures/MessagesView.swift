@@ -104,39 +104,43 @@ struct MessagesView: View {
                 .listRowSeparator(.hidden)
             } else {
                 ForEach(conversations) { conversation in
-                    Button {
-                        selected = conversation
-                        Task { await loadMessages(conversation.id) }
-                    } label: {
-                        HStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        UserProfileLink(uid: conversation.peer.uid, name: conversation.peer.nickname) {
                             UniAvatar(url: conversation.peer.avatarUrl, name: conversation.peer.nickname, size: 46)
-                            VStack(alignment: .leading, spacing: 3) {
-                                HStack {
-                                    Text(conversation.peer.nickname)
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundStyle(UniColor.ink)
-                                    Spacer()
-                                    Text(RelativeTime.text(from: conversation.lastMessageAt))
-                                        .font(.uniLabel(10))
-                                        .foregroundStyle(UniColor.tertiary)
-                                }
-                                Text(conversation.lastMessage ?? "开始聊天")
-                                    .font(.uniBody(12))
-                                    .foregroundStyle(UniColor.secondary)
-                                    .lineLimit(1)
-                            }
-                            if (conversation.unreadCount ?? 0) > 0 {
-                                Text("\(conversation.unreadCount ?? 0)")
-                                    .font(.uniLabel(10))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(UniColor.blue, in: Capsule())
-                            }
                         }
-                        .padding(.vertical, 4)
+                        Button {
+                            selected = conversation
+                            Task { await loadMessages(conversation.id) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack {
+                                        Text(conversation.peer.nickname)
+                                            .font(.system(size: 15, weight: .bold))
+                                            .foregroundStyle(UniColor.ink)
+                                        Spacer()
+                                        Text(RelativeTime.text(from: conversation.lastMessageAt))
+                                            .font(.uniLabel(10))
+                                            .foregroundStyle(UniColor.tertiary)
+                                    }
+                                    Text(conversation.lastMessage ?? "开始聊天")
+                                        .font(.uniBody(12))
+                                        .foregroundStyle(UniColor.secondary)
+                                        .lineLimit(1)
+                                }
+                                if (conversation.unreadCount ?? 0) > 0 {
+                                    Text("\(conversation.unreadCount ?? 0)")
+                                        .font(.uniLabel(10))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
+                                        .background(UniColor.blue, in: Capsule())
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -146,6 +150,27 @@ struct MessagesView: View {
 
     private func thread(_ conversation: ConversationView) -> some View {
         VStack(spacing: 0) {
+            UserProfileLink(uid: conversation.peer.uid, name: conversation.peer.nickname) {
+                HStack(spacing: 10) {
+                    UniAvatar(url: conversation.peer.avatarUrl, name: conversation.peer.nickname, size: 36, shape: .circle)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(conversation.peer.nickname)
+                            .font(.uniLabel(13))
+                            .foregroundStyle(UniColor.ink)
+                        Text("UID \(conversation.peer.uid)")
+                            .font(.uniLabel(10))
+                            .foregroundStyle(UniColor.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(UniColor.tertiary)
+                }
+                .frame(minHeight: 44)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {

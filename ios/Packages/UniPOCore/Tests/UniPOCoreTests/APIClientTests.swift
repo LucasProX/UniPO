@@ -75,4 +75,17 @@ final class APIClientTests: XCTestCase {
             XCTAssertTrue(error.errorDescription?.contains("系统阻止") == true)
         } catch { XCTFail("Unexpected error") }
     }
+
+    func testFollowAndUnfollowUseTheSamePublicUIDAndDistinctMethods() async throws {
+        let api = client()
+        var methods: [String] = []
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/users/profile-fixture/follow")
+            methods.append(request.httpMethod ?? "")
+            return (200, try JSONSerialization.data(withJSONObject: ["code": "OK", "message": "", "data": true]))
+        }
+        _ = try await api.setFollowing(uid: "profile-fixture", following: true)
+        _ = try await api.setFollowing(uid: "profile-fixture", following: false)
+        XCTAssertEqual(methods, ["POST", "DELETE"])
+    }
 }

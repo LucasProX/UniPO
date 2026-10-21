@@ -158,6 +158,7 @@ export interface UserProfile {
   showAge?: boolean;
   showGrade?: boolean;
   onboardingCompleted?: boolean;
+  backgroundUrl?: string | null;
 }
 
 /** 登录 / 注册 / 刷新三处共用的返回包（后端 AuthResponse）。 */
@@ -190,6 +191,7 @@ export interface PublicProfileView {
   blocked: boolean;
   /** 对方拉黑了我 */
   blockedBy: boolean;
+  followedBy?: boolean;
 }
 
 /** 关注/粉丝列表的一行（后端刻意不返回完整 UserProfile）。 */

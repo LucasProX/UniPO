@@ -1173,6 +1173,7 @@ export interface components {
             major?: string;
             grade?: string;
             bio?: string;
+            backgroundUrl?: string;
         };
         ApiResponseUserProfile: {
             code?: string;
@@ -1229,6 +1230,7 @@ export interface components {
             showAge?: boolean;
             showGrade?: boolean;
             onboardingCompleted?: boolean;
+            backgroundUrl?: string;
         };
         UpdatePreferencesRequest: {
             goalTags?: string;
@@ -1273,6 +1275,7 @@ export interface components {
             passwordHash?: string;
             nickname?: string;
             avatarUrl?: string;
+            backgroundUrl?: string;
             /** Format: int64 */
             schoolId?: number;
             /** Format: int64 */
@@ -1728,6 +1731,7 @@ export interface components {
             mine?: boolean;
             blocked?: boolean;
             blockedBy?: boolean;
+            followedBy?: boolean;
         };
         UserStats: {
             /** Format: int64 */

@@ -102,7 +102,7 @@ public final class AuthStore {
     }
 
     public func applyProfile(_ user: UserProfile) {
-        guard let current = session else { return }
+        guard let current = session, current.user.id == user.id else { return }
         session = AuthSession(token: current.token, refreshToken: current.refreshToken,
                               expiresInSeconds: current.expiresInSeconds, user: user)
     }

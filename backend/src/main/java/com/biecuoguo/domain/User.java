@@ -1,6 +1,8 @@
 package com.biecuoguo.domain;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -18,6 +20,8 @@ public class User {
     private String passwordHash;
     private String nickname;
     private String avatarUrl;
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String backgroundUrl;
     private Long schoolId;
     private Long collegeId;
     private Long majorId;

@@ -131,7 +131,7 @@
 | 方法 | 路径 | 鉴权 | 说明 |
 |---|---|---|---|
 | GET | `/me` | 登录 | 我的资料 |
-| PUT | `/me` | 登录 | 改资料（昵称/头像/学校/学院/专业/年级/简介） |
+| PUT | `/me` | 登录 | 改资料（昵称/头像/背景/学校/学院/专业/年级/简介） |
 | PUT | `/me/preferences` | 登录 | 兴趣与偏好 |
 | GET | `/me/stats` | 登录 | 发帖/获赞/关注统计 |
 | GET | `/me/check-in` | 登录 | 今日是否已签到 |
@@ -374,7 +374,22 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 - `GET /api/users/me/stats`：关注/粉丝/作品等统计；
 - `GET /api/users/me/posts` / `/likes` / `/post-favorites`：作品/喜欢/收藏三栏；
 - `PUT /api/users/me`：头像更新只传 `avatarUrl`；
-- 主页展示字段来自 `UserProfile`：`gender` / `zodiac` / `mbti` / `birthYear` / `showGender` / `showAge`。
+- 主页展示字段来自 `UserProfile`：`gender` / `zodiac` / `mbti` / `birthYear` / `showGender` / `showAge` / `showGrade` / `backgroundUrl`。
+
+**背景（2026-10-21 新增，V19）**：先通过 `/api/v1/media/upload?purpose=profile-background` 上传图片，
+再向 `PUT /api/v1/users/me` 提交 `{"backgroundUrl":"上传返回的 URL"}`。省略该字段或传 `null` 不修改，
+传空字符串恢复默认背景；最长 500 字符，只接受媒体内容路径或合法 HTTP(S) URL。
+保存结果通过 `UserProfile.backgroundUrl` 返回，本人资料和公开主页使用同一字段。
+
+**公开主页与关系**：`GET /api/v1/users/{uid}` 返回
+`{profile, stats, following, mine, blocked, blockedBy, followedBy}`。
+`following` 表示当前访问者关注对方，`followedBy` 表示对方关注当前访问者；两者都为 `true` 才是「朋友」。
+仅 `following=true` 是「已关注」，仅 `followedBy=true` 仍显示「关注」；匿名访问或访问本人时两项都为 `false`。
+关注/取关继续使用既有 `POST/DELETE /users/{uid}/follow`，没有独立的朋友接口。
+
+非本人访问时，`profile.email`、兴趣与通知偏好、`lastLoginAt`、`onboardingCompleted` 返回 `null`；
+`showGender/showAge/showGrade` 为 false 时，对应的 `gender/birthYear/grade` 也由服务端返回 `null`。
+停用或注销账号的公开主页返回 404。当前 iOS 公开主页展示作品；他人喜欢和收藏的兼容接口仍保留。
 
 ### 9.9 推送设备
 

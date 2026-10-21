@@ -5,6 +5,7 @@ import UniPOUI
 struct PostDetailView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let post: PostView
 
@@ -14,10 +15,15 @@ struct PostDetailView: View {
     @State private var favorited: Bool
     @State private var likeCount: Int
     @State private var favoriteCount: Int
+    @State private var commentCount: Int
     @State private var isLoading = true
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var startedConversation: ConversationView?
+    @State private var commentError: String?
+    @FocusState private var commentFocused: Bool
+
+    private let commentLimit = 1_000
 
     init(post: PostView) {
         self.post = post
@@ -25,6 +31,7 @@ struct PostDetailView: View {
         _favorited = State(initialValue: post.favorited ?? false)
         _likeCount = State(initialValue: post.likeTotal)
         _favoriteCount = State(initialValue: post.favoriteTotal)
+        _commentCount = State(initialValue: post.commentTotal)
     }
 
     var body: some View {
@@ -40,6 +47,7 @@ struct PostDetailView: View {
                 .padding(.bottom, 24)
             }
             .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) {
                 commentComposer
             }
@@ -85,14 +93,20 @@ struct PostDetailView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 42)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(post.author.nickname)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(UniColor.ink)
-                Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
-                    .font(.uniLabel(11))
-                    .foregroundStyle(UniColor.secondary)
+            UserProfileLink(uid: post.author.uid, name: post.author.nickname) {
+                HStack(spacing: 10) {
+                    UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 42)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(post.author.nickname)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(UniColor.ink)
+                        Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
+                            .font(.uniLabel(11))
+                            .foregroundStyle(UniColor.secondary)
+                    }
+                }
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
             Spacer()
             Button {
@@ -164,7 +178,9 @@ struct PostDetailView: View {
             ) {
                 toggleFavorite()
             }
-            actionButton(title: "\(post.commentTotal)", icon: "bubble.right", tint: UniColor.secondary) {}
+            actionButton(title: "\(commentCount)", icon: "bubble.right", tint: UniColor.secondary) {
+                commentFocused = true
+            }
             Spacer()
         }
     }
@@ -200,12 +216,18 @@ struct PostDetailView: View {
             } else {
                 ForEach(comments) { comment in
                     HStack(alignment: .top, spacing: 10) {
-                        UniAvatar(url: comment.author.avatarUrl, name: comment.author.nickname, size: 34)
+                        UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
+                            UniAvatar(url: comment.author.avatarUrl, name: comment.author.nickname, size: 34)
+                                .frame(width: 44, height: 44, alignment: .topLeading)
+                                .contentShape(Rectangle())
+                        }
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text(comment.author.nickname)
-                                    .font(.uniLabel(12))
-                                    .foregroundStyle(UniColor.ink)
+                                UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
+                                    Text(comment.author.nickname)
+                                        .font(.uniLabel(12))
+                                        .foregroundStyle(UniColor.ink)
+                                }
                                 Text(RelativeTime.text(from: comment.createdAt))
                                     .font(.uniLabel(10))
                                     .foregroundStyle(UniColor.tertiary)
@@ -223,25 +245,104 @@ struct PostDetailView: View {
     }
 
     private var commentComposer: some View {
-        HStack(spacing: 8) {
-            TextField("写评论…", text: $commentText, axis: .vertical)
-                .lineLimit(1...3)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(UniColor.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            Button {
-                Task { await sendComment() }
-            } label: {
-                if isSending { ProgressView() } else { Image(systemName: "arrow.up.circle.fill") }
+        VStack(alignment: .leading, spacing: 10) {
+            if composerExpanded {
+                HStack(spacing: 6) {
+                    Circle().fill(UniColor.blue).frame(width: 5, height: 5)
+                    Text("参与讨论")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(UniColor.blue)
+                    Spacer()
+                    Text("\(commentLength)/\(commentLimit)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(commentOverLimit ? UniColor.danger : UniColor.tertiary)
+                        .accessibilityLabel("评论长度 \(commentLength)，上限 \(commentLimit)")
+                }
+                .transition(.opacity)
             }
-            .font(.system(size: 28))
-            .foregroundStyle(commentText.trimmingCharacters(in: .whitespaces).isEmpty ? UniColor.tertiary : UniColor.ink)
-            .disabled(isSending || commentText.trimmingCharacters(in: .whitespaces).isEmpty)
+
+            HStack(alignment: .bottom, spacing: 10) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(UniColor.blue)
+                    .frame(width: 34, height: 44)
+                    .background(UniColor.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityHidden(true)
+
+                TextField("写下你的想法…", text: $commentText, axis: .vertical)
+                    .font(.uniBody(14))
+                    .foregroundStyle(UniColor.ink)
+                    .tint(UniColor.blue)
+                    .lineLimit(1...5)
+                    .focused($commentFocused)
+                    .frame(minHeight: 44)
+                    .disabled(isSending)
+                    .accessibilityLabel("评论内容")
+                    .accessibilityHint("最多 \(commentLimit) 个字符")
+                    .accessibilityIdentifier("comment.input")
+                    .onChange(of: commentText) { _, _ in commentError = nil }
+
+                Button {
+                    Task { await sendComment() }
+                } label: {
+                    HStack(spacing: 5) {
+                        if isSending {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text(commentError == nil ? (auth.isAuthenticated ? "发送" : "登录发送") : "重试")
+                                .font(.uniLabel(12))
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                    }
+                    .foregroundStyle(canSendComment || isSending ? .white : UniColor.tertiary)
+                    .padding(.horizontal, 13)
+                    .frame(minWidth: 58, minHeight: 44)
+                    .background(canSendComment || isSending ? UniColor.blue : UniColor.mist.opacity(0.7),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSendComment)
+                .accessibilityLabel(isSending ? "正在发送评论" : (auth.isAuthenticated ? "发送评论" : "登录后发送评论"))
+                .accessibilityIdentifier("comment.send")
+            }
+
+            if let commentError {
+                Text(commentError)
+                    .font(.uniLabel(11))
+                    .foregroundStyle(UniColor.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("comment.error")
+            } else if commentOverLimit {
+                Text("评论最多 \(commentLimit) 个字符，请精简后发送")
+                    .font(.uniLabel(11))
+                    .foregroundStyle(UniColor.danger)
+            }
         }
+        .padding(12)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(commentFocused ? UniColor.blue.opacity(0.6) : UniColor.mist, lineWidth: commentFocused ? 1.2 : 1)
+        }
+        .shadow(color: UniColor.ink.opacity(0.04), radius: 14, y: 5)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88), value: composerExpanded)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: commentFocused)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(UniColor.paper.ignoresSafeArea(edges: .bottom))
+        .accessibilityIdentifier("comment.composer")
     }
+
+    private var trimmedComment: String {
+        commentText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // The API's Java @Size constraint counts UTF-16 code units.
+    private var commentLength: Int { trimmedComment.utf16.count }
+    private var commentOverLimit: Bool { commentLength > commentLimit }
+    private var composerExpanded: Bool { commentFocused || !commentText.isEmpty || commentError != nil }
+    private var canSendComment: Bool { !isSending && !trimmedComment.isEmpty && !commentOverLimit }
 
     private func startChat() async {
         guard auth.isAuthenticated else {
@@ -261,8 +362,12 @@ struct PostDetailView: View {
 
     private func loadComments() async {
         isLoading = true
+        let existingIds = Set(comments.map(\.id))
         do {
-            comments = try await APIClient.shared.comments(postId: post.id)
+            let loaded = try await APIClient.shared.comments(postId: post.id)
+            let loadedIds = Set(loaded.map(\.id))
+            let submittedWhileLoading = comments.filter { !existingIds.contains($0.id) && !loadedIds.contains($0.id) }
+            comments = loaded + submittedWhileLoading
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
         }
@@ -270,21 +375,25 @@ struct PostDetailView: View {
     }
 
     private func sendComment() async {
+        guard !isSending else { return }
         guard auth.isAuthenticated else {
             auth.requireLogin()
             return
         }
-        let text = commentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        let text = trimmedComment
+        guard !text.isEmpty, !commentOverLimit else { return }
         isSending = true
+        commentError = nil
+        defer { isSending = false }
         do {
             let created = try await APIClient.shared.addComment(postId: post.id, content: text)
-            comments.append(created)
+            if !comments.contains(where: { $0.id == created.id }) { comments.append(created) }
+            commentCount += 1
             commentText = ""
+            commentFocused = false
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription
+            commentError = (error as? LocalizedError)?.errorDescription ?? "评论未发送，请重试"
         }
-        isSending = false
     }
 
     private func toggleLike() {

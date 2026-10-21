@@ -226,7 +226,10 @@ xcrun simctl launch booted com.unipo.app
 - **头像**：新手引导和「我的」头像都走 `AvatarCropView`（相册选图 -> 圆形裁剪/缩放 -> 800x800 JPEG -> 上传 MinIO -> `PUT /users/me`）。
   裁剪页的取消/使用必须放在 `NavigationStack` toolbar 里，别自绘顶栏——fullScreenCover 里自绘顶栏会钻到状态栏下面，按钮点不到（见 DEVLOG 2026-10-21）。
   主页资料行顺序是性别符号（♂ 蓝 / ♀ 粉）-> 星座 -> MBTI -> 年龄；年龄由 `birthYear` 计算，`showAge/showGender` 为 false 时不展示。
-  主页视觉是浅色杂志风：paper 画布 + ink 字 + blue 强调，头像渐变环、白色数据卡、胶囊 tab、6pt 网格/13pt 圆角；不要再改回深色头图、白条状态栏或 2pt 网格。
+  主页视觉是浅色杂志风：paper 画布 + ink 字 + blue 强调，头像渐变环、白色数据卡、胶囊滑块 tab、6pt 网格/13pt 圆角；滑块动画尊重 Reduce Motion，不要再改回深色头图、白条状态栏或 2pt 网格。
+- **主页身份入口**统一用 `UserProfileLink`，以 `publicUid` 判断本人；帖子、评论、会话列表与聊天标题保持一致。本人进入 `ProfileView`，他人进入 `PublicProfileView`。
+- **朋友必须双向关注**：以服务端 `following && followedBy` 为准；仅自己关注对方是「已关注」，仅被对方关注仍是「关注」，不能由本地一次关注操作推断成朋友。
+- **主页背景与公开资料**：背景上传后通过 `PUT /users/me` 保存 `backgroundUrl`，空字符串恢复默认；本人和访客共用 `ProfileBackdrop`，以服务端保存结果为准。公开资料的隐私限制由服务端执行，不能只在界面隐藏；关闭展示的性别、出生年份、年级及私人账号/偏好字段不向他人返回实际值。
 - **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
   登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。
 

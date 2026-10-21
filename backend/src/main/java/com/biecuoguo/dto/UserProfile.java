@@ -45,17 +45,27 @@ public record UserProfile(
         Boolean showGender,
         Boolean showAge,
         Boolean showGrade,
-        Boolean onboardingCompleted
+        Boolean onboardingCompleted,
+        String backgroundUrl
 ) {
     public static UserProfile from(User user, UserPreference preference) {
         return from(user, preference, false);
     }
 
     public static UserProfile from(User user, UserPreference preference, boolean online) {
+        return view(user, preference, online, true);
+    }
+
+    /** 公共主页只返回展示所需资料，不泄露登录账号、通知偏好或关闭展示的个人信息。 */
+    public static UserProfile publicView(User user, boolean online) {
+        return view(user, null, online, false);
+    }
+
+    private static UserProfile view(User user, UserPreference preference, boolean online, boolean owner) {
         return new UserProfile(
                 user.getId(),
                 user.getPublicUid(),
-                user.getEmail(),
+                owner ? user.getEmail() : null,
                 user.getNickname(),
                 user.getAvatarUrl(),
                 user.getSchoolId(),
@@ -63,7 +73,7 @@ public record UserProfile(
                 user.getMajorId(),
                 user.getCollege(),
                 user.getMajor(),
-                user.getGrade(),
+                owner || Boolean.TRUE.equals(user.getShowGrade()) ? user.getGrade() : null,
                 user.getBio(),
                 user.getVerifiedStatus(),
                 user.getRole(),
@@ -73,24 +83,25 @@ public record UserProfile(
                 user.getLevelTitle() == null ? "萌新探路员" : user.getLevelTitle(),
                 user.getStatus(),
                 online,
-                preference == null ? "" : preference.getGoalTags(),
-                preference == null ? "" : preference.getInterestCategories(),
-                preference != null && Boolean.TRUE.equals(preference.getPreferUrgent()),
-                preference != null && Boolean.TRUE.equals(preference.getPreferHighRisk()),
-                preference != null && Boolean.TRUE.equals(preference.getPreferSameMajor()),
-                preference != null && Boolean.TRUE.equals(preference.getEmailNotificationEnabled()),
-                preference != null && Boolean.TRUE.equals(preference.getBrowserNotificationEnabled()),
-                preference == null ? 24 : preference.getRemindBeforeHours(),
+                owner ? (preference == null ? "" : preference.getGoalTags()) : null,
+                owner ? (preference == null ? "" : preference.getInterestCategories()) : null,
+                owner ? preference != null && Boolean.TRUE.equals(preference.getPreferUrgent()) : null,
+                owner ? preference != null && Boolean.TRUE.equals(preference.getPreferHighRisk()) : null,
+                owner ? preference != null && Boolean.TRUE.equals(preference.getPreferSameMajor()) : null,
+                owner ? preference != null && Boolean.TRUE.equals(preference.getEmailNotificationEnabled()) : null,
+                owner ? preference != null && Boolean.TRUE.equals(preference.getBrowserNotificationEnabled()) : null,
+                owner ? (preference == null ? 24 : preference.getRemindBeforeHours()) : null,
                 AppTime.toOffset(user.getCreatedAt()),
-                AppTime.toOffset(user.getLastLoginAt()),
-                user.getGender(),
-                user.getBirthYear(),
+                owner ? AppTime.toOffset(user.getLastLoginAt()) : null,
+                owner || Boolean.TRUE.equals(user.getShowGender()) ? user.getGender() : null,
+                owner || Boolean.TRUE.equals(user.getShowAge()) ? user.getBirthYear() : null,
                 user.getZodiac(),
                 user.getMbti(),
                 Boolean.TRUE.equals(user.getShowGender()),
                 Boolean.TRUE.equals(user.getShowAge()),
                 Boolean.TRUE.equals(user.getShowGrade()),
-                Boolean.TRUE.equals(user.getOnboardingCompleted())
+                owner ? Boolean.TRUE.equals(user.getOnboardingCompleted()) : null,
+                user.getBackgroundUrl()
         );
     }
 }

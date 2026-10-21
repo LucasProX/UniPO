@@ -187,6 +187,28 @@ public actor APIClient {
         try await request(path: "users/me", method: "PUT", body: ["avatarUrl": url])
     }
 
+    public func updateBackground(url: String) async throws -> UserProfile {
+        try await request(path: "users/me", method: "PUT", body: ["backgroundUrl": url])
+    }
+
+    public func publicProfile(uid: String) async throws -> PublicUserProfile {
+        try await request(path: userPath(uid))
+    }
+
+    public func publicPosts(uid: String) async throws -> [PostView] {
+        try await request(path: userPath(uid) + "/posts")
+    }
+
+    @discardableResult
+    public func setFollowing(uid: String, following: Bool) async throws -> Bool {
+        try await request(path: userPath(uid) + "/follow", method: following ? "POST" : "DELETE")
+    }
+
+    private func userPath(_ uid: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        return "users/" + (uid.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
+    }
+
     public func unreadCount() async throws -> Int {
         try await request(path: "messages/unread-count")
     }
@@ -205,11 +227,11 @@ public actor APIClient {
     }
 
     public func uploadImage(data: Data, filename: String = "photo.jpg",
-                            mimeType: String = "image/jpeg") async throws -> UploadResponse {
+                            mimeType: String = "image/jpeg", purpose: String = "post") async throws -> UploadResponse {
         guard var components = URLComponents(string: AppConfig.apiBaseURL.absoluteString + "/media/upload") else {
             throw APIError.invalidURL
         }
-        components.queryItems = [URLQueryItem(name: "purpose", value: "post")]
+        components.queryItems = [URLQueryItem(name: "purpose", value: purpose)]
         guard let url = components.url else { throw APIError.invalidURL }
 
         let boundary = "UniPO-\(UUID().uuidString)"

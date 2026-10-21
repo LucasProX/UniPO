@@ -8,11 +8,13 @@ import com.biecuoguo.mapper.*;
 import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.security.SessionService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.net.URI;
 import java.util.NoSuchElementException;
 
 @Service
@@ -54,6 +56,9 @@ public class UserService {
     @Transactional
     public UserProfile updateProfile(Long userId, UserDtos.UpdateProfileRequest request) {
         User user = requireUser(userId);
+        if (!"active".equals(user.getStatus())) {
+            throw new AccessDeniedException("账号不可用");
+        }
         if (request.nickname() != null) {
             String nickname = request.nickname().trim();
             if (nickname.isBlank()) {
@@ -66,6 +71,9 @@ public class UserService {
             user.setNickname(nickname);
         }
         if (request.avatarUrl() != null) user.setAvatarUrl(request.avatarUrl());
+        if (request.backgroundUrl() != null) {
+            user.setBackgroundUrl(backgroundUrl(request.backgroundUrl()));
+        }
         if (request.schoolId() != null) user.setSchoolId(request.schoolId());
         if (request.collegeId() != null) user.setCollegeId(request.collegeId());
         if (request.majorId() != null) user.setMajorId(request.majorId());
@@ -144,21 +152,26 @@ public class UserService {
 
     public UserDtos.PublicProfile publicProfile(String uid, Long viewerId) {
         User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, uid));
-        if (user == null) {
-            throw new NoSuchElementException("用户不存在");
+        if (user == null || !"active".equals(user.getStatus())) {
+            throw new NoSuchElementException("用户不存在或已注销");
         }
         boolean mine = viewerId != null && viewerId.equals(user.getId());
         boolean following = viewerId != null && !mine && userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, viewerId)
                 .eq(UserFollow::getFollowingId, user.getId())) > 0;
+        boolean followedBy = viewerId != null && !mine && userFollowMapper.selectCount(new LambdaQueryWrapper<UserFollow>()
+                .eq(UserFollow::getFollowerId, user.getId())
+                .eq(UserFollow::getFollowingId, viewerId)) > 0;
         boolean blocked = viewerId != null && !mine && userBlockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
                 .eq(UserBlock::getBlockerId, viewerId)
                 .eq(UserBlock::getBlockedId, user.getId())) > 0;
         boolean blockedBy = viewerId != null && !mine && userBlockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
                 .eq(UserBlock::getBlockerId, user.getId())
                 .eq(UserBlock::getBlockedId, viewerId)) > 0;
-        return new UserDtos.PublicProfile(UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId())),
-                stats(user.getId()), following, mine, blocked, blockedBy);
+        UserProfile profile = mine
+                ? UserProfile.from(user, preference(user.getId()), presenceService.isOnline(user.getId()))
+                : UserProfile.publicView(user, presenceService.isOnline(user.getId()));
+        return new UserDtos.PublicProfile(profile, stats(user.getId()), following, mine, blocked, blockedBy, followedBy);
     }
 
     /**
@@ -179,6 +192,7 @@ public class UserService {
         user.setPhone(null);
         user.setNickname("已注销用户" + user.getPublicUid());
         user.setAvatarUrl(null);
+        user.setBackgroundUrl(null);
         user.setBio(null);
         user.setGender(null);
         user.setBirthYear(null);
@@ -319,6 +333,30 @@ public class UserService {
 
     private int safe(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    /** 空字符串恢复默认背景；图片链接只接受媒体路径或普通 HTTP(S) URL。 */
+    private String backgroundUrl(String raw) {
+        String value = raw.trim();
+        if (value.isEmpty()) {
+            return null;
+        }
+        if (value.length() > 500) {
+            throw new IllegalArgumentException("背景图片地址过长");
+        }
+        try {
+            URI uri = URI.create(value);
+            boolean mediaPath = !uri.isAbsolute() && uri.getRawAuthority() == null
+                    && uri.getPath() != null && uri.getPath().matches("/api/(?:v1/)?media/[0-9]+/content");
+            boolean webImage = ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    && uri.getHost() != null && uri.getRawUserInfo() == null;
+            if (uri.getFragment() == null && (mediaPath || webImage)) {
+                return value;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // 统一返回业务提示，不将解析异常及原始地址写回响应。
+        }
+        throw new IllegalArgumentException("请使用上传后的图片作为背景");
     }
 
     private User requireUser(Long userId) {

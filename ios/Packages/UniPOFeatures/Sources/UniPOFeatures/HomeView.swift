@@ -15,6 +15,7 @@ struct HomeView: View {
     @State private var growthGeneration = 0
     @State private var selectedPost: PostView?
     @State private var unreadCount = 0
+    @State private var previousViewerID: Int64?
 
     private var board: String { feed.board }
     private var posts: [PostView] { feed.posts }
@@ -44,7 +45,8 @@ struct HomeView: View {
         .refreshable { await load(reset: true) }
         .task(id: "\(auth.isRestoring):\(auth.profile?.id ?? 0)") {
             guard !auth.isRestoring else { return }
-            selectedPost = nil
+            if let previousViewerID, previousViewerID != auth.profile?.id { selectedPost = nil }
+            previousViewerID = auth.profile?.id
             unreadCount = 0
             growth = nil
             feed.clear()
@@ -105,12 +107,13 @@ struct HomeView: View {
                     }
             }
             .buttonStyle(.plain)
-            Button {
-                if auth.isAuthenticated { onOpenAchievements() } else { onRequestAuth() }
-            } label: {
-                if let profile = auth.profile {
+            if let profile = auth.profile {
+                UserProfileLink(uid: profile.publicUid, name: profile.nickname) {
                     UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 40)
-                } else {
+                }
+                .frame(minWidth: 44, minHeight: 44)
+            } else {
+                Button(action: onRequestAuth) {
                     Text("登录")
                         .font(.uniLabel(13))
                         .foregroundStyle(UniColor.ink)
@@ -118,8 +121,8 @@ struct HomeView: View {
                         .padding(.vertical, 9)
                         .background(UniColor.mist.opacity(0.8), in: Capsule())
                 }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
@@ -258,8 +261,7 @@ struct HomeView: View {
                 .padding(.vertical, 40)
         } else {
             ForEach(posts) { post in
-                PostCardView(post: post)
-                    .onTapGesture { selectedPost = post }
+                PostCardView(post: post, onOpen: { selectedPost = post })
                     .onAppear {
                         if post.id == posts.last?.id, feed.hasMore {
                             Task { await feed.loadMore() }

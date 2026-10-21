@@ -18,7 +18,8 @@ public final class UserDtos {
             @Size(max = 80) String college,
             @Size(max = 80) String major,
             @Size(max = 30) String grade,
-            @Size(max = 400) String bio
+            @Size(max = 400) String bio,
+            @Size(max = 500) String backgroundUrl
     ) {}
 
     /** 3 步新手引导的最终提交；字段都可选，允许用户跳过部分信息。 */
@@ -86,7 +87,7 @@ public final class UserDtos {
     ) {}
 
     public record PublicProfile(UserProfile profile, UserStats stats, boolean following, boolean mine,
-                                boolean blocked, boolean blockedBy) {}
+                                boolean blocked, boolean blockedBy, boolean followedBy) {}
 
     public record NewFollowersView(long count) {}
 

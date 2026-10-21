@@ -4,76 +4,89 @@ import UniPOUI
 
 struct PostCardView: View {
     let post: PostView
+    var onOpen: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 40)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) {
-                        Text(post.author.nickname)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(UniColor.ink)
-                            .lineLimit(1)
-                        if post.author.role != "USER" {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(UniColor.blue)
+                UserProfileLink(uid: post.author.uid, name: post.author.nickname) {
+                    HStack(spacing: 10) {
+                        UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 5) {
+                                Text(post.author.nickname)
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(UniColor.ink)
+                                    .lineLimit(1)
+                                if post.author.role != "USER" {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(UniColor.blue)
+                                }
+                            }
+                            Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
+                                .font(.uniLabel(11))
+                                .foregroundStyle(UniColor.secondary)
+                                .lineLimit(1)
                         }
                     }
-                    Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
-                        .font(.uniLabel(11))
-                        .foregroundStyle(UniColor.secondary)
-                        .lineLimit(1)
+                    .frame(minHeight: 44)
                 }
                 Spacer(minLength: 4)
                 UniChip(boardLabel(post.board))
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text(post.title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(UniColor.ink)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                Text(post.excerpt?.isEmpty == false ? post.excerpt! : post.content)
-                    .font(.uniBody(13))
-                    .foregroundStyle(UniColor.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-
-            if let cover = post.coverUrl, let url = AppConfig.absoluteURL(cover) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
-                        UniColor.mist
+            Button(action: onOpen) {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(post.title)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(UniColor.ink)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Text(post.excerpt?.isEmpty == false ? post.excerpt! : post.content)
+                            .font(.uniBody(13))
+                            .foregroundStyle(UniColor.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
                     }
-                }
-                .frame(height: 168)
-                .frame(maxWidth: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
 
-            if !post.tagList.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(post.tagList.prefix(3), id: \.self) { tag in
-                        UniChip(tag)
+                    if let cover = post.coverUrl, let url = AppConfig.absoluteURL(cover) {
+                        AsyncImage(url: url) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().scaledToFill()
+                            } else {
+                                UniColor.mist
+                            }
+                        }
+                        .frame(height: 168)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
-                }
-            }
 
-            HStack(spacing: 16) {
-                metric("heart", post.likeTotal)
-                metric("bubble.right", post.commentTotal)
-                metric("bookmark", post.favoriteTotal)
-                Spacer()
-                Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
-                    .font(.uniLabel(11))
-                    .foregroundStyle(UniColor.tertiary)
+                    if !post.tagList.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(post.tagList.prefix(3), id: \.self) { tag in
+                                UniChip(tag)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 16) {
+                        metric("heart", post.likeTotal)
+                        metric("bubble.right", post.commentTotal)
+                        metric("bookmark", post.favoriteTotal)
+                        Spacer()
+                        Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
+                            .font(.uniLabel(11))
+                            .foregroundStyle(UniColor.tertiary)
+                    }
+                    .padding(.top, 2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.top, 2)
+            .buttonStyle(.plain)
         }
         .padding(16)
         .background(

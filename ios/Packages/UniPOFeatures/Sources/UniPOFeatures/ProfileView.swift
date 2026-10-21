@@ -1,9 +1,11 @@
 import SwiftUI
+import PhotosUI
 import UniPOCore
 import UniPOUI
 
 struct ProfileView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var stats: UserStatsView?
     @State private var myPosts: [PostView] = []
@@ -11,11 +13,17 @@ struct ProfileView: View {
     @State private var favoritePosts: [PostView] = []
     @State private var tab = 0
     @State private var isLoading = true
+    @State private var loadGeneration = 0
+    @State private var dataUserID: Int64?
     @State private var selectedPost: PostView?
     @State private var showSettings = false
     @State private var showDeleteConfirm = false
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
+    @State private var backgroundPhoto: PhotosPickerItem?
+    @State private var isUpdatingBackground = false
+    @State private var backgroundError: String?
+    @State private var tabMovesForward = true
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
     private let textPalettes: [[Color]] = [
@@ -45,14 +53,22 @@ struct ProfileView: View {
         }
         .scrollIndicators(.hidden)
         .background(UniColor.paper.ignoresSafeArea())
-        .task(id: auth.isAuthenticated) { await load() }
+        .refreshable { await load() }
+        .task(id: auth.profile?.id) { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoRelationshipsChanged)) { _ in
+            Task { await load() }
+        }
+        .onChange(of: backgroundPhoto) { _, item in
+            guard let item else { return }
+            Task { await uploadBackground(item) }
+        }
         .sheet(item: $selectedPost) { post in
             PostDetailView(post: post)
                 .environment(auth)
         }
         .sheet(isPresented: $showSettings) {
             settingsSheet
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
                 .presentationCornerRadius(28)
         }
         .alert("注销账号", isPresented: $showDeleteConfirm) {
@@ -70,6 +86,14 @@ struct ProfileView: View {
             Button("知道了", role: .cancel) {}
         } message: {
             Text(avatarError ?? "")
+        }
+        .alert("背景图更新失败", isPresented: Binding(
+            get: { backgroundError != nil },
+            set: { if !$0 { backgroundError = nil } }
+        )) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text(backgroundError ?? "")
         }
     }
 
@@ -100,30 +124,8 @@ struct ProfileView: View {
         .padding(.top, 6)
         .padding(.bottom, 22)
         .background {
-            ZStack {
-                LinearGradient(
-                    stops: [
-                        .init(color: UniColor.paper, location: 0),
-                        .init(color: Color(hex: 0xEEF4FF), location: 0.34),
-                        .init(color: UniColor.paper, location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                RadialGradient(
-                    colors: [UniColor.blue.opacity(0.12), .clear],
-                    center: .topTrailing,
-                    startRadius: 0,
-                    endRadius: 300
-                )
-                RadialGradient(
-                    colors: [Color(hex: 0xFFD9E4).opacity(0.24), .clear],
-                    center: .bottomLeading,
-                    startRadius: 0,
-                    endRadius: 260
-                )
-            }
-            .ignoresSafeArea(edges: .top)
+            ProfileBackdrop(url: profile.backgroundUrl)
+                .ignoresSafeArea(edges: .top)
         }
     }
 
@@ -140,6 +142,29 @@ struct ProfileView: View {
             }
 
             Spacer()
+
+            PhotosPicker(selection: $backgroundPhoto, matching: .images) {
+                HStack(spacing: 5) {
+                    if isUpdatingBackground {
+                        ProgressView().tint(UniColor.blue)
+                    } else {
+                        Image(systemName: "photo")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("背景")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(UniColor.inkSoft)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(Color.white.opacity(0.78), in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.95), lineWidth: 1))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .disabled(isUpdatingBackground || isUploadingAvatar)
+            .accessibilityLabel(isUpdatingBackground ? "正在保存背景图" : "更换主页背景图")
+            .accessibilityIdentifier("profile.background-picker")
 
             Button {
                 showSettings = true
@@ -181,6 +206,7 @@ struct ProfileView: View {
             .frame(width: 100, height: 100)
             .shadow(color: UniColor.ink.opacity(0.16), radius: 16, y: 8)
         }
+        .disabled(isUploadingAvatar || isUpdatingBackground)
         .accessibilityLabel("更换头像")
     }
 
@@ -308,15 +334,11 @@ struct ProfileView: View {
     // MARK: - Tabs
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
-            tabButton("作品", index: 0, count: myPosts.count)
-            tabButton("喜欢", index: 1, count: likedPosts.count)
-            tabButton("收藏", index: 2, count: favoritePosts.count)
-        }
-        .padding(4)
-        .background(Color.white.opacity(0.86), in: Capsule())
-        .overlay(Capsule().stroke(.white.opacity(0.95), lineWidth: 1))
-        .shadow(color: UniColor.ink.opacity(0.05), radius: 12, y: 4)
+        ProfileSegmentedControl(
+            selection: Binding(get: { tab }, set: { selectTab($0) }),
+            titles: ["作品", "喜欢", "收藏"],
+            counts: [myPosts.count, likedPosts.count, favoritePosts.count]
+        )
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 10)
@@ -328,48 +350,44 @@ struct ProfileView: View {
         }
     }
 
-    private func tabButton(_ title: String, index: Int, count: Int) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.26)) { tab = index }
-        } label: {
-            HStack(spacing: 5) {
-                Text(title)
-                    .font(.system(size: 13, weight: tab == index ? .semibold : .medium))
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 9, weight: .bold))
-                        .monospacedDigit()
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(
-                            tab == index ? Color.white.opacity(0.18) : UniColor.mist.opacity(0.9),
-                            in: Capsule()
-                        )
-                }
-            }
-            .foregroundStyle(tab == index ? .white : UniColor.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(tab == index ? UniColor.ink : .clear, in: Capsule())
-            .contentShape(Capsule())
+    private func selectTab(_ index: Int) {
+        guard (0...2).contains(index), tab != index else { return }
+        tabMovesForward = index > tab
+        withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.88)) {
+            tab = index
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Content
 
     private var content: some View {
-        VStack(spacing: 0) {
-            if isLoading {
-                skeleton
-            } else if currentPosts.isEmpty {
-                emptyState
-            } else {
-                sectionHeader
-                grid
-                footer
+        ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                if isLoading {
+                    skeleton
+                } else if currentPosts.isEmpty {
+                    emptyState
+                } else {
+                    sectionHeader
+                    grid
+                    footer
+                }
             }
+            .id(tab)
+            .transition(reduceMotion ? .identity : .asymmetric(
+                insertion: .opacity.combined(with: .offset(x: tabMovesForward ? 18 : -18)),
+                removal: .opacity.combined(with: .offset(x: tabMovesForward ? -12 : 12))
+            ))
         }
+        .clipped()
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.88), value: tab)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { value in
+                guard abs(value.translation.width) > 55,
+                      abs(value.translation.width) > abs(value.translation.height) * 1.4 else { return }
+                selectTab(tab + (value.translation.width < 0 ? 1 : -1))
+            }
+        )
     }
 
     private var sectionHeader: some View {
@@ -600,18 +618,38 @@ struct ProfileView: View {
             List {
                 if let profile = auth.profile {
                     Section {
-                        HStack(spacing: 12) {
-                            UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 46, shape: .circle)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(profile.nickname)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(UniColor.ink)
-                                Text("UID \(profile.publicUid)")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(UniColor.tertiary)
+                        Button { showSettings = false } label: {
+                            HStack(spacing: 12) {
+                                UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 46, shape: .circle)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(profile.nickname)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(UniColor.ink)
+                                    Text("UID \(profile.publicUid)")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundStyle(UniColor.tertiary)
+                                }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
                         }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("返回我的主页")
+                    }
+                }
+
+                Section("主页背景") {
+                    PhotosPicker(selection: $backgroundPhoto, matching: .images) {
+                        HStack {
+                            Label("更换背景图", systemImage: "photo")
+                            Spacer()
+                            if isUpdatingBackground { ProgressView() }
+                        }
+                    }
+                    .disabled(isUpdatingBackground || isUploadingAvatar)
+                    if let url = auth.profile?.backgroundUrl, !url.isEmpty {
+                        Button("恢复默认背景") { Task { await resetBackground() } }
+                            .disabled(isUpdatingBackground || isUploadingAvatar)
                     }
                 }
 
@@ -623,6 +661,7 @@ struct ProfileView: View {
                         Label("注销账号", systemImage: "trash")
                             .foregroundStyle(UniColor.danger)
                     }
+                    .disabled(isUpdatingBackground || isUploadingAvatar)
                 } footer: {
                     Text("注销后账号会被停用，个人资料会被匿名化，且无法恢复。")
                 }
@@ -634,6 +673,7 @@ struct ProfileView: View {
                     } label: {
                         Text("退出登录")
                     }
+                    .disabled(isUpdatingBackground || isUploadingAvatar)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -649,22 +689,38 @@ struct ProfileView: View {
     }
 
     private func load() async {
-        guard auth.isAuthenticated else {
+        loadGeneration += 1
+        let generation = loadGeneration
+        guard let initialProfile = auth.profile else {
             stats = nil
             myPosts = []; likedPosts = []; favoritePosts = []
+            dataUserID = nil
             isLoading = false
             return
         }
+        if dataUserID != initialProfile.id {
+            stats = nil
+            myPosts = []; likedPosts = []; favoritePosts = []
+            dataUserID = initialProfile.id
+        }
         isLoading = true
+        defer {
+            if loadGeneration == generation { isLoading = false }
+        }
+        async let profileTask = try? APIClient.shared.me()
         async let statsTask = try? APIClient.shared.userStats()
         async let myTask = try? APIClient.shared.myPosts()
         async let likedTask = try? APIClient.shared.likedPosts()
         async let favoriteTask = try? APIClient.shared.favoritePosts()
-        stats = await statsTask
-        myPosts = await myTask ?? []
-        likedPosts = await likedTask ?? []
-        favoritePosts = await favoriteTask ?? []
-        isLoading = false
+        let (latestProfile, latestStats, latestPosts, latestLikes, latestFavorites) =
+            await (profileTask, statsTask, myTask, likedTask, favoriteTask)
+        guard loadGeneration == generation, auth.profile?.id == initialProfile.id else { return }
+        // A late refresh must not overwrite a cover/avatar saved while these requests were in flight.
+        if auth.profile == initialProfile, let latestProfile { auth.applyProfile(latestProfile) }
+        stats = latestStats
+        myPosts = latestPosts ?? []
+        likedPosts = latestLikes ?? []
+        favoritePosts = latestFavorites ?? []
     }
 
     private func age(_ profile: UserProfile) -> Int? {
@@ -673,6 +729,7 @@ struct ProfileView: View {
     }
 
     private func uploadAvatar(_ image: UIImage) {
+        guard let userID = auth.profile?.id, !isUploadingAvatar, !isUpdatingBackground else { return }
         let data = image.jpegData(compressionQuality: 0.9) ?? image.pngData()
         guard let data else {
             avatarError = "图片处理失败，请换一张试试"
@@ -682,12 +739,60 @@ struct ProfileView: View {
         Task {
             defer { isUploadingAvatar = false }
             do {
+                guard auth.profile?.id == userID else { return }
                 let uploaded = try await APIClient.shared.uploadImage(data: data, filename: "avatar.jpg", mimeType: "image/jpeg")
+                guard auth.profile?.id == userID else { return }
                 let updated = try await APIClient.shared.updateAvatar(url: uploaded.url)
+                guard auth.profile?.id == userID else { return }
                 auth.applyProfile(updated)
             } catch {
+                guard auth.profile?.id == userID else { return }
                 avatarError = (error as? LocalizedError)?.errorDescription ?? "上传失败，请稍后再试"
             }
+        }
+    }
+
+    private func uploadBackground(_ item: PhotosPickerItem) async {
+        guard let userID = auth.profile?.id, !isUpdatingBackground, !isUploadingAvatar else { return }
+        isUpdatingBackground = true
+        backgroundError = nil
+        defer {
+            isUpdatingBackground = false
+            backgroundPhoto = nil
+        }
+        do {
+            guard let original = try await item.loadTransferable(type: Data.self) else {
+                throw ProfileBackgroundImage.Failure.unsupported
+            }
+            let data = try await Task.detached(priority: .userInitiated) {
+                try ProfileBackgroundImage.jpegData(from: original)
+            }.value
+            guard auth.profile?.id == userID else { return }
+            let uploaded = try await APIClient.shared.uploadImage(
+                data: data, filename: "profile-background.jpg", mimeType: "image/jpeg", purpose: "profile-background"
+            )
+            guard auth.profile?.id == userID else { return }
+            let updated = try await APIClient.shared.updateBackground(url: uploaded.url)
+            guard auth.profile?.id == userID else { return }
+            auth.applyProfile(updated)
+        } catch {
+            guard auth.profile?.id == userID else { return }
+            backgroundError = (error as? LocalizedError)?.errorDescription ?? "背景图保存失败，请稍后重试"
+        }
+    }
+
+    private func resetBackground() async {
+        guard let userID = auth.profile?.id, !isUpdatingBackground, !isUploadingAvatar else { return }
+        isUpdatingBackground = true
+        backgroundError = nil
+        defer { isUpdatingBackground = false }
+        do {
+            let updated = try await APIClient.shared.updateBackground(url: "")
+            guard auth.profile?.id == userID else { return }
+            auth.applyProfile(updated)
+        } catch {
+            guard auth.profile?.id == userID else { return }
+            backgroundError = (error as? LocalizedError)?.errorDescription ?? "背景图保存失败，请稍后重试"
         }
     }
 }
