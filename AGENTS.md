@@ -8,6 +8,8 @@
 UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜底）+ Spring Boot 3 后端 + MySQL 8 + MinIO。
 正在从「AI 生成的单文件 MVP」走向「Web / App 双端共用的正式产品」。
 
+**本期范围（2026-10-21）**：仅开发原生 iOS、后端和基础设施；Web 用户端、课表、网页分享及新增管理网页暂缓，现有代码与兼容契约保留。治理通过受控接口、工具和手册交付。范围、排期与验收以 [`docs/DEVELOPMENT-PLAN.md`](docs/DEVELOPMENT-PLAN.md) v1.1 为准。
+
 **北极星（2026-10-20 确立，改之前先看 [ADR-0001](docs/adr/0001-platform-baseline.md)）**：
 
 - **按百万日活设计**，不是「先跑起来再说」；但**单台服务器必须能完整跑起来**。
@@ -278,7 +280,7 @@ xcrun simctl launch booted com.unipo.app
 5. ~~清理 notices 遗留域~~ ✅ **已完成（2026-10-20）**：删掉 19 个 Java 文件 + 5 张表 + `comments.notice_id`，`InteractionController` / `NoticeController` / `CommentController` 整体下线，`AdminService` 概览改按 posts 口径。详见 DEVLOG 同名条目。
 
 ## 10. 文档索引
-- [`docs/DEVELOPMENT-PLAN.md`](docs/DEVELOPMENT-PLAN.md) — **本期开发规划书与任务维护入口**：范围、功能规格、设计、24 个工作包、排期、人力、运营和验收；Word 评审版位于同目录
+- [`docs/DEVELOPMENT-PLAN.md`](docs/DEVELOPMENT-PLAN.md) — **本期 iOS 开发规划书与任务维护入口**：范围、功能规格、设计、22 个活动工作包、排期、人力、运营和验收；Word 评审版位于同目录
 - [`docs/PRODUCT-EXECUTION-PLAN.md`](docs/PRODUCT-EXECUTION-PLAN.md) — **全角色项目分析与详细执行路线图**：核心产品闭环、UI/视觉、工程风险、运营、指标、阶段任务和验收门槛
 - [`docs/PRODUCT-PLAN.md`](docs/PRODUCT-PLAN.md) — **产品定位、核心机制、冷启动、路线图（改产品方向前先读）**
 - `docs/ARCHITECTURE.md` — 系统架构、请求链路、数据模型

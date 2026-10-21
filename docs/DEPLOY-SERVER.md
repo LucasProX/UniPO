@@ -103,6 +103,36 @@ sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.y
 （`proxy_http_version 1.1` + `Upgrade`/`Connection` + `proxy_read_timeout`），**否则握手到不了后端**，
 表现是「消息不发也不报错」。已在 `frontend/nginx.conf` 配好，实测握手返回 101。
 
+## 5.2 后端单独更新记录 2026-10-21
+
+本次本机先从 `origin/main` 快进到 `85acdd9`，只把该提交中受 Git 管理的 `backend/` 打成归档上传。服务器仍使用 `/opt/unipo` 与既有 Compose 配置；构建期间旧后端继续服务，构建成功后只重建 `unipo-backend`，现有 nginx 网关、MySQL 与 MinIO 容器未重建。Web 用户端暂停开发不影响当前网关继续代理 iOS API 与 WebSocket。
+
+| 记录 | 值 |
+| --- | --- |
+| 后端源码版本 | `85acdd9` |
+| 新镜像标签 | `unipo-backend:release-85acdd9`，同时指向 `unipo-backend:latest` |
+| 新镜像 ID | `sha256:64cab25415a1f5abfdba95adcfda6c206b827a91fe14e127f5fbd77dc48b0692` |
+| 切换时间 | 2026-10-21 15:34，Asia/Shanghai |
+| 回退镜像 | `unipo-backend:rollback-20261021T072642Z` |
+| 部署前备份 | `/var/backups/unipo/backend-85acdd9-20261021T072642Z/` |
+| 原源码目录 | `/opt/unipo/backend.rollback-20261021T072642Z` |
+
+备份目录包含 `database.sql.gz`（MySQL 一致性导出，已通过 gzip 完整性检查）和 `backend-source.tar.gz`（原后端源码及 Compose 文件）。目录权限为 700，文件为 600。归档不包含本地 `.env`；服务器 `.env` 内容指纹在切换前后相同，并将其权限收紧为 600。
+
+本机 `mvn -B -ntp package` 通过，47 项测试全部成功。服务器镜像构建成功，Flyway 当前版本仍是 V18，无新增迁移。切换后验证了容器 readiness、经 nginx 的公网 health、学校/分类、帖子游标与相邻页、统一响应包及 requestId、未登录接口与后台权限拦截、非法游标 400、内部 actuator 公网 404；WebSocket 返回 101，未认证连接收到 `auth-required`。首屏没有可读取的本地媒体样本，因此图片读取未作为本次验收证据；未运行会注册账号、发邮件或写入生产内容的全量冒烟。
+
+本次回退不涉及 schema 降级，可恢复旧镜像后仅重建后端：
+
+```bash
+cd /opt/unipo
+sudo docker image tag unipo-backend:rollback-20261021T072642Z unipo-backend:latest
+sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.yml \
+    up -d --no-deps --no-build --force-recreate backend
+sudo docker exec unipo-backend curl -fsS http://127.0.0.1:8080/actuator/health/readiness
+```
+
+后续更新只改后端时继续使用独立后端归档，先留数据库备份与旧镜像，再构建、切换和验证。若以后新增数据库迁移，先确认旧镜像与新 schema 的兼容性，再确定回退方式；不要自动覆盖生产数据库。
+
 ## 6. 排查
 
 ```bash
