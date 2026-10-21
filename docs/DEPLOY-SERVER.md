@@ -95,8 +95,9 @@ sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.y
 里同一个值，改完跑 `xcodegen generate`）。App 走 Bearer + Keychain，不碰 Cookie，所以 `AUTH_COOKIE_SECURE=false`
 对它没有影响。
 
-- **ATS**：App Transport Security 不拦裸 IP 的明文请求（它只对域名生效），所以现在这套 `http://IP` 不用加例外。
-  真机上如果报 ATS 相关错误，把 `project.yml` 的 `NSAppTransportSecurity` 改成 `NSAllowsArbitraryLoads: true` 再生成一次。
+- **ATS**：iOS 26.5 模拟器实测，只有 `NSAllowsLocalNetworking` 时，访问这个公网 HTTP IP 会返回 `NSURLErrorDomain -1022`。
+  `ios/project.yml` 已为 `49.234.21.63` 单独配置 `NSExceptionDomains` 与 `NSExceptionAllowsInsecureHTTPLoads`，
+  修改后必须重新生成、构建并安装 App；不使用全局 `NSAllowsArbitraryLoads`。正式发布前应切换 HTTPS 并移除测试例外。
 - **模拟器**同样能直接连公网 IP，不必再改成 127.0.0.1。
 
 **WebSocket（私信实时）**：`ws://49.234.21.63/api/v1/realtime/ws`。nginx 必须转发 `Upgrade` 头

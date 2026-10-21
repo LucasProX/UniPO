@@ -30,18 +30,21 @@ xcrun simctl install booted .build/Build/Products/Debug-iphonesimulator/UniPO.ap
 xcrun simctl launch booted com.unipo.app
 ```
 
-后端要在 `127.0.0.1:8080` 跑着；模拟器与宿主机共享网络。
 API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，**当前指向测试服 `http://49.234.21.63/api/v1`**
-（
-本地开发想连自己机器时改回 `http://127.0.0.1:8080/api/v1`，模拟器与 Mac 共享网络）。
+（本地开发想连自己机器时，在 `project.yml` 改回 `http://127.0.0.1:8080/api/v1` 后重新生成；模拟器与 Mac 共享网络）。
+`NSExceptionDomains` 只为当前测试 IP 配置 HTTP 例外，未全局关闭 ATS。正式发布前切换 HTTPS 并移除此测试例外。
+
+2026-10-21 已在 iPhone 17 / iOS 26.5 模拟器读取服务器信息流和评论。详细证据和未覆盖流程见
+[`IOS-SERVER-INTEGRATION.md`](../docs/IOS-SERVER-INTEGRATION.md)。
 
 调试参数（仅 Debug）：
 
 ```bash
 # 指定 Tab
 xcrun simctl launch booted com.unipo.app -tab achievements
-# 自动登录（避免每次手输）
-xcrun simctl launch booted com.unipo.app -email admin@biecuoguo.local -password Admin@123456
+
+# 服务器模式默认显示账号密码登录；请在 App 里输入专用测试账号
+xcrun simctl launch booted com.unipo.app -login
 # 登录页 / 手机号表单 / 手机号自动登录（本地任意 4 位数字）
 xcrun simctl launch booted com.unipo.app -login
 xcrun simctl launch booted com.unipo.app -login -no-phone
@@ -80,10 +83,20 @@ ios/
 
 ## 登录页说明
 
-- DEBUG 的 `DevicePhoneNumber` 返回演示号码 `15500008888`，用于展示一键登录页；Release 返回 nil，
-  自动落到手机号验证码页。正式接入运营商号码认证 SDK 后只替换这个 provider。
+- 演示号码与固定验证码只允许在 DEBUG 且 API 指向 localhost/回环地址时使用。连接远端服务器时默认显示账号密码登录，
+  通过已有 `/auth/login` 接口认证；短信入口仍需服务器实际配置发送通道。
 - 本地 mock 短信：任意合规手机号点「获取验证码」即可，任意 4 位数字都能登录。
-- 协议默认勾选；协议正文目前是占位。
+- 协议默认不勾选；账号或验证码登录都需要用户主动同意。协议正文仍需业务方确认，尚不满足正式发布条件。
+
+## 核心回归测试
+
+```bash
+# 仓库根运行；Core 的 macOS 14 测试平台仅用于验证 Foundation/状态逻辑，不改变 App 的 iOS 17 基线
+swift test --package-path ios/Packages/UniPOCore
+```
+
+覆盖登录请求不携带旧凭据、受保护请求保留 Bearer、ATS 错误提示、分页并发、切换板块的迟到响应、
+刷新和退出后丢弃旧响应、失败重试及重复帖子去重。测试使用本地 URLProtocol，不访问服务器、不写生产数据。
 
 ## APNs
 

@@ -7,7 +7,7 @@ struct ToolsView: View {
     private let tools: [ToolItem] = [
         ToolItem(title: "图片转 PDF", subtitle: "报名材料、作业、证明", icon: "doc.richtext", tint: UniColor.blue),
         ToolItem(title: "PDF 合并拆分", subtitle: "材料整理、论文附件", icon: "doc.on.doc", tint: UniColor.ink),
-        ToolItem(title: "PDF 压缩", subtitle: "绕过上传大小限制", icon: "arrow.down.doc", tint: UniColor.blueBright),
+        ToolItem(title: "PDF 压缩", subtitle: "压缩材料，便于提交", icon: "arrow.down.doc", tint: UniColor.blueBright),
         ToolItem(title: "图片格式转换", subtitle: "HEIC / PNG / JPG / WebP", icon: "photo.on.rectangle.angled", tint: UniColor.inkSoft),
         ToolItem(title: "证件照尺寸", subtitle: "报名、考试、简历", icon: "person.crop.rectangle", tint: UniColor.blue)
     ]
@@ -19,7 +19,7 @@ struct ToolsView: View {
                     Text("工具")
                         .font(.system(size: 30, weight: .heavy))
                         .foregroundStyle(UniColor.ink)
-                    Text("全部本地处理，文件不上传服务器")
+                    Text("校园材料工具，正在准备中")
                         .font(.uniBody(13))
                         .foregroundStyle(UniColor.secondary)
                 }
@@ -46,7 +46,7 @@ struct ToolsView: View {
                                         .multilineTextAlignment(.leading)
                                 }
                                 Spacer(minLength: 0)
-                                Text("每月 5 次免费")
+                                Text("尚未开放")
                                     .font(.uniLabel(10))
                                     .foregroundStyle(UniColor.tertiary)
                             }
@@ -65,7 +65,7 @@ struct ToolsView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "lock.shield")
                         .foregroundStyle(UniColor.blue)
-                    Text("本地处理意味着断网也能用，文件不会离开你的手机。")
+                    Text("优先准备图片转 PDF，其他工具暂未开放。")
                         .font(.uniBody(12))
                         .foregroundStyle(UniColor.secondary)
                 }
@@ -84,7 +84,7 @@ struct ToolsView: View {
                     .foregroundStyle(tool.tint)
                 Text(tool.title)
                     .font(.system(size: 20, weight: .bold))
-                Text("工具正在接入，先把这个入口留好。")
+                Text("这个工具暂未开放，准备好后会在这里提供入口。")
                     .font(.uniBody(14))
                     .foregroundStyle(UniColor.secondary)
                 Button("知道了") { preview = nil }

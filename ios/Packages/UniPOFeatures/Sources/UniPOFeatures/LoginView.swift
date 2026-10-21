@@ -10,6 +10,7 @@ import UniPOUI
 enum DevicePhoneNumber {
     static var current: String? {
         #if DEBUG
+        guard AppConfig.isLocalDevelopment else { return nil }
         if ProcessInfo.processInfo.arguments.contains("-no-phone") { return nil }
         return "15500008888"
         #else
@@ -32,19 +33,21 @@ struct LoginView: View {
     @State private var devicePhone: String?
     @State private var phone = ""
     @State private var code = ""
+    @State private var account = ""
+    @State private var password = ""
     @State private var countdown = 0
-    @State private var agreed = true
+    @State private var agreed = false
     @State private var agreement: Agreement?
     @State private var appeared = false
     @State private var countdownTask: Task<Void, Never>?
     @FocusState private var focusedField: Field?
 
     private enum Field {
-        case phone, code
+        case phone, code, account, password
     }
 
     private enum Mode {
-        case oneTap, phone
+        case oneTap, phone, account
     }
 
     enum Agreement: String, Identifiable {
@@ -59,7 +62,7 @@ struct LoginView: View {
     init() {
         let number = DevicePhoneNumber.current
         _devicePhone = State(initialValue: number)
-        _mode = State(initialValue: number == nil ? .phone : .oneTap)
+        _mode = State(initialValue: AppConfig.isLocalDevelopment ? (number == nil ? .phone : .oneTap) : .account)
     }
 
     var body: some View {
@@ -86,7 +89,9 @@ struct LoginView: View {
                     Spacer(minLength: 18)
 
                     Group {
-                        if mode == .oneTap, let devicePhone {
+                        if mode == .account {
+                            accountContent
+                        } else if mode == .oneTap, let devicePhone {
                             oneTapContent(number: devicePhone)
                         } else {
                             phoneContent
@@ -130,7 +135,7 @@ struct LoginView: View {
             if ProcessInfo.processInfo.arguments.contains("-one-tap") {
                 await oneTapLogin(devicePhone ?? "15500008888")
             }
-            if ProcessInfo.processInfo.arguments.contains("-sms-login") {
+            if AppConfig.isLocalDevelopment, ProcessInfo.processInfo.arguments.contains("-sms-login") {
                 mode = .phone
                 phone = "13900003333"
                 code = "1234"
@@ -316,7 +321,7 @@ struct LoginView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .disabled(countdown > 0 || auth.isSendingCode || phone.count != 11)
+                .disabled(!agreed || countdown > 0 || auth.isSendingCode || phone.count != 11)
             }
 
             if let error = auth.errorMessage {
@@ -361,7 +366,83 @@ struct LoginView: View {
             socialRow
                 .frame(maxWidth: .infinity)
                 .padding(.top, 4)
+            Button("使用账号密码登录") {
+                focusedField = nil
+                auth.errorMessage = nil
+                mode = .account
+            }
+            .font(.uniLabel(12))
+            .foregroundStyle(.white.opacity(0.75))
+            .frame(maxWidth: .infinity, minHeight: 44)
         }
+    }
+
+    private var accountContent: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("账号登录")
+                .font(.system(size: 24, weight: .heavy))
+                .foregroundStyle(.white)
+            Text("使用已有 UniPO 账号，不限邮箱格式")
+                .font(.uniBody(12))
+                .foregroundStyle(.white.opacity(0.5))
+            TextField("账号", text: $account)
+                .textContentType(.username)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($focusedField, equals: .account)
+                .submitLabel(.next)
+                .onSubmit { focusedField = .password }
+                .accessibilityIdentifier("login.account")
+                .padding(16)
+                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+            SecureField("密码", text: $password)
+                .textContentType(.password)
+                .focused($focusedField, equals: .password)
+                .submitLabel(.go)
+                .onSubmit { if canSubmitAccount { Task { await submitAccount() } } }
+                .accessibilityIdentifier("login.password")
+                .padding(16)
+                .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+            if let error = auth.errorMessage {
+                Text(error)
+                    .font(.uniLabel(12))
+                    .foregroundStyle(UniColor.danger)
+                    .accessibilityIdentifier("login.error")
+            }
+            Button { Task { await submitAccount() } } label: {
+                HStack {
+                    Spacer()
+                    if auth.isLoggingIn { ProgressView().tint(.black) } else { Text("登录").font(.uniLabel(16)) }
+                    Spacer()
+                }
+                .foregroundStyle(.black)
+                .frame(height: 54)
+                .background(.white, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSubmitAccount)
+            .opacity(canSubmitAccount ? 1 : 0.5)
+            .accessibilityIdentifier("login.submit")
+            Button("使用手机号验证码登录") {
+                focusedField = nil
+                auth.errorMessage = nil
+                mode = .phone
+            }
+            .font(.uniLabel(12))
+            .foregroundStyle(.white.opacity(0.75))
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .foregroundStyle(.white)
+    }
+
+    private var canSubmitAccount: Bool {
+        agreed && !auth.isLoggingIn && !account.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+    }
+
+    private func submitAccount() async {
+        guard canSubmitAccount else { return }
+        focusedField = nil
+        await auth.login(email: account, password: password)
     }
 
     private var socialRow: some View {
@@ -398,6 +479,8 @@ struct LoginView: View {
                     .foregroundStyle(agreed ? .white : .white.opacity(0.35))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(agreed ? "已同意协议" : "同意用户协议和隐私政策")
+            .accessibilityIdentifier("login.agreement")
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 0) {
@@ -440,6 +523,10 @@ struct LoginView: View {
 
     private func oneTapLogin(_ number: String) async {
         #if DEBUG
+        guard AppConfig.isLocalDevelopment else {
+            auth.errorMessage = "演示号码只用于本地开发，请使用账号登录"
+            return
+        }
         // 演示：没有运营商 SDK，直接用 mock 验证码登录本机演示号码。
         await auth.smsLogin(phone: number, code: "1234")
         #else

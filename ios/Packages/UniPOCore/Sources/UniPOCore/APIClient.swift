@@ -10,7 +10,12 @@ public enum APIError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidURL: return "请求地址不正确"
-        case .transport: return "网络连接失败，请检查网络后重试"
+        case .transport(let error):
+            let error = error as NSError
+            if error.domain == NSURLErrorDomain, error.code == NSURLErrorAppTransportSecurityRequiresSecureConnection {
+                return "系统阻止了当前服务器连接，请检查测试环境的安全连接配置"
+            }
+            return "网络连接失败，请检查网络后重试"
         case .decoding: return "数据解析失败"
         case .unauthorized(let message): return message.isEmpty ? "登录已过期，请重新登录" : message
         case .server(_, let message, _): return message
@@ -275,7 +280,8 @@ public actor APIClient {
         request.setValue("ios", forHTTPHeaderField: "X-Client")
         // 登录/刷新不能带旧 token：服务端过滤链看到过期 Bearer 会直接 403，
         // 表现就是「刚登录成功，再打开又是未登录」。
-        if let accessToken, path != "auth/login", path != "auth/refresh" {
+        let anonymousPaths: Set<String> = ["auth/login", "auth/refresh", "auth/sms-code", "auth/sms-login"]
+        if let accessToken, !anonymousPaths.contains(path) {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {

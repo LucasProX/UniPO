@@ -8,14 +8,18 @@ struct HomeView: View {
     let onOpenAchievements: () -> Void
     let onOpenMessages: () -> Void
 
-    @State private var board = "recommend"
-    @State private var posts: [PostView] = []
-    @State private var cursor: String?
-    @State private var hasMore = false
-    @State private var isLoading = true
-    @State private var errorMessage: String?
+    @State private var feed = FeedStore()
+    @State private var growth: AchievementView?
+    @State private var growthLoading = false
+    @State private var growthError: String?
+    @State private var growthGeneration = 0
     @State private var selectedPost: PostView?
     @State private var unreadCount = 0
+
+    private var board: String { feed.board }
+    private var posts: [PostView] { feed.posts }
+    private var isLoading: Bool { feed.isLoading }
+    private var errorMessage: String? { feed.errorMessage }
 
     private let boards = [
         ("recommend", "推荐"),
@@ -38,7 +42,14 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await load(reset: true) }
-        .task { await load(reset: true) }
+        .task(id: "\(auth.isRestoring):\(auth.profile?.id ?? 0)") {
+            guard !auth.isRestoring else { return }
+            selectedPost = nil
+            unreadCount = 0
+            growth = nil
+            feed.clear()
+            await load(reset: true)
+        }
         .task { await pollUnread() }
         .task {
             #if DEBUG
@@ -117,8 +128,7 @@ struct HomeView: View {
             ForEach(boards, id: \.0) { item in
                 Button {
                     guard board != item.0 else { return }
-                    board = item.0
-                    Task { await load(reset: true) }
+                    Task { await feed.refresh(board: item.0) }
                 } label: {
                     Text(item.1)
                         .font(.uniLabel(13))
@@ -141,42 +151,55 @@ struct HomeView: View {
     }
 
     private var stageCard: some View {
-        Button(action: onOpenAchievements) {
+        Button {
+            if !auth.isAuthenticated { onRequestAuth() }
+            else if growthError != nil { Task { await loadGrowth() } }
+            else { onOpenAchievements() }
+        } label: {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("你当前")
+                        Text(auth.isAuthenticated ? "成长主线进度" : "成长任务")
                             .font(.uniLabel(11))
                             .foregroundStyle(UniColor.blue)
-                        Text("大一上 · 第 3 周")
+                        Text(growthTitle)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(UniColor.ink)
                     }
                     Spacer()
-                    ZStack {
-                        Circle()
-                            .stroke(UniColor.mist, lineWidth: 6)
-                        Circle()
-                            .trim(from: 0, to: 0.42)
-                            .stroke(UniColor.blue, style: StrokeStyle(lineWidth: 6, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                        Text("42%")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(UniColor.ink)
+                    if let growth, growth.totalTasks > 0 {
+                        ZStack {
+                            Circle()
+                                .stroke(UniColor.mist, lineWidth: 6)
+                            Circle()
+                                .trim(from: 0, to: growthProgress)
+                                .stroke(UniColor.blue, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                            Text("\(Int(growthProgress * 100))%")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(UniColor.ink)
+                        }
+                        .frame(width: 54, height: 54)
+                    } else if growthLoading {
+                        ProgressView().tint(UniColor.blue)
                     }
-                    .frame(width: 54, height: 54)
                 }
 
-                HStack(spacing: 8) {
-                    stageTask("四级报名", done: false)
-                    stageTask("选课确认", done: true)
-                    Text("+1 待办")
+                if let growth {
+                    Text("累计完成 \(growth.completedTasks) / \(growth.totalTasks) 项任务")
+                        .font(.uniLabel(12))
+                        .foregroundStyle(UniColor.secondary)
+                    Text("通用成长主线，尚未按学校与专业定制")
                         .font(.uniLabel(10))
                         .foregroundStyle(UniColor.tertiary)
+                } else {
+                    Text(growthError ?? (auth.isAuthenticated ? "正在读取你的任务记录" : "登录后查看真实任务和完成记录"))
+                        .font(.uniLabel(12))
+                        .foregroundStyle(UniColor.secondary)
                 }
 
                 HStack(spacing: 6) {
-                    Text("查看完整成就")
+                    Text(growthError != nil ? "点此重试" : (auth.isAuthenticated ? "查看完整成就" : "登录查看成长任务"))
                         .font(.uniLabel(12))
                     Image(systemName: "arrow.right")
                         .font(.system(size: 11, weight: .bold))
@@ -195,21 +218,21 @@ struct HomeView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("home.growth")
     }
 
-    private func stageTask(_ title: String, done: Bool) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(done ? UniColor.blue : UniColor.tertiary)
-            Text(title)
-                .font(.uniLabel(11))
-                .foregroundStyle(done ? UniColor.secondary : UniColor.ink)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(UniColor.paper, in: Capsule())
+    private var growthTitle: String {
+        guard auth.isAuthenticated else { return "你的下一步，从这里开始" }
+        if growthLoading { return "正在加载成长进度" }
+        if growthError != nil { return "成长进度暂不可用" }
+        guard let growth else { return "暂时没有成长任务" }
+        if let stage = growth.stages.first(where: { $0.code == growth.currentStageCode }) { return stage.title }
+        return growth.totalTasks > 0 ? "当前主线已完成" : "暂时没有成长任务"
+    }
+
+    private var growthProgress: CGFloat {
+        guard let growth, growth.totalTasks > 0 else { return 0 }
+        return min(1, max(0, CGFloat(growth.completedTasks) / CGFloat(growth.totalTasks)))
     }
 
     @ViewBuilder
@@ -238,12 +261,25 @@ struct HomeView: View {
                 PostCardView(post: post)
                     .onTapGesture { selectedPost = post }
                     .onAppear {
-                        if post.id == posts.last?.id, hasMore {
-                            Task { await load(reset: false) }
+                        if post.id == posts.last?.id, feed.hasMore {
+                            Task { await feed.loadMore() }
                         }
                     }
             }
-            if isLoading {
+            if let errorMessage {
+                VStack(spacing: 8) {
+                    Text(errorMessage).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                    Button("重新加载") {
+                        Task {
+                            if feed.hasMore { await feed.loadMore() } else { await feed.refresh() }
+                        }
+                    }
+                    .font(.uniLabel(13))
+                    .foregroundStyle(UniColor.blue)
+                }
+                .padding(.vertical, 12)
+            }
+            if isLoading || feed.isLoadingMore {
                 ProgressView().tint(UniColor.ink).padding(.vertical, 16)
             }
         }
@@ -251,34 +287,41 @@ struct HomeView: View {
 
     private func load(reset: Bool) async {
         if reset {
-            isLoading = true
-            errorMessage = nil
-            cursor = nil
+            await feed.refresh()
+            await loadGrowth()
+        } else { await feed.loadMore() }
+    }
+
+    private func loadGrowth() async {
+        growthGeneration += 1
+        let requestGeneration = growthGeneration
+        let userID = auth.profile?.id
+        guard userID != nil else {
+            growth = nil
+            growthError = nil
+            growthLoading = false
+            return
         }
+        growthLoading = true
+        growthError = nil
         do {
-            let page = try await APIClient.shared.feed(
-                tab: board,
-                cursor: reset ? nil : cursor,
-                limit: 20
-            )
-            if reset {
-                posts = page.items
-            } else {
-                posts.append(contentsOf: page.items)
-            }
-            cursor = page.nextCursor
-            hasMore = page.hasMore
-            errorMessage = nil
+            let result = try await APIClient.shared.achievements()
+            guard auth.profile?.id == userID, growthGeneration == requestGeneration else { return }
+            growth = result
         } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "加载失败"
+            guard auth.profile?.id == userID, growthGeneration == requestGeneration else { return }
+            growthError = (error as? LocalizedError)?.errorDescription ?? "成长进度加载失败"
         }
-        isLoading = false
+        growthLoading = false
     }
 
     private func pollUnread() async {
         while !Task.isCancelled {
-            if auth.isAuthenticated, let count = try? await APIClient.shared.unreadCount() {
+            let userID = auth.profile?.id
+            if userID != nil, let count = try? await APIClient.shared.unreadCount(), auth.profile?.id == userID {
                 unreadCount = count
+            } else if !auth.isAuthenticated {
+                unreadCount = 0
             }
             try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
