@@ -86,6 +86,23 @@ sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.y
 后端镜像里跑的是 `mvn package`，4 核机器上首次构建约 8 分钟（有 2G swap 兜着）。
 数据库 schema 由 Flyway 在启动时自动迁移，**不要手工改表**。
 
+## 5.1 客户端怎么连（测试期：不挂域名，直连 IP）
+
+**Web**：浏览器打开 `http://49.234.21.63` 就行。前端和 API 同源（nginx 把 `/api/` 反代到后端），
+所以 `lib/api.ts` 里的相对路径 `/api/v1` 不用改，Cookie 也是同源下发的。
+
+**iOS**：`ios/UniPO/Resources/Info.plist` 的 `API_BASE_URL` = `http://49.234.21.63/api/v1`（`ios/project.yml`
+里同一个值，改完跑 `xcodegen generate`）。App 走 Bearer + Keychain，不碰 Cookie，所以 `AUTH_COOKIE_SECURE=false`
+对它没有影响。
+
+- **ATS**：App Transport Security 不拦裸 IP 的明文请求（它只对域名生效），所以现在这套 `http://IP` 不用加例外。
+  真机上如果报 ATS 相关错误，把 `project.yml` 的 `NSAppTransportSecurity` 改成 `NSAllowsArbitraryLoads: true` 再生成一次。
+- **模拟器**同样能直接连公网 IP，不必再改成 127.0.0.1。
+
+**WebSocket（私信实时）**：`ws://49.234.21.63/api/v1/realtime/ws`。nginx 必须转发 `Upgrade` 头
+（`proxy_http_version 1.1` + `Upgrade`/`Connection` + `proxy_read_timeout`），**否则握手到不了后端**，
+表现是「消息不发也不报错」。已在 `frontend/nginx.conf` 配好，实测握手返回 101。
+
 ## 6. 排查
 
 ```bash

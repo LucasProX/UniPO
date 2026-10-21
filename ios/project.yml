@@ -38,7 +38,7 @@ targets:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        API_BASE_URL: http://127.0.0.1:8080/api/v1
+        API_BASE_URL: http://49.234.21.63/api/v1
         NSPhotoLibraryUsageDescription: UniPO 需要访问相册，用于给帖子添加图片。
     settings:
       base:

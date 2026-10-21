@@ -31,7 +31,9 @@ xcrun simctl launch booted com.unipo.app
 ```
 
 后端要在 `127.0.0.1:8080` 跑着；模拟器与宿主机共享网络。
-API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，默认 `http://127.0.0.1:8080/api/v1`。
+API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，**当前指向测试服 `http://49.234.21.63/api/v1`**
+（
+本地开发想连自己机器时改回 `http://127.0.0.1:8080/api/v1`，模拟器与 Mac 共享网络）。
 
 调试参数（仅 Debug）：
 
