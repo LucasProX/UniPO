@@ -11,12 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 短信验证码。
  *
- * <p><b>当前只接了本地 mock</b>：真实短信通道（阿里云/腾讯云）还没接，非 local 环境调用
+ * <p><b>当前只接了开发/测试 mock</b>：真实短信通道（阿里云/腾讯云）还没接，关闭 mock 后调用
  * {@link #send(String)} 会直接报「短信服务未配置」，不会静默放行。
  * 上线前必须接真实 provider，并把 {@code app.sms.mock-accept-any-code} 关掉。
  */
@@ -24,7 +23,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public class SmsService {
 
     private static final Logger log = LoggerFactory.getLogger(SmsService.class);
-    private static final String MOCK_CODE = "1234";
     private static final int EXPIRE_MINUTES = 5;
 
     private final SmsCodeMapper smsCodeMapper;
@@ -44,21 +42,9 @@ public class SmsService {
         if (!mock) {
             throw new IllegalStateException("短信服务未配置，请联系管理员");
         }
-        String code = MOCK_CODE;
-        LocalDateTime now = LocalDateTime.now();
-        smsCodeMapper.delete(new LambdaQueryWrapper<SmsCode>()
-                .eq(SmsCode::getPhone, phone)
-                .eq(SmsCode::getPurpose, "login")
-                .eq(SmsCode::getConsumed, false));
-        SmsCode entity = new SmsCode();
-        entity.setPhone(phone);
-        entity.setPurpose("login");
-        entity.setCodeHash(passwordEncoder.encode(code));
-        entity.setExpiresAt(now.plusMinutes(EXPIRE_MINUTES));
-        entity.setConsumed(false);
-        entity.setCreatedAt(now);
-        smsCodeMapper.insert(entity);
-        log.info("短信 mock 模式：phone={} code={}（仅本地，不会真的发送；任意 4 位数字都通过）", phone, code);
+        // 测试验证码只验证格式，不生成固定码、不写验证码表，也不发送短信。
+        // 不把手机号或验证码写入日志；生产环境是否允许 mock 由 StartupSafetyGuard 拦截。
+        log.info("短信测试模式：未发送短信，可使用任意 4 位数字完成测试登录");
         return phone;
     }
 

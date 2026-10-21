@@ -212,7 +212,7 @@ xcrun simctl launch booted com.unipo.app
   但缺少 `X-CSRF-Token`，后端返回 403（"请求校验失败"）。这个坑已经踩过（见 DEVLOG）。
 - **token 只进 Keychain**；不写 UserDefaults、不打印日志。
 - **登录/刷新不带旧 Authorization**，否则过期 token 会让后端直接 403。
-- **远端联调**：演示号码/固定验证码只允许 DEBUG 且 API 为回环地址；远端默认走账号密码入口。当前 HTTP 测试 IP 仅用 `project.yml` 的单主机 ATS 例外，禁止为联调全局开启 `NSAllowsArbitraryLoads`。
+- **测试登录（2026-10-21）**：iOS 默认仅手机号验证码页。Debug API 为 `http://127.0.0.1:18081/api/v1`，经 `scripts/connect-test-api.sh` 的 SSH 隧道连接服务器独立 `test` 实例；任意合规手机号加任意 4 位数字可登录，不发短信。测试数据库、JWT 和媒体桶独立，禁止将这个开关用于生产实例。Release API 仍为生产地址；Keychain 按 API 环境隔离。当前 HTTP 测试 IP 仅用 `project.yml` 的单主机 ATS 例外，禁止全局开启 `NSAllowsArbitraryLoads`。
 - **首页请求状态**统一走 `UniPOCore.FeedStore`：分页只允许一条在途请求，切板块/刷新/切账号作废旧响应；保留失败重试与按帖子 ID 去重。改动后运行 `swift test --package-path ios/Packages/UniPOCore`。
 - **改动必须同时考虑 iOS 17**：新 API 用 `if #available`；本机 iOS 26 模拟器不代表最低版本。
 - **Liquid Glass**：`glassEffect` 只在 iOS 26+，旧系统退化 `.ultraThinMaterial`，统一走 `UniPOUI.GlassSurface`。

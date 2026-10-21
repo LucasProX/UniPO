@@ -114,8 +114,8 @@ public class StartupSafetyGuard {
                         + "当前 profile={}，只允许本地使用。", active);
             }
             if (mockSms) {
-                log.warn("⚠ 短信验证码处于 mock 模式：固定码 123456 可登录任意手机号。"
-                        + "当前 profile={}，只允许本地使用。", active);
+                log.warn("⚠ 短信验证码处于测试模式：不发送短信，任意 4 位数字可用于测试登录。"
+                        + "当前 profile={}，仅允许开发/测试环境。", active);
             }
             if (seedDemo) {
                 log.warn("⚠ 演示数据写入已开启：启动时会创建 good / xiaoba / yuanhua 三个弱口令账号。"

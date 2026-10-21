@@ -14,7 +14,7 @@ public final class AuthStore {
     /// 任何需要登录的入口都把它置 true，RootView 用 fullScreenCover 弹登录页。
     public var loginRequested = false
 
-    private let keychain = KeychainStore(service: "com.unipo.app")
+    private let keychain = KeychainStore(service: AppConfig.credentialService(for: AppConfig.apiBaseURL))
     private let api = APIClient.shared
     private let accessKey = "unipo.access"
     private let refreshKey = "unipo.refresh"

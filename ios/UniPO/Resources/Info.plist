@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>API_BASE_URL</key>
-	<string>http://49.234.21.63/api/v1</string>
+	<string>$(UNIPO_API_BASE_URL)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

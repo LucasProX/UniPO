@@ -30,8 +30,17 @@ xcrun simctl install booted .build/Build/Products/Debug-iphonesimulator/UniPO.ap
 xcrun simctl launch booted com.unipo.app
 ```
 
-API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，**当前指向测试服 `http://49.234.21.63/api/v1`**
-（本地开发想连自己机器时，在 `project.yml` 改回 `http://127.0.0.1:8080/api/v1` 后重新生成；模拟器与 Mac 共享网络）。
+API 地址由 `project.yml` 的 `UNIPO_API_BASE_URL` 构建设置写入 Info.plist。
+**Debug 默认 `http://127.0.0.1:18081/api/v1`**，通过 SSH 隧道连接服务器独立测试实例；
+**Release 仍为 `http://49.234.21.63/api/v1`**，正式发布前还需 HTTPS 与真实短信通道。
+先在仓库根运行并保持该终端打开：
+
+```bash
+bash scripts/connect-test-api.sh
+```
+
+测试服务与数据库已在服务器部署，重开 Mac 或隧道断开后需重新连接。当前已有隧道时不要重复启动相同端口。
+环境与操作说明见 [`TEST-ENVIRONMENT.md`](../docs/TEST-ENVIRONMENT.md)。
 `NSExceptionDomains` 只为当前测试 IP 配置 HTTP 例外，未全局关闭 ATS。正式发布前切换 HTTPS 并移除此测试例外。
 
 2026-10-21 已在 iPhone 17 / iOS 26.5 模拟器读取服务器信息流和评论。详细证据和未覆盖流程见
@@ -43,13 +52,9 @@ API 地址在 `UniPO/Resources/Info.plist` 的 `API_BASE_URL`，**当前指向�
 # 指定 Tab
 xcrun simctl launch booted com.unipo.app -tab achievements
 
-# 服务器模式默认显示账号密码登录；请在 App 里输入专用测试账号
+# 默认手机号登录页
 xcrun simctl launch booted com.unipo.app -login
-# 登录页 / 手机号表单 / 手机号自动登录（本地任意 4 位数字）
-xcrun simctl launch booted com.unipo.app -login
-xcrun simctl launch booted com.unipo.app -login -no-phone
-xcrun simctl launch booted com.unipo.app -login -sms-login
-xcrun simctl launch booted com.unipo.app -login -one-tap
+xcrun simctl launch booted com.unipo.app -login -focus-phone
 xcrun simctl launch booted com.unipo.app -login -agreement
 ```
 
@@ -83,10 +88,10 @@ ios/
 
 ## 登录页说明
 
-- 演示号码与固定验证码只允许在 DEBUG 且 API 指向 localhost/回环地址时使用。连接远端服务器时默认显示账号密码登录，
-  通过已有 `/auth/login` 接口认证；短信入口仍需服务器实际配置发送通道。
-- 本地 mock 短信：任意合规手机号点「获取验证码」即可，任意 4 位数字都能登录。
-- 协议默认不勾选；账号或验证码登录都需要用户主动同意。协议正文仍需业务方确认，尚不满足正式发布条件。
+- 只有手机号验证码页面，不显示账号密码页或一键演示号码入口；标题与说明居中。
+- 测试环境任意合规的 11 位手机号点“获取验证码”会调用后端并成功倒计时；不发送真实短信，任意 4 位数字都可登录或创建普通测试账号。
+- 协议默认不勾选。获取测试验证码不代表接受协议，最终登录仍需用户主动同意；勾选与首行文字对齐，长文本可换行。
+- 测试与生产令牌按 API 地址存入不同 Keychain service，不互相带入。协议正文和真实短信通道仍需在正式发布前完成。
 
 ## 核心回归测试
 
@@ -96,7 +101,9 @@ swift test --package-path ios/Packages/UniPOCore
 ```
 
 覆盖登录请求不携带旧凭据、受保护请求保留 Bearer、ATS 错误提示、分页并发、切换板块的迟到响应、
-刷新和退出后丢弃旧响应、失败重试及重复帖子去重。测试使用本地 URLProtocol，不访问服务器、不写生产数据。
+刷新和退出后丢弃旧响应、失败重试、重复帖子去重，以及环境间 Keychain 隔离。测试使用本地 URLProtocol，不访问服务器、不写生产数据。
+
+连通测试隧道后可运行 `python3 scripts/smoke-test-login.py`，会在隔离测试库创建普通测试账号并验证任意 4 位码、错误格式和生产侧拒绝测试 token，不打印凭据。
 
 ## APNs
 

@@ -1,4 +1,5 @@
 .env
+.env.test
 AGENT.md
 agent.md
 node_modules/

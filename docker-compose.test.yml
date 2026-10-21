@@ -1,0 +1,34 @@
+name: unipo-test
+
+services:
+  backend-test:
+    image: unipo-backend:test
+    container_name: unipo-test-backend
+    restart: unless-stopped
+    env_file:
+      - ${UNIPO_TEST_ENV_FILE:-.env.test}
+    environment:
+      SPRING_PROFILES_ACTIVE: test
+      SERVER_PORT: 8080
+      JAVA_OPTS: -Xms128m -Xmx384m
+      STATE_BACKEND: memory
+      VERIFICATION_MOCK_ACCEPT_ANY_CODE: "true"
+      SMS_MOCK_ACCEPT_ANY_CODE: "true"
+      BOOTSTRAP_SEED_DEMO_DATA: "false"
+      APNS_ENABLED: "false"
+      TZ: Asia/Shanghai
+    mem_limit: 768m
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/actuator/health/readiness | grep UP || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+networks:
+  infra:
+    external: true
+    name: unipo_default

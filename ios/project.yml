@@ -41,10 +41,11 @@ targets:
           NSExceptionDomains:
             "49.234.21.63":
               NSExceptionAllowsInsecureHTTPLoads: true
-        API_BASE_URL: http://49.234.21.63/api/v1
+        API_BASE_URL: $(UNIPO_API_BASE_URL)
         NSPhotoLibraryUsageDescription: UniPO 需要访问相册，用于给帖子添加图片。
     settings:
       base:
+        UNIPO_API_BASE_URL: http://49.234.21.63/api/v1
         PRODUCT_BUNDLE_IDENTIFIER: com.unipo.app
         PRODUCT_NAME: UniPO
         GENERATE_INFOPLIST_FILE: NO
@@ -54,6 +55,9 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: UniPO/UniPO.entitlements
+      configs:
+        Debug:
+          UNIPO_API_BASE_URL: http://127.0.0.1:18081/api/v1
     dependencies:
       - package: UniPOCore
       - package: UniPOUI

@@ -5,6 +5,18 @@ public enum AppConfig {
         ["localhost", "127.0.0.1", "::1", "[::1]"].contains(apiBaseURL.host ?? "")
     }
 
+    public static var isTestEnvironment: Bool {
+        #if DEBUG
+        return isLocalDevelopment
+        #else
+        return false
+        #endif
+    }
+
+    public static func credentialService(for baseURL: URL) -> String {
+        "com.unipo.app.api." + baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
     /// 调试时优先用 Info.plist 的 API_BASE_URL，方便切本机/测试环境。
     public static var apiBaseURL: URL {
         if let raw = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
