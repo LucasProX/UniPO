@@ -52,7 +52,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 - 已装 **Temurin JDK 21.0.12.1**（`D:\Environments\Java\jdk-21`）+ **Maven 3.9.16**（`D:\Environments\Maven\apache-maven-3.9.16`）；`JAVA_HOME` 与 PATH 已写入用户环境变量，**新开的终端直接可用**。
 - 已配置阿里云 Maven 镜像（`C:\Users\36840\.m2\settings.xml`），后端首次构建约 2.5 分钟。
 - **本地链路已跑通（2026-10-19 实测）**：Docker Desktop 29.8.2 + WSL 2.7.13 + MySQL 8.4 容器（`127.0.0.1:12306`）+ MinIO（`127.0.0.1:9000/9001`，`bitnamilegacy/minio`）+ 后端 + 前端；图片上传/读取已实测。完整流程见 [`docs/LOCAL-DEV.md`](docs/LOCAL-DEV.md)。
-- 线上服务器 `115.190.3.204` **不再使用**；本机开发不连任何远端库。
+- 生产服务器 **`49.234.21.63`**（Ubuntu 22.04 / 4C4G，腾讯云）跑整套 docker compose：MySQL + MinIO + 后端 + 前端，公网只开 80/22。部署与更新流程见 [`docs/DEPLOY-SERVER.md`](docs/DEPLOY-SERVER.md)；旧的 `115.190.3.204` 不再使用。本机开发不连任何远端库。
 - 后端通过仓库根 `.env`（gitignored）覆盖 `SPRING_DATASOURCE_URL`，不用改代码。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
 - **2026-10-20 起主力机改为 macOS**（Win 机器仍是 `D:\Projects\unipo`）。Mac 上：JDK 21 + Maven 用 brew 装

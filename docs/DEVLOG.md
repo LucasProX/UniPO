@@ -4645,3 +4645,20 @@ if let uploaded = try? await APIClient.shared.uploadImage(...) {
 一开始以为 Compose 的必填插值已经把部署入口兜住了，后来对了下两条路径：`docker compose up` 和 `deploy-app.sh` 都只验证值是否存在，安全策略实际是在 Spring bean 初始化时才执行。这样虽然 fail-closed，但错误发现得晚，部署脚本也没法给出直接的配置提示。
 
 现在 `deploy-app.sh` 先拒绝常见占位前缀，并检查密码是 32 到 72 个 UTF-8 字节；Java 启动检查继续作为最终防线。占位模式也在 Java 测试里用超过 32 字符的值覆盖，避免测试只是因为密码短才通过。
+
+## 2026-10-21 第一次把整套栈部署到腾讯云，踩了三个坑
+
+新服务器 49.234.21.63（Ubuntu 22.04 / 4C4G / 40G 盘，干净的机器，只有 sshd 在听）。目标是把 MySQL + MinIO + 后端 + 前端整栈跑起来，IP 直连、不挂 Caddy。
+
+**坑一：镜像拉不下来，但不是我一开始以为的原因。** `docker compose --profile local-db up -d mysql minio` 里 mysql 一路下到 94MB，minio 直接 `dial tcp 108.160.162.109:443: i/o timeout` —— 服务器连不上 docker.io。当时我的判断是「daocloud 镜像源只镜像 library/ 命名空间，bitnamilegacy 这种第三方命名空间没救，得换 minio/minio 官方镜像」。试了 `docker.m.daocloud.io/minio/minio:latest` 返回 `denied`，看起来坐实了这个判断。
+但真正的结论正好相反：daocloud 是**全量代理**，`docker.m.daocloud.io/bitnamilegacy/minio:latest` 一把就拉下来了（Digest 都正常）。被 `denied` 的是 minio/minio 那个仓库本身在镜像端没有缓存。所以不用换镜像，只要给 compose 一个口子：`docker-compose.yml` 里 minio 写的是 `${MINIO_IMAGE:-bitnamilegacy/minio:latest}`，在 `.env` 里加一行 `MINIO_IMAGE=docker.m.daocloud.io/bitnamilegacy/minio:latest` 就完事。mysql/redis/caddy 走的是 `${DOCKER_REGISTRY:-}` 前缀，只有 minio 是独立的 MINIO_IMAGE，加镜像前缀时别忘了它。
+
+**坑二：我自己的部署包把生产 .env 覆盖成了本地开发的值。** 服务器连不上 GitHub（`git ls-remote` 报 `RPC failed; curl 16 Error in the HTTP2 framing layer`），所以代码是用 tar 传上去的：`tar -czf deploy.tar.gz --exclude=.git --exclude=node_modules ...`。我先 `sftp` 传了写好的生产 `.env`，**然后**才解压 tar —— 而 tar 里正好带着仓库根那个本地 `.env`（`.env` 在 .gitignore 里，但 tar 不看 gitignore）。解压一落地，服务器上的 `.env` 就变回开发值了：`JWT_SECRET=local-dev-only-secret-01...`、`BOOTSTRAP_ADMIN_PASSWORD=Admin@123456`、数据源指回 127.0.0.1:12306。
+是我顺手 `grep` 了一下才发现的。要是没有 `StartupSafetyGuard`，这次就直接带着一个公开的 JWT 密钥和一个 12 位弱口令上线了——任何人自己签一个 `role=ADMIN` 的 token 就是管理员。以后打包必须 `--exclude=./.env`，或者解压之后再传一次 `.env`。这类「本地文件和部署文件同名」的覆盖，出了问题不会报错，只会安静地用错配置跑起来。
+
+**坑三：前端 nginx 把整个 /actuator/ 反代到公网。** `frontend/nginx.conf` 里原本有 `location /actuator/ { proxy_pass http://backend:8080/actuator/; }`，部署完随手试了一下，`/actuator/prometheus` 直接 200，公网能抓到 JVM 和业务指标（`unipo_ratelimit_blocked` 之类）。`/actuator/metrics`、`/actuator/env`、`/actuator/info` 都是 401（被后端安全配置挡住了），只有 prometheus 是放行的，所以肉眼扫一遍配置很容易漏。
+现在改成 `location = /actuator/health` 精确匹配放出去、`location /actuator/ { return 404; }` 兜住其余，重新构建 frontend 后复验：health 200，prometheus/metrics 404，首页和 feed 都正常。指标要抓就从内网抓，或者以后用独立的 metrics 端口。
+
+**另外两件顺手做的：** 3.7G 内存跑 Maven 容器构建容易 OOM，先加了 2G swap（`/swapfile` + 写进 `/etc/fstab`）；Docker 用腾讯云自己的 apt 源装（`mirrors.cloud.tencent.com/docker-ce`），国内比 get.docker.com 稳。
+
+**这次的部署形态：** `/opt/unipo` 是解压出来的目录（不是 git checkout，因为服务器上不了 GitHub），四个容器 `unipo-mysql`（127.0.0.1:12306）/ `unipo-minio`（127.0.0.1:9000-9001）/ `unipo-backend`（仅 compose 内网 8080）/ `unipo-frontend`（0.0.0.0:80 反代 /api）。数据库和对象存储都只绑本机，公网只开 80 和 22。更新代码得重新打包上传再 `docker compose build`，具体步骤写进 docs/DEPLOY-SERVER.md 了。
