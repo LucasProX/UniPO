@@ -152,11 +152,6 @@ struct LoginView: View {
                 Text("未注册的手机号会自动创建账号")
                     .font(.uniBody(12))
                     .foregroundStyle(.white.opacity(0.45))
-                if AppConfig.isTestEnvironment {
-                    Text("测试阶段无需短信，填写任意 4 位数字即可")
-                        .font(.uniLabel(11))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
             }
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
@@ -446,10 +441,10 @@ private struct AgreementSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("正文将在正式上线前补充。")
+                    Text("协议内容暂不可用")
                         .font(.uniBody(14))
                         .foregroundStyle(UniColor.secondary)
-                    Text("这里预留协议结构：账号与登录、内容发布规范、隐私与数据使用、未成年人保护、举报与申诉、账号注销。")
+                    Text("请稍后再试。")
                         .font(.uniBody(13))
                         .foregroundStyle(UniColor.secondary)
                         .lineSpacing(5)

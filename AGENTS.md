@@ -207,6 +207,7 @@ xcrun simctl launch booted com.unipo.app
 
 ### 6.1 iOS 约定
 
+- **用户界面文案**：不展示测试阶段、无需短信、任意验证码、Mock/Debug 等开发说明，即使是 Debug 构建也一样；环境和联调规则只写开发文档或受控日志，不放入登录页等用户流程。
 - **App 只走 Bearer**：`URLSession` 必须禁用 Cookie（`httpShouldSetCookies = false`、`httpCookieStorage = nil`）。
   后端登录响应会下发 `unipo_sid`；一旦 URLSession 自动存了 Cookie，后续写请求就会以 Cookie 身份通过、
   但缺少 `X-CSRF-Token`，后端返回 403（"请求校验失败"）。这个坑已经踩过（见 DEVLOG）。

@@ -58,12 +58,6 @@ struct AchievementsView: View {
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 Spacer()
-                Text("MVP")
-                    .font(.uniLabel(10))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(.white.opacity(0.12), in: Capsule())
             }
 
             HStack(spacing: 16) {

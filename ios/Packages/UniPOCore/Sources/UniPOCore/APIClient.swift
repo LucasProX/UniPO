@@ -13,7 +13,7 @@ public enum APIError: LocalizedError {
         case .transport(let error):
             let error = error as NSError
             if error.domain == NSURLErrorDomain, error.code == NSURLErrorAppTransportSecurityRequiresSecureConnection {
-                return "系统阻止了当前服务器连接，请检查测试环境的安全连接配置"
+                return "系统阻止了当前连接，请稍后重试"
             }
             return "网络连接失败，请检查网络后重试"
         case .decoding: return "数据解析失败"
