@@ -21,58 +21,64 @@ struct AvatarCropView: View {
     @State private var cropSide: CGFloat = 300
 
     var body: some View {
-        GeometryReader { geo in
-            let side = min(geo.size.width - 48, geo.size.height - 260)
-            ZStack {
-                Color.black.ignoresSafeArea()
-                VStack(spacing: 22) {
-                    HStack {
-                        Button("取消") { onCancel() }
-                            .foregroundStyle(.white.opacity(0.7))
-                        Spacer()
-                        Text("调整头像")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Button("使用") { onCrop(render(side: side)) }
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.white)
+        NavigationStack {
+            GeometryReader { geo in
+                let side = max(140, min(geo.size.width - 48, geo.size.height - 230))
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    VStack(spacing: 22) {
+                        Spacer(minLength: 0)
+
+                        ZStack {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: side, height: side)
+                                .scaleEffect(zoom)
+                                .offset(offset)
+                                .frame(width: side, height: side)
+                                .clipped()
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
+                                .contentShape(Circle())
+                                .gesture(dragGesture(side: side))
+                                .simultaneousGesture(magnifyGesture(side: side))
+                        }
+                        .frame(width: side, height: side)
+
+                        Text("双指缩放 · 拖动调整位置")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.4))
+
+                        Slider(value: $zoom, in: 1...4)
+                            .tint(.white)
+                            .padding(.horizontal, 40)
+                            .onChange(of: zoom) { _, _ in clampOffset(side: side) }
+
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 24)
-
-                    Spacer(minLength: 0)
-
-                    ZStack {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: side, height: side)
-                            .scaleEffect(zoom)
-                            .offset(offset)
-                            .frame(width: side, height: side)
-                            .clipped()
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
-                            .contentShape(Circle())
-                            .gesture(dragGesture(side: side))
-                            .simultaneousGesture(magnifyGesture(side: side))
-                    }
-                    .frame(width: side, height: side)
-                    .onAppear { cropSide = side }
-
-                    Text("双指缩放 · 拖动调整位置")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.4))
-
-                    Slider(value: $zoom, in: 1...4)
-                        .tint(.white)
-                        .padding(.horizontal, 40)
-                        .onChange(of: zoom) { _, _ in clampOffset(side: side) }
-
-                    Spacer(minLength: 0)
+                    .padding(.vertical, 16)
                 }
-                .padding(.vertical, 20)
+                .onAppear { cropSide = side }
+                .onChange(of: side) { _, newValue in cropSide = newValue }
             }
+            .navigationTitle("调整头像")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { onCancel() }
+                        .foregroundStyle(.white.opacity(0.75))
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("使用") { onCrop(render(side: cropSide)) }
+                        .fontWeight(.bold)
+                        .foregroundStyle(.white)
+                }
+            }
+            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .tint(.white)
         }
         .preferredColorScheme(.dark)
     }
