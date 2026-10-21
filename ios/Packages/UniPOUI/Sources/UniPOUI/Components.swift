@@ -1,14 +1,21 @@
 import SwiftUI
 
+public enum UniAvatarShape {
+    case rounded
+    case circle
+}
+
 public struct UniAvatar: View {
     private let url: String?
     private let name: String
     private let size: CGFloat
+    private let shape: UniAvatarShape
 
-    public init(url: String?, name: String, size: CGFloat = 44) {
+    public init(url: String?, name: String, size: CGFloat = 44, shape: UniAvatarShape = .rounded) {
         self.url = url
         self.name = name
         self.size = size
+        self.shape = shape
     }
 
     public var body: some View {
@@ -26,7 +33,7 @@ public struct UniAvatar: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.34, style: .continuous))
+        .clipShape(UniAvatarClipShape(shape: shape, size: size))
     }
 
     private var fallback: some View {
@@ -36,6 +43,20 @@ public struct UniAvatar: View {
             Text(String(name.prefix(1)).uppercased())
                 .font(.system(size: size * 0.4, weight: .bold))
                 .foregroundStyle(.white)
+        }
+    }
+}
+
+private struct UniAvatarClipShape: Shape {
+    let shape: UniAvatarShape
+    let size: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        switch shape {
+        case .circle:
+            return Circle().path(in: rect)
+        case .rounded:
+            return RoundedRectangle(cornerRadius: size * 0.34, style: .continuous).path(in: rect)
         }
     }
 }

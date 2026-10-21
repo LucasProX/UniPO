@@ -221,6 +221,7 @@ xcrun simctl launch booted com.unipo.app
 - **头像**：新手引导和「我的」头像都走 `AvatarCropView`（相册选图 -> 圆形裁剪/缩放 -> 800x800 JPEG -> 上传 MinIO -> `PUT /users/me`）。
   裁剪页的取消/使用必须放在 `NavigationStack` toolbar 里，别自绘顶栏——fullScreenCover 里自绘顶栏会钻到状态栏下面，按钮点不到（见 DEVLOG 2026-10-21）。
   主页资料行顺序是性别符号（♂ 蓝 / ♀ 粉）-> 星座 -> MBTI -> 年龄；年龄由 `birthYear` 计算，`showAge/showGender` 为 false 时不展示。
+  主页视觉是浅色杂志风：paper 画布 + ink 字 + blue 强调，头像渐变环、白色数据卡、胶囊 tab、6pt 网格/13pt 圆角；不要再改回深色头图、白条状态栏或 2pt 网格。
 - **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
   登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。
 

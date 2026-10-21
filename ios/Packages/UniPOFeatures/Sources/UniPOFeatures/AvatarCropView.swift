@@ -8,7 +8,7 @@ struct CropImage: Identifiable {
     let image: UIImage
 }
 
-/// 方形裁剪 + 圆形预览；输出 800x800 PNG，上传后由 UniAvatar 圆形展示。
+/// 方形裁剪 + 圆形预览；输出 800x800 图像，上传后由 UniAvatar 圆形展示。
 struct AvatarCropView: View {
     let image: UIImage
     let onCancel: () -> Void
