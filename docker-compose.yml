@@ -115,7 +115,8 @@ services:
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AUTH_SESSION_TTL_MINUTES: ${AUTH_SESSION_TTL_MINUTES:-10080}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@biecuoguo.local}
-      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-Admin@123456}
+      # 首次初始化管理员的凭据不得使用公开默认值；生成随机值后写入 .env。
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD 必须显式配置（openssl rand -hex 32）}
       # 危险开关，默认关。打开会在生产库里写弱口令演示账号 / 让任意 4 位数字通过验证码。
       # 非 local/dev/test profile 下打开会直接拒绝启动。
       BOOTSTRAP_SEED_DEMO_DATA: ${BOOTSTRAP_SEED_DEMO_DATA:-false}

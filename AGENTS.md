@@ -228,10 +228,10 @@ xcrun simctl launch booted com.unipo.app
 ## 7. 硬性禁止（安全红线）
 > 2026-10-20 更新：R-1 / R-2 / R-3 / R-4 / R-5 五条已修复。下面保留为**回归防线**——这几条以前是真的漏过，别改回去。
 
-1. **不得**把 `app.verification.mock-accept-any-code=true` 部署到非开发环境。默认已是 `false`，本地由 `application-local.yml` 打开；非 `local/dev/test` profile 下打开会被 `config/StartupSafetyGuard.java` **直接拒绝启动**。打开后任意 4 位数字都能通过验证码校验，等于任何人可以注册任意账号。
+1. **不得**把 `app.verification.mock-accept-any-code=true` 部署到非开发环境。默认已是 `false`，本地由 `application-local.yml` 打开；仅当所有 active profile 都是 `local/dev/test` 时才允许开发开关，混入 `prod` 也会被 `config/StartupSafetyGuard.java` **直接拒绝启动**。打开后任意 4 位数字都能通过验证码校验，等于任何人可以注册任意账号。
 2. **不得**新增硬编码账号/密码，也**不得**把演示账号的创建逻辑从 `app.bootstrap.seed-demo-data` 后面挪出来。`AuthService` 里那三个 `ensure*` 方法只能在这个开关为 true 时调用。
-3. **不得**让启动流程写 `password_hash` 或 `nickname`。`AuthService.run()` 只在管理员账号**不存在**时初始化，已存在只补 `publicUid` / `role` / `status`。以前无条件重置密码，等于永久保留一个公开的万能口令。
-4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。有安全默认值的可选变量可以只加前两处，但必须在 §4 记明是刻意为之（现有例外：`APP_TIME_ZONE`）。
+3. **不得**在启动时覆盖已有管理员的 `password_hash` 或 `nickname`。`AuthService.run()` 只在管理员账号**不存在**时初始化；部署环境必须显式提供至少 32 字符的随机 `BOOTSTRAP_ADMIN_PASSWORD`，配置缺失、过短或占位值时启动检查会拒绝启动。本地演示值只在 `local` profile 生效。已有账号只补 `publicUid` / `role` / `status`。
+4. `.env` 永不入库；新增环境变量必须同步三处：`.env.example`、`docker-compose.yml` 的 `environment`、`deploy-app.sh` 的 `required_vars`。有安全默认值的可选变量可以只加前两处，但必须在 §4 记明是刻意为之（现有例外：`APP_TIME_ZONE`）。`BOOTSTRAP_ADMIN_PASSWORD` 是无默认值的必填部署变量。
 5. **不得**给 `app.jwt.secret`（`JWT_SECRET`）留默认值，也不得把示例值写进任何会被复制的地方（`application.yml` / `.env.example` / `docker-compose.yml`）。
    签名密钥一旦公开，任何人自己签一个 `role=ADMIN` 的 token 就是管理员，**不需要注册、不需要验证码、也不留任何异常日志**。
    现在 `application.yml` 的默认值是空的，`docker-compose.yml` 用 `${JWT_SECRET:?...}` 缺失直接报错，`deploy-app.sh` 在 `required_vars` 里，

@@ -62,10 +62,10 @@ Docker Desktop 29.8.2 + WSL 2.7.13 起得来、MySQL 8.4（`127.0.0.1:12306`）�
 > **✅ 已修复（2026-10-20）**：三个演示账号的创建已收进 `app.bootstrap.seed-demo-data`（默认 `false`），本地由 `application-local.yml` 打开；生产 profile 打开会被 `StartupSafetyGuard` 拒绝启动。**注意**：这只阻止「新建」，已经跑过旧版本的库需要手工清理 —— 见文末 §清理存量演示账号。
 
 ### R-3 管理员密码每次启动被重置
-证据：`AuthService.java:197` 每次启动把 admin 密码写成 `BOOTSTRAP_ADMIN_PASSWORD`；`docker-compose.yml` 默认 `Admin@123456`。
+历史问题：`AuthService.run()` 曾在每次启动重置 admin 密码，`docker-compose.yml` 也曾默认 `Admin@123456`。
 修复：仅当用户不存在时创建；加管理员改密接口；compose 去掉默认值。
 
-> **✅ 已修复（2026-10-20）**：`AuthService.run()` 现在只在管理员账号不存在时写入密码，已存在则完全不碰 `password_hash` 和 `nickname`，只在缺 `publicUid` / `role` / `status` 时补字段。实测重启前后 id=5 的 `password_hash` 与 `updated_at` 完全一致。**仍待做**：管理员改密接口、compose 去掉 `Admin@123456` 默认值。
+> **✅ 已修复（2026-10-21）**：`AuthService.run()` 只在管理员账号不存在时写入密码，已存在则不碰 `password_hash` 和 `nickname`；通用 Spring 配置不再有密码默认值，Compose 要求显式设置 `BOOTSTRAP_ADMIN_PASSWORD`，`deploy-app.sh` 预检占位值与 32–72 UTF-8 字节范围，`StartupSafetyGuard` 在非开发 profile 下再做最终检查。混用 `prod` 与 `local/dev/test` profile 也不再被当作开发环境。`application-local.yml` 保留本地专用演示值。**仍待做**：管理员改密接口。
 
 ### R-4 默认配置指向远端库（已更正，风险降级）
 证据：`application.yml:14` 与 `application-local.yml:3` 默认都是 `jdbc:mysql://115.190.3.204:12306/biecuoguo`。

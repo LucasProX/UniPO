@@ -43,7 +43,10 @@ env_value() {
 
 is_placeholder() {
   local value="$1"
-  [[ "$value" == change_me* || "$value" == please-change* || "$value" == *"your-"* || "$value" == *"your_"* ]]
+  local normalized
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  [[ "$normalized" == change_me* || "$normalized" == change-this* || "$normalized" == please-change* \
+    || "$normalized" == *"your-"* || "$normalized" == *"your_"* || "$normalized" == local-dev-only* ]]
 }
 
 extract_mysql_host_port() {
@@ -89,6 +92,7 @@ required_vars=(
 
 missing=()
 placeholders=()
+invalid=()
 for key in "${required_vars[@]}"; do
   value="$(env_value "$key")"
   if [[ -z "$value" ]]; then
@@ -97,6 +101,14 @@ for key in "${required_vars[@]}"; do
     placeholders+=("$key")
   fi
 done
+
+bootstrap_admin_password="$(env_value BOOTSTRAP_ADMIN_PASSWORD)"
+if [[ -n "$bootstrap_admin_password" ]]; then
+  bootstrap_admin_password_bytes="$(LC_ALL=C printf '%s' "$bootstrap_admin_password" | wc -c | tr -d '[:space:]')"
+  if (( bootstrap_admin_password_bytes < 32 || bootstrap_admin_password_bytes > 72 )); then
+    invalid+=("BOOTSTRAP_ADMIN_PASSWORD (must be 32-72 UTF-8 bytes)")
+  fi
+fi
 
 db_password="$(env_value SPRING_DATASOURCE_PASSWORD)"
 mysql_password="$(env_value MYSQL_PASSWORD)"
@@ -115,6 +127,11 @@ fi
 
 if (( ${#placeholders[@]} )); then
   echo "Replace placeholder values in .env: ${placeholders[*]}" >&2
+  exit 1
+fi
+
+if (( ${#invalid[@]} )); then
+  echo "Invalid values in .env: ${invalid[*]}" >&2
   exit 1
 fi
 

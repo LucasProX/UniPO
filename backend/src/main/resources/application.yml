@@ -141,8 +141,8 @@ app:
     refresh-expiration-minutes: ${JWT_REFRESH_EXPIRATION_MINUTES:20160}
   bootstrap:
     admin-email: ${BOOTSTRAP_ADMIN_EMAIL:admin@biecuoguo.local}
-    # 只在管理员账号「不存在」时用来创建一次；已存在则不再读取，不会覆盖已有密码。
-    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@123456}
+    # 仅首次创建管理员时使用。生产必须显式提供随机密码；启动检查会拒绝空值、占位值和过短值。
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
     # 是否写入演示账号（good / xiaoba / yuanhua）与演示数据。
     # 默认 false——生产库里不该有这些账号。本地由 application-local.yml 打开。
     seed-demo-data: ${BOOTSTRAP_SEED_DEMO_DATA:false}

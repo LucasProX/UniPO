@@ -48,6 +48,8 @@ public class StartupSafetyGuard {
 
     /** HS256 要求密钥至少 256 位，短于 32 字节 JwtService 直接抛异常。 */
     private static final int MIN_SECRET_LENGTH = 32;
+    /** 首次管理员凭据不使用公开默认值；部署配置应来自随机生成器。 */
+    private static final int MIN_BOOTSTRAP_ADMIN_PASSWORD_LENGTH = 32;
 
     private final AppProperties properties;
     private final Environment environment;
@@ -62,7 +64,7 @@ public class StartupSafetyGuard {
     @PostConstruct
     void check() {
         List<String> active = Arrays.asList(environment.getActiveProfiles());
-        boolean devLike = active.stream().anyMatch(DEV_PROFILES::contains);
+        boolean devLike = isDevOnlyProfiles(active);
 
         // 0) JWT 签名密钥不能是空的、示例值太短的。
         //    这一条不区分 profile，也不打 WARN 放行：空密钥根本签不出 token，
@@ -76,6 +78,17 @@ public class StartupSafetyGuard {
                     + "任何人都能自己签一个 role=ADMIN 的 token。\n"
                     + "生成一个随机的：openssl rand -base64 48，然后设进 JWT_SECRET。\n"
                     + "本地开发请用 --spring.profiles.active=local（application-local.yml 里有本地专用值）。");
+        }
+
+        // 首次初始化管理员时会将该值写入 password_hash。通用配置不能带公开弱密码默认值，
+        // 否则全新数据库在 Compose / 直接启动路径上都会创建可预测的管理员账号。
+        String adminPassword = properties.bootstrap() == null
+                ? null : properties.bootstrap().adminPassword();
+        String adminPasswordProblem = bootstrapAdminPasswordProblem(adminPassword, devLike);
+        if (adminPasswordProblem != null) {
+            throw new IllegalStateException("拒绝启动：" + adminPasswordProblem + "\n"
+                    + "首次初始化管理员会使用该密码。部署环境请设置 BOOTSTRAP_ADMIN_PASSWORD，"
+                    + "并用 openssl rand -hex 32 生成随机值；本地开发请使用 local profile。");
         }
 
         boolean mockVerification = properties.verification() != null
@@ -144,5 +157,34 @@ public class StartupSafetyGuard {
             return "app.jwt.secret 用的是 application-local.yml 里的本地开发专用值。";
         }
         return null;
+    }
+
+    /** 部署 profile 需要随机高强度凭据，本地 profile 允许保留演示账号的便利性。 */
+    static String bootstrapAdminPasswordProblem(String password, boolean devLike) {
+        if (password == null || password.isBlank()) {
+            return "BOOTSTRAP_ADMIN_PASSWORD 未配置。";
+        }
+        if (password.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72) {
+            return "BOOTSTRAP_ADMIN_PASSWORD 超过 BCrypt 的 72 字节上限。";
+        }
+        if (devLike) {
+            return null;
+        }
+        if (password.length() < MIN_BOOTSTRAP_ADMIN_PASSWORD_LENGTH) {
+            return "BOOTSTRAP_ADMIN_PASSWORD 过短（至少 "
+                    + MIN_BOOTSTRAP_ADMIN_PASSWORD_LENGTH + " 个字符）。";
+        }
+        String normalized = password.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.startsWith("change_me") || normalized.startsWith("change-this")
+                || normalized.startsWith("please-change") || normalized.startsWith("local-dev-only")
+                || normalized.contains("your-password") || normalized.contains("your_password")) {
+            return "BOOTSTRAP_ADMIN_PASSWORD 仍是公开占位值。";
+        }
+        return null;
+    }
+
+    static boolean isDevOnlyProfiles(List<String> activeProfiles) {
+        return activeProfiles != null && !activeProfiles.isEmpty()
+                && activeProfiles.stream().allMatch(DEV_PROFILES::contains);
     }
 }

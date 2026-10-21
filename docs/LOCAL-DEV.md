@@ -129,6 +129,7 @@ SPRING_DATASOURCE_USERNAME=biecuoguo
 SPRING_DATASOURCE_PASSWORD=biecuoguo_local_dev_2026
 JWT_SECRET=local-dev-only-secret-0123456789abcdef0123456789
 BOOTSTRAP_ADMIN_EMAIL=admin@biecuoguo.local
+# local profile only; the first local bootstrap account uses the local demo value
 BOOTSTRAP_ADMIN_PASSWORD=Admin@123456
 MINIO_ENDPOINT=http://127.0.0.1:9000
 MINIO_PUBLIC_ENDPOINT=http://127.0.0.1:9000
@@ -159,7 +160,7 @@ MINIO_PUBLIC_READ=false
   验证码这一栏**仍然要填**，但填任意 4 位数字都能过，而且后端不会真的发邮件（不写库、不发信，只打一条 WARN）。
   生产环境必须关掉（见 `docs/ISSUES.md` R-1）；关掉后需要配 `SMTP_HOST` 等，否则后端会**拒绝启动**——
   因为真实模式下没有 SMTP 就等于注册链路是断的。
-- **管理员密码每次启动被重置**为 `BOOTSTRAP_ADMIN_PASSWORD`（R-3，本地无害，上线前必须改）。
+- 管理员密码只在账号首次创建时读取；本地 `local` profile 使用演示密码。部署 profile 不提供默认密码，必须配置随机生成的 `BOOTSTRAP_ADMIN_PASSWORD`，且启动检查会拒绝缺失、过短或占位值。
 - 数据库数据在 Docker volume `unipo_unipo_mysql_data`，删了重来：
   `docker compose --profile local-db down -v`。
 

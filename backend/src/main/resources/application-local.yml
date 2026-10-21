@@ -31,6 +31,8 @@ app:
     # 本地没有真实短信通道，固定码 123456；非 local 环境禁止打开。
     mock-accept-any-code: true
   bootstrap:
+    # 本地专用的首次管理员密码；生产配置没有默认值，并会要求显式提供随机密码。
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:Admin@123456}
     # 写入 good / xiaoba / yuanhua 三个演示账号。生产不要开。
     seed-demo-data: true
   minio:
