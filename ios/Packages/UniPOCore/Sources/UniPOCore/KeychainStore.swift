@@ -8,21 +8,24 @@ public struct KeychainStore {
         self.service = service
     }
 
-    public func save(_ value: String, account: String) {
-        guard let data = value.data(using: .utf8) else { return }
+    public func save(_ value: String, account: String) throws {
+        let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        let updated = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if updated == errSecSuccess { return }
+        guard updated == errSecItemNotFound else { throw KeychainFailure(status: updated) }
         var attributes = query
         attributes[kSecValueData as String] = data
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(attributes as CFDictionary, nil)
+        let added = SecItemAdd(attributes as CFDictionary, nil)
+        guard added == errSecSuccess else { throw KeychainFailure(status: added) }
     }
 
-    public func read(account: String) -> String? {
+    public func read(account: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -31,17 +34,30 @@ public struct KeychainStore {
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw KeychainFailure(status: status) }
+        guard let data = item as? Data else { throw KeychainFailure(status: errSecDecode) }
+        guard let value = String(data: data, encoding: .utf8) else { throw KeychainFailure(status: errSecDecode) }
+        return value
     }
 
-    public func delete(account: String) {
+    public func delete(account: String) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainFailure(status: status) }
+    }
+}
+
+public struct KeychainFailure: LocalizedError {
+    public let status: OSStatus
+
+    public var errorDescription: String? {
+        if status == errSecInteractionNotAllowed { return "安全存储暂不可用，请解锁设备后重试" }
+        return "无法读取或保存登录信息，请稍后重试"
     }
 }

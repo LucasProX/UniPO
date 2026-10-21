@@ -111,6 +111,11 @@ ios/
 
 ## 核心回归测试
 
+登录恢复区分网络/服务故障与凭据被拒绝：前者保留 Keychain 并提供重试，后者按认证响应处理。
+只有服务端验证通过才显示登录后的私人资料。退出与换号会作废旧操作，access/refresh 使用同一 Keychain 条目配对保存，退出标记优先于旧格式回退。
+旧版双条目迁移会校验双方身份；旧 access 失效而无法确认配对时，需要重新登录一次。
+详细实施与验收见 [SESSION-RECOVERY-VERIFICATION.md](../docs/SESSION-RECOVERY-VERIFICATION.md)。
+
 ```bash
 # 仓库根运行；Core 的 macOS 14 测试平台仅用于验证 Foundation/状态逻辑，不改变 App 的 iOS 17 基线
 swift test --package-path ios/Packages/UniPOCore

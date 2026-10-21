@@ -26,7 +26,7 @@ public enum APIError: LocalizedError {
 public actor APIClient {
     public static let shared = APIClient()
 
-    private var accessToken: String?
+    nonisolated private let tokenState = AuthTokenState()
     private let session: URLSession
 
     public init(session: URLSession? = nil) {
@@ -44,8 +44,16 @@ public actor APIClient {
         self.session = URLSession(configuration: config)
     }
 
-    public func setAccessToken(_ token: String?) {
-        accessToken = token
+    func setAccessToken(_ token: String?) {
+        tokenState.setForTesting(token)
+    }
+
+    nonisolated func advanceAuthenticationRevision(_ revision: UInt64, clearToken: Bool) {
+        tokenState.advance(to: revision, clearToken: clearToken)
+    }
+
+    func setAccessToken(_ token: String?, revision: UInt64) {
+        tokenState.set(token, revision: revision)
     }
 
     public func login(email: String, password: String) async throws -> AuthSession {
@@ -93,6 +101,10 @@ public actor APIClient {
 
     public func me() async throws -> UserProfile {
         try await request(path: "auth/me")
+    }
+
+    func me(accessToken: String) async throws -> UserProfile {
+        try await request(path: "auth/me", authorization: .explicit(accessToken))
     }
 
     public func feed(tab: String = "recommend", cursor: String? = nil, limit: Int = 20) async throws -> PostPage {
@@ -239,7 +251,7 @@ public actor APIClient {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("ios", forHTTPHeaderField: "X-Client")
-        if let accessToken {
+        if let accessToken = tokenState.currentToken(), !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -258,35 +270,33 @@ public actor APIClient {
             throw APIError.transport(error)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if status == 401 {
-            throw APIError.unauthorized("")
-        }
-        do {
-            let envelope = try JSONDecoder().decode(APIEnvelope<UploadResponse>.self, from: responseData)
-            guard envelope.code == "OK", let payload = envelope.data else {
-                throw APIError.server(code: envelope.code, message: envelope.message, status: status)
-            }
-            return payload
-        } catch let error as APIError {
-            throw error
-        } catch {
-            throw APIError.decoding(error)
-        }
+        return try decodeResponse(from: responseData, status: status)
     }
 
     public func logout(refreshToken: String?) async {
+        await logout(accessToken: tokenState.currentToken(), refreshToken: refreshToken)
+    }
+
+    public func logout(accessToken: String?, refreshToken: String?) async {
         _ = try? await request(
             path: "auth/logout",
             method: "POST",
-            body: refreshToken.map { ["refreshToken": $0] }
+            body: refreshToken.map { ["refreshToken": $0] },
+            authorization: .explicit(accessToken)
         ) as EmptyResponse
+    }
+
+    private enum Authorization {
+        case current
+        case explicit(String?)
     }
 
     private func request<T: Decodable>(
         path: String,
         method: String = "GET",
         query: [URLQueryItem] = [],
-        body: [String: Any]? = nil
+        body: [String: Any]? = nil,
+        authorization: Authorization = .current
     ) async throws -> T {
         guard var components = URLComponents(string: AppConfig.apiBaseURL.absoluteString + "/" + path) else {
             throw APIError.invalidURL
@@ -303,8 +313,13 @@ public actor APIClient {
         // 登录/刷新不能带旧 token：服务端过滤链看到过期 Bearer 会直接 403，
         // 表现就是「刚登录成功，再打开又是未登录」。
         let anonymousPaths: Set<String> = ["auth/login", "auth/refresh", "auth/sms-code", "auth/sms-login"]
-        if let accessToken, !anonymousPaths.contains(path) {
-            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        let requestToken: String?
+        switch authorization {
+        case .current: requestToken = tokenState.currentToken()
+        case .explicit(let token): requestToken = token
+        }
+        if let requestToken, !requestToken.isEmpty, !anonymousPaths.contains(path) {
+            request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -320,9 +335,20 @@ public actor APIClient {
         }
 
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        return try decodeResponse(from: data, status: status)
+    }
+
+    private func decodeResponse<T: Decodable>(from data: Data, status: Int) throws -> T {
         if status == 401 {
             let message = (try? JSONDecoder().decode(APIEnvelope<EmptyResponse>.self, from: data))?.message ?? ""
             throw APIError.unauthorized(message)
+        }
+        guard (200..<300).contains(status) else {
+            let envelope = try? JSONDecoder().decode(APIEnvelope<EmptyResponse>.self, from: data)
+            let code = envelope?.code ?? "HTTP_ERROR"
+            let serverMessage = envelope?.message ?? ""
+            let message = serverMessage.isEmpty ? "请求失败，请稍后重试" : serverMessage
+            throw APIError.server(code: code == "OK" ? "HTTP_ERROR" : code, message: message, status: status)
         }
 
         do {

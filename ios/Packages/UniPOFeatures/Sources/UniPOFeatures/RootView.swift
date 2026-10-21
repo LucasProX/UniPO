@@ -8,6 +8,7 @@ public enum AppTab: Int, CaseIterable {
 
 public struct RootView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = .home
     @State private var showCompose = false
     @State private var showMessages = false
@@ -71,6 +72,14 @@ public struct RootView: View {
             })
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if auth.isRestoring || auth.recoveryError != nil { sessionRecoveryNotice }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, auth.recoveryError != nil, !auth.loginRequested {
+                Task { await auth.restore() }
+            }
         }
         .sheet(isPresented: $showCompose) {
             ComposeSheet()
@@ -140,5 +149,34 @@ public struct RootView: View {
             }
             #endif
         }
+    }
+
+    private var sessionRecoveryNotice: some View {
+        HStack(spacing: 12) {
+            if auth.isRestoring {
+                ProgressView().tint(UniColor.blue)
+                Text("正在确认登录状态…").font(.uniLabel(12))
+            } else {
+                Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(UniColor.blue)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("登录状态需要确认").font(.uniLabel(12))
+                    Text(auth.recoveryError ?? "请稍后重试")
+                        .font(.uniBody(11)).foregroundStyle(UniColor.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                Button("重试") { Task { await auth.restore() } }
+                    .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("session.recovery.retry")
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(UniColor.ink)
+        .padding(.horizontal, 18).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(UniColor.paper)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("session.recovery")
     }
 }
