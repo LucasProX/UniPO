@@ -1,5 +1,6 @@
 package com.biecuoguo.web;
 
+import com.biecuoguo.error.StateConflictException;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,6 +97,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(NoResourceFoundException.class)
     ResponseEntity<ErrorResponse> handleNoResource(NoResourceFoundException ex) {
         return build(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, "接口不存在");
+    }
+
+    @ExceptionHandler(StateConflictException.class)
+    ResponseEntity<ErrorResponse> handleStateConflict(StateConflictException ex) {
+        return build(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT, ex.getMessage());
     }
 
     // ---------- 405 / 413 ----------

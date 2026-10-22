@@ -164,11 +164,30 @@ public actor APIClient {
         try await request(path: "messages/conversations/\(conversationId)/messages")
     }
 
-    public func sendMessage(conversationId: Int64, content: String) async throws -> MessageView {
+    public func conversationPage(cursor: String? = nil, limit: Int = 20) async throws -> ConversationPage {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "messages/conversations/page", query: query)
+    }
+
+    public func conversation(id: Int64) async throws -> ConversationView {
+        try await request(path: "messages/conversations/\(id)")
+    }
+
+    public func messagePage(conversationId: Int64, cursor: String? = nil, afterId: Int64? = nil,
+                            limit: Int = 40) async throws -> MessagePage {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        if let afterId { query.append(URLQueryItem(name: "afterId", value: String(afterId))) }
+        return try await request(path: "messages/conversations/\(conversationId)/messages/page", query: query)
+    }
+
+    public func sendMessage(conversationId: Int64, content: String,
+                            clientMessageId: String = UUID().uuidString) async throws -> MessageView {
         try await request(
             path: "messages/conversations/\(conversationId)/messages",
             method: "POST",
-            body: ["content": content]
+            body: ["content": content, "clientMessageId": clientMessageId]
         )
     }
 

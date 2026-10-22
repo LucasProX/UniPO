@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -35,6 +36,7 @@ import java.util.List;
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     /** 一条限流规则：方法 + 路径 + 窗口内允许次数。 */
     private record Rule(String name, String method, String path, int limit, Duration window) {
@@ -59,7 +61,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("sms-login", "POST", "/api/auth/sms-login", 30, Duration.ofMinutes(5)),
             // 上传：每张图都占存储和带宽
             new Rule("upload", "POST", "/api/media/upload", 30, Duration.ofMinutes(5)),
-            new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5))
+            new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5)),
+            new Rule("conversation-create", "POST", "/api/messages/conversations", 60, Duration.ofMinutes(1)),
+            new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),
+            new Rule("outbox-retry", "POST", "/api/admin/message-deliveries/*/retry", 20, Duration.ofMinutes(1))
     );
 
     private final RateLimitService rateLimitService;
@@ -114,7 +119,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private Rule match(HttpServletRequest request) {
         String path = request.getRequestURI();
         for (Rule rule : RULES) {
-            if (rule.path().equals(path) && rule.method().equalsIgnoreCase(request.getMethod())) {
+            if (PATH_MATCHER.match(rule.path(), path) && rule.method().equalsIgnoreCase(request.getMethod())) {
                 return rule;
             }
         }

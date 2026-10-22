@@ -108,7 +108,7 @@ public class MessageOutboxWorker {
             if ("REALTIME".equals(claim.channel())) {
                 var view = new MessageDtos.MessageView(message.getId(), message.getConversationId(),
                         message.getSenderId(), message.getReceiverId(), message.getContent(), message.getReadFlag(),
-                        AppTime.toOffset(message.getCreatedAt()));
+                        AppTime.toOffset(message.getCreatedAt()), message.getClientMessageId());
                 realtime.publish(message.getReceiverId(), "message", Map.of(
                         "conversationId", message.getConversationId(), "message", view, "eventId", claim.eventId()));
             } else if ("PUSH".equals(claim.channel())) {

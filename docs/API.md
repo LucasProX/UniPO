@@ -85,6 +85,7 @@
 | `DUPLICATE` | 400 | 名称或账号已被占用 |
 | `NOT_FOUND` | 404 | 通用资源不存在 |
 | `RATE_LIMITED` | 429 | 触发限流；响应头带 `Retry-After`（秒），`message` 里也写了要等多久 |
+| `STATE_CONFLICT` | 409 | 资源状态或幂等标识已变化，客户端应刷新后决定是否重试 |
 | `INTERNAL` | 500 | 服务端未预期异常（不会回显异常详情，详情在日志） |
 
 ## 2. 认证 `/api/auth`
@@ -160,11 +161,18 @@
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/conversations` | 会话列表（每个会话 3 次额外 SQL） |
+| GET | `/conversations` | 旧版全量会话列表，兼容保留 |
+| GET | `/conversations/page?cursor=&limit=` | 会话游标分页；默认 20、上限 50 |
+| GET | `/conversations/{id}` | 精确读取一条会话，不要求它位于首屏 |
 | POST | `/conversations` | 按 `peerId` 或 `peerUid` 创建/复用会话 |
-| GET | `/conversations/{id}/messages` | **全量**消息 + 标记已读 |
-| POST | `/conversations/{id}/messages` | 发消息 |
+| GET | `/conversations/{id}/messages` | 旧版全量历史 + 标记已读，兼容保留 |
+| GET | `/conversations/{id}/messages/page?cursor=&afterId=&limit=` | 历史或断线增量分页；`cursor` 与 `afterId` 互斥，默认 40、上限 50 |
+| POST | `/conversations/{id}/messages` | 发消息；可带 `clientMessageId` 进行显式幂等重试 |
 | GET | `/unread-count` | 未读数 |
+
+会话游标绑定当前用户及完整活动排序键；历史游标绑定当前用户、会话和方向。普通历史页按消息 ID 倒序返回；`afterId` 首次请求固定当时最大消息 ID，并按 ID 正序返回本轮缺失消息，后续使用 `nextCursor` 继续。非法、跨用户或跨会话游标返回 400。
+
+`clientMessageId` 为 1 至 64 位 ASCII 字母、数字及 `._:-`。同一用户以同一标识、会话和正文重试时返回原消息；换正文或会话返回 409 / `STATE_CONFLICT`。服务端响应会回传该字段，旧消息和旧客户端允许为空。
 
 ## 6. 媒体 `/api/media`
 

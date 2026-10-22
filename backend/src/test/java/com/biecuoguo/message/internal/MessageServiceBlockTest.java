@@ -145,7 +145,7 @@ class MessageServiceBlockTest {
         setupVisibleCandidates();
         AtomicReference<Set<Long>> committedBlocks = new AtomicReference<>(Set.of());
         when(blocks.blockedUserIds(VIEWER.id())).thenAnswer(invocation -> committedBlocks.get());
-        when(messages.selectList(any())).thenAnswer(invocation -> {
+        when(messages.selectLatestForConversations(List.of(5L, 6L))).thenAnswer(invocation -> {
             committedBlocks.set(Set.of(PEER_ID));
             return List.of(message(5L, "private preview"), message(6L, "visible preview"));
         });
@@ -222,7 +222,8 @@ class MessageServiceBlockTest {
         User secondPeer = new User();
         secondPeer.setId(5L);
         when(users.selectList(any())).thenReturn(List.of(firstPeer, secondPeer));
-        when(messages.selectList(any())).thenReturn(List.of(message(5L, "private preview"), message(6L, "visible preview")));
+        when(messages.selectLatestForConversations(List.of(5L, 6L)))
+                .thenReturn(List.of(message(5L, "private preview"), message(6L, "visible preview")));
         when(messages.selectUnreadCounts(VIEWER.id(), List.of(5L, 6L)))
                 .thenReturn(List.of(new MessageMapper.UnreadCount(5L, 3L), new MessageMapper.UnreadCount(6L, 2L)));
     }

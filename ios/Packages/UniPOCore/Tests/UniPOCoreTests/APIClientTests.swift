@@ -95,6 +95,44 @@ final class APIClientTests: XCTestCase {
         super.tearDown()
     }
 
+    func testMessagePagesUseBoundedQueriesAndPreserveOpaqueCursors() async throws {
+        let api = client()
+        var requests: [(String, [String: String])] = []
+        StubProtocol.handler = { request in
+            let url = try XCTUnwrap(request.url)
+            let query = Dictionary((URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
+                .map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, new in new })
+            requests.append((url.path, query))
+            return (200, try self.successBody(["items": [], "hasMore": false, "limit": 40]))
+        }
+        _ = try await api.conversationPage(cursor: "c1-position", limit: 20)
+        _ = try await api.messagePage(conversationId: 11, cursor: "m1-position", limit: 40)
+        _ = try await api.messagePage(conversationId: 11, afterId: 77, limit: 40)
+        XCTAssertEqual(requests.map { $0.0 }, ["/api/v1/messages/conversations/page",
+            "/api/v1/messages/conversations/11/messages/page", "/api/v1/messages/conversations/11/messages/page"])
+        XCTAssertEqual(requests[0].1, ["cursor": "c1-position", "limit": "20"])
+        XCTAssertEqual(requests[1].1, ["cursor": "m1-position", "limit": "40"])
+        XCTAssertEqual(requests[2].1, ["afterId": "77", "limit": "40"])
+    }
+
+    func testMessageRetrySendsTheSameIntentAndOldResponsesStillDecode() async throws {
+        let api = client(), key = UUID().uuidString
+        var payloads: [[String: Any]] = []
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/messages/conversations/11/messages")
+            payloads.append(try XCTUnwrap(JSONSerialization.jsonObject(with: self.requestBody(request)) as? [String: Any]))
+            if payloads.count == 1 { throw URLError(.networkConnectionLost) }
+            return (200, try self.successBody(["id": 9, "conversationId": 11, "senderId": 1,
+                                               "receiverId": 2, "content": "同一条消息"]))
+        }
+        _ = try? await api.sendMessage(conversationId: 11, content: "同一条消息", clientMessageId: key)
+        XCTAssertEqual(payloads.count, 1)
+        let response = try await api.sendMessage(conversationId: 11, content: "同一条消息", clientMessageId: key)
+        XCTAssertEqual(payloads.count, 2)
+        XCTAssertTrue(payloads.allSatisfy { $0["clientMessageId"] as? String == key && $0["content"] as? String == "同一条消息" })
+        XCTAssertNil(response.clientMessageId)
+    }
+
     func testExplicitCommentRetryKeepsItsIdempotencyKeyAndPayload() async throws {
         let api = client()
         let key = UUID().uuidString

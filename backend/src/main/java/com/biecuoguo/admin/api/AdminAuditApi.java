@@ -14,6 +14,9 @@ public interface AdminAuditApi {
 
     void record(CurrentUser actor, String action, String targetType, Object targetId, String detail);
 
+    /** Required audit shares the caller's transaction and propagates failures instead of losing evidence. */
+    void recordRequired(CurrentUser actor, String action, String targetType, Object targetId, String detail);
+
     List<AuditView> recent(int limit);
 
     record AuditView(Long id, Long actorId, String actorEmail, String action,

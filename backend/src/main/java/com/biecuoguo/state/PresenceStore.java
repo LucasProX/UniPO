@@ -1,6 +1,7 @@
 package com.biecuoguo.state;
 
 import java.time.Duration;
+import java.util.Set;
 
 /** 在线状态存放处：记「某人最后一次心跳」，超过 {@link #ONLINE_WINDOW} 就算离线。 */
 public interface PresenceStore {
@@ -12,4 +13,7 @@ public interface PresenceStore {
     void clear(Long userId);
 
     boolean isOnline(Long userId);
+
+    /** One bounded request of user IDs, with backend implementations batching network reads. */
+    Set<Long> batchOnlineIds(Set<Long> userIds);
 }

@@ -23,6 +23,10 @@ V20 的身份版本与设备记录由 MySQL 作为权威，access、refresh、Co
 
 后续 V23/V24 的持久投递与小连接池取舍见 ADR-0005。message.internal 拥有队列与 worker；push.internal 拥有设备快照和处理进度，跨模块只走 PushService。调度进程可重建，任务、租约与进度不依赖进程内集合。
 
+### 2026 年 10 月 23 日增量
+
+V25 为消息增加发送者范围内的客户端意图唯一键，并为会话两侧活动排序、历史分页和未读聚合增加索引。会话和历史使用绑定身份及资源的游标；断线恢复按已同步消息 ID 向前分页，并固定一次恢复的最大消息 ID。iOS 失败发送由用户显式重试，沿用同一客户端意图标识。
+
 ### 落地进度（2026-10-20）
 
 | 能力 | 状态 |
@@ -115,7 +119,7 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 | `verification_codes` | 邮箱验证码（V7） |
 
 ### 4.3 消息域
-`conversations`（两人会话，`user_one_id < user_two_id` 去重）、`messages`（`read_flag` 布尔）。
+`conversations`（两人会话，`user_one_id < user_two_id` 去重；V25 生成 `activity_at` 并建立两侧分页索引）、`messages`（`read_flag`、可空 `client_message_id`；V25 按发送者与客户端意图唯一）。
 
 `message_delivery_outbox`（V23）：每消息/通道唯一，稳定 eventId、状态、DB UTC 租约、重试和完成元数据；不复制正文。PENDING/SENDING 为待办，FAILED 保留永久失败，SUPPRESSED 表示投递时权限已不可见。已完成状态不等同于设备送达。
 

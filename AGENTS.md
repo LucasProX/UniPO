@@ -35,7 +35,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V24，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V25，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -85,7 +85,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V24）：
+后端（Flyway 自动执行 V1–V25）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -193,7 +193,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V24 只增不改，下一次迁移按实际最高版本递增（当前应为 `V25__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V25 只增不改，下一次迁移按实际最高版本递增（当前应为 `V26__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -314,6 +314,8 @@ xcrun simctl launch booted com.unipo.app
 - [`docs/DP02-VERIFICATION.md`](docs/DP02-VERIFICATION.md) — 身份撤销、双实例、故障与客户端的当前验证证据及剩余门槛
 - [`docs/DP03-VERIFICATION.md`](docs/DP03-VERIFICATION.md) — 拉黑、关注、私信的真实依赖证据、并发边界与剩余 UI 验收
 - [`docs/DP14-VERIFICATION.md`](docs/DP14-VERIFICATION.md) — 持久投递、进程退出恢复、小连接池与分设备进度证据
+- [`docs/DP15-VERIFICATION.md`](docs/DP15-VERIFICATION.md) — 消息分页、断线增量补齐、发送幂等与 iOS 重试证据
+- [`docs/ROADMAP-SMALL-TASKS.md`](docs/ROADMAP-SMALL-TASKS.md) — 暂停长期大目标后的可独立领取小任务路线图
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
 
 ## 11. 开发手记必须同步（硬规矩）

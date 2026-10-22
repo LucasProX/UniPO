@@ -75,7 +75,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites",
                                 "/api/users/*/followers", "/api/users/*/following").permitAll()
                         .requestMatchers("/api/admin/users", "/api/admin/users/**").hasRole("ADMIN")
+                        .requestMatchers("/api/admin/message-deliveries", "/api/admin/message-deliveries/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/messages/conversations/page",
+                                "/api/messages/conversations/*", "/api/messages/conversations/*/messages/page").authenticated()
                         // WebSocket 握手必须放行：浏览器握手带不了 Authorization 头，
                         // 真正的鉴权在握手拦截器（Cookie）或首条 auth 消息（Bearer）里做。
                         .requestMatchers("/api/realtime/ws", "/api/v1/realtime/ws").permitAll()

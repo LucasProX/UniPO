@@ -234,6 +234,33 @@ public struct MessageView: Codable, Identifiable, Hashable {
     public let content: String
     public let read: Bool?
     public let createdAt: String?
+    public let clientMessageId: String?
+
+    public init(id: Int64, conversationId: Int64, senderId: Int64, receiverId: Int64,
+                content: String, read: Bool?, createdAt: String?, clientMessageId: String? = nil) {
+        self.id = id
+        self.conversationId = conversationId
+        self.senderId = senderId
+        self.receiverId = receiverId
+        self.content = content
+        self.read = read
+        self.createdAt = createdAt
+        self.clientMessageId = clientMessageId
+    }
+}
+
+public struct ConversationPage: Decodable {
+    public let items: [ConversationView]
+    public let nextCursor: String?
+    public let hasMore: Bool
+    public let limit: Int
+}
+
+public struct MessagePage: Decodable {
+    public let items: [MessageView]
+    public let nextCursor: String?
+    public let hasMore: Bool
+    public let limit: Int
 }
 
 public struct OnboardingInput {

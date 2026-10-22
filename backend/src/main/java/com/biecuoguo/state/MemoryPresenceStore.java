@@ -5,7 +5,10 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.Set;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(name = "app.state.backend", havingValue = "memory", matchIfMissing = true)
@@ -40,5 +43,11 @@ public class MemoryPresenceStore implements PresenceStore {
             lastSeen.remove(userId, seenAt);
         }
         return online;
+    }
+
+    @Override
+    public Set<Long> batchOnlineIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) { return Set.of(); }
+        return userIds.stream().filter(Objects::nonNull).filter(this::isOnline).collect(Collectors.toUnmodifiableSet());
     }
 }

@@ -548,6 +548,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/message-deliveries/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/achievements/tasks/{taskId}/complete": {
         parameters: {
             query?: never;
@@ -964,6 +980,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/messages/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["conversation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/conversations/{id}/messages/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["messagePage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/messages/conversations/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["conversationPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/media/{id}/content": {
         parameters: {
             query?: never;
@@ -1100,6 +1164,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/message-deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_2"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1581,6 +1661,7 @@ export interface components {
         };
         SendMessageRequest: {
             content: string;
+            clientMessageId?: string;
         };
         ApiResponseMessageView: {
             code?: string;
@@ -1601,6 +1682,7 @@ export interface components {
             read?: boolean;
             /** Format: date-time */
             createdAt?: string;
+            clientMessageId?: string;
         };
         ApiResponseUploadResponse: {
             code?: string;
@@ -1681,6 +1763,37 @@ export interface components {
             oldPassword: string;
             password: string;
             confirmPassword?: string;
+        };
+        RetryRequest: {
+            /** Format: int32 */
+            expectedAttempts: number;
+            reason: string;
+        };
+        ApiResponseDeliveryView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["DeliveryView"];
+            requestId?: string;
+        };
+        DeliveryView: {
+            /** Format: int64 */
+            id?: number;
+            eventId?: string;
+            /** Format: int64 */
+            messageId?: number;
+            channel?: string;
+            state?: string;
+            /** Format: int32 */
+            attempts?: number;
+            lastError?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            availableAt?: string;
+            /** Format: date-time */
+            leaseUntil?: string;
+            /** Format: date-time */
+            completedAt?: string;
         };
         AchievementView: {
             /** Format: int32 */
@@ -1977,6 +2090,32 @@ export interface components {
             data?: components["schemas"]["MessageView"][];
             requestId?: string;
         };
+        ApiResponseMessagePage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["MessagePage"];
+            requestId?: string;
+        };
+        MessagePage: {
+            items?: components["schemas"]["MessageView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+            /** Format: int32 */
+            limit?: number;
+        };
+        ApiResponseConversationPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ConversationPage"];
+            requestId?: string;
+        };
+        ConversationPage: {
+            items?: components["schemas"]["ConversationView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+            /** Format: int32 */
+            limit?: number;
+        };
         ApiResponseListCategoryView: {
             code?: string;
             message?: string;
@@ -2051,6 +2190,19 @@ export interface components {
             /** Format: double */
             rateLimitBlocked?: number;
             sampledAt?: string;
+        };
+        ApiResponseDeliveryPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["DeliveryPage"];
+            requestId?: string;
+        };
+        DeliveryPage: {
+            items?: components["schemas"]["DeliveryView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+            /** Format: int32 */
+            limit?: number;
         };
         ApiResponseListAuditView: {
             code?: string;
@@ -2577,7 +2729,9 @@ export interface operations {
     share: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: number;
             };
@@ -2709,7 +2863,9 @@ export interface operations {
     comment: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: number;
             };
@@ -3217,6 +3373,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseSpotlightView"];
+                };
+            };
+        };
+    };
+    retry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetryRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDeliveryView"];
                 };
             };
         };
@@ -3770,6 +3952,77 @@ export interface operations {
             };
         };
     };
+    conversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseConversationView"];
+                };
+            };
+        };
+    };
+    messagePage: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                afterId?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseMessagePage"];
+                };
+            };
+        };
+    };
+    conversationPage: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseConversationPage"];
+                };
+            };
+        };
+    };
     content: {
         parameters: {
             query?: {
@@ -3961,6 +4214,31 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseMonitorView"];
+                };
+            };
+        };
+    };
+    list_2: {
+        parameters: {
+            query?: {
+                state?: string;
+                channel?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseDeliveryPage"];
                 };
             };
         };

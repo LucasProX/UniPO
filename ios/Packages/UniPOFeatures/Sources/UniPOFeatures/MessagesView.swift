@@ -5,9 +5,12 @@ import UniPOUI
 struct MessagesView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var store = MessagesStore()
     @State private var realtimeTick = 0
+    @State private var nearBottom = true
 
     private let initialConversationId: Int64?
 
@@ -66,16 +69,24 @@ struct MessagesView: View {
                     if let selected { await store.loadMessages(selected.id) }
                 }
             }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await bootstrap() } }
+            }
             .onDisappear {
                 RealtimeClient.shared.onEvent = nil
                 RealtimeClient.shared.disconnect()
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                if store.hasVerifiedIdentity, let error = store.errorMessage {
+                if store.hasVerifiedIdentity, let error = selected == nil ? store.conversationError : store.syncError {
                     HStack {
                         Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
                         Spacer()
-                        Button("重试") { Task { await bootstrap() } }
+                        Button("重试") {
+                            Task {
+                                if selected == nil { await store.loadConversations() }
+                                else { await store.synchronizeMessages() }
+                            }
+                        }
                             .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
                     }
                     .padding(14).background(UniColor.paper)
@@ -116,10 +127,10 @@ struct MessagesView: View {
 
     private var list: some View {
         List {
-            if isLoading {
+            if isLoading && conversations.isEmpty {
                 UniLoadingState("加载会话…")
                     .listRowSeparator(.hidden)
-            } else if conversations.isEmpty {
+            } else if conversations.isEmpty && store.conversationError == nil && !store.hasMoreConversations {
                 VStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right")
                         .font(.system(size: 30))
@@ -175,6 +186,22 @@ struct MessagesView: View {
                     }
                 }
             }
+            if store.hasMoreConversations {
+                VStack(spacing: 8) {
+                    if let error = store.conversationPageError {
+                        Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                    }
+                    if store.isLoadingMoreConversations { ProgressView() }
+                    else {
+                        Button(store.conversationPageError == nil ? "加载更多会话" : "重新加载") {
+                            Task { await store.loadMoreConversations() }
+                        }
+                        .font(.uniLabel(13)).foregroundStyle(UniColor.blue)
+                    }
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 14)
+                .listRowSeparator(.hidden)
+            }
         }
         .listStyle(.plain)
         .refreshable { await store.loadConversations() }
@@ -206,20 +233,51 @@ struct MessagesView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 10) {
+                        if store.isLoadingMessages {
+                            UniLoadingState("加载消息…")
+                        } else if let error = store.messageError {
+                            Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                            Button("重新加载消息") { Task { await store.loadMessages(conversation.id) } }
+                                .font(.uniLabel(13)).foregroundStyle(UniColor.blue)
+                        }
+                        if store.hasOlderMessages {
+                            if let error = store.historyError {
+                                Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                            }
+                            if store.isLoadingHistory { ProgressView().padding(10) }
+                            else {
+                                Button(store.historyError == nil ? "查看更早消息" : "重新加载历史") {
+                                    let anchor = messages.first?.id
+                                    Task {
+                                        await store.loadOlderMessages()
+                                        guard selected?.id == conversation.id else { return }
+                                        if let anchor { proxy.scrollTo(anchor, anchor: .top) }
+                                    }
+                                }
+                                .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                                .padding(.vertical, 10)
+                            }
+                        }
                         ForEach(messages) { message in
                             bubble(message, conversation: conversation)
                                 .id(message.id)
                         }
+                        ForEach(store.pendingMessages) { pending in
+                            pendingBubble(pending).id(pending.id)
+                        }
+                        Color.clear.frame(height: 1).id("message-bottom")
+                            .onAppear { nearBottom = true }
+                            .onDisappear { nearBottom = false }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                 }
                 .scrollIndicators(.hidden)
-                .onChange(of: messages.count) { _, _ in
-                    if let last = messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
+                .refreshable { await store.synchronizeMessages() }
+                .onChange(of: messages.last?.id) { _, _ in
+                    if nearBottom { scrollToBottom(proxy) }
                 }
+                .onChange(of: store.scrollToBottomRevision) { _, _ in scrollToBottom(proxy) }
             }
 
             HStack(spacing: 8) {
@@ -247,7 +305,8 @@ struct MessagesView: View {
         let mine = message.senderId == auth.profile?.id
         return HStack {
             if mine { Spacer(minLength: 40) }
-            Text(message.content)
+            VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
+                Text(message.content)
                 .font(.uniBody(14))
                 .foregroundStyle(mine ? .white : UniColor.ink)
                 .padding(.horizontal, 14)
@@ -256,7 +315,46 @@ struct MessagesView: View {
                     mine ? AnyShapeStyle(UniColor.ink) : AnyShapeStyle(UniColor.paper),
                     in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                 )
+                if mine && message.id == messages.last?.id {
+                    Text("已发送").font(.uniLabel(10)).foregroundStyle(UniColor.tertiary)
+                }
+            }
             if !mine { Spacer(minLength: 40) }
+        }
+    }
+
+    private func pendingBubble(_ pending: PendingMessage) -> some View {
+        HStack {
+            Spacer(minLength: 40)
+            VStack(alignment: .trailing, spacing: 7) {
+                Text(pending.content)
+                    .font(.uniBody(14)).foregroundStyle(UniColor.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(UniColor.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(UniColor.blue.opacity(0.24), lineWidth: 1))
+                if pending.isSending {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.mini)
+                        Text("正在发送").font(.uniLabel(11))
+                    }.foregroundStyle(UniColor.secondary)
+                } else {
+                    Text(pending.errorMessage ?? "未确认发送，请重试")
+                        .font(.uniBody(11)).foregroundStyle(UniColor.secondary)
+                    HStack(spacing: 18) {
+                        Button("不再重试") { store.discardRetry(pending.id) }
+                            .foregroundStyle(UniColor.secondary)
+                        Button("重试") { Task { await store.retryMessage(pending.id) } }
+                            .foregroundStyle(UniColor.blue).disabled(isSending)
+                    }
+                    .font(.uniLabel(12)).frame(minHeight: 44)
+                }
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            proxy.scrollTo("message-bottom", anchor: .bottom)
         }
     }
 

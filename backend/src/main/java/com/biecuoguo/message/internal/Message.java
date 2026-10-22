@@ -17,6 +17,7 @@ public class Message {
     private Long senderId;
     private Long receiverId;
     private String content;
+    private String clientMessageId;
     @TableField("is_read")
     private Boolean readFlag;
     private LocalDateTime createdAt;

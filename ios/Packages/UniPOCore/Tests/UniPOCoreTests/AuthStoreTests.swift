@@ -88,9 +88,14 @@ final class AuthStoreTests: XCTestCase {
     @MainActor
     private final class MessageAPI: MessagesAPI {
         let listGate = Gate<Void, [ConversationView]>()
-        func conversations() async throws -> [ConversationView] { try await listGate.invoke(()) }
-        func messages(conversationId: Int64) async throws -> [MessageView] { throw FixtureError.unexpectedRequest }
-        func sendMessage(conversationId: Int64, content: String) async throws -> MessageView {
+        func conversationPage(cursor: String?, limit: Int) async throws -> ConversationPage {
+            ConversationPage(items: try await listGate.invoke(()), nextCursor: nil, hasMore: false, limit: limit)
+        }
+        func conversation(id: Int64) async throws -> ConversationView { throw FixtureError.unexpectedRequest }
+        func messagePage(conversationId: Int64, cursor: String?, afterId: Int64?, limit: Int) async throws -> MessagePage {
+            throw FixtureError.unexpectedRequest
+        }
+        func sendMessage(conversationId: Int64, content: String, clientMessageId: String) async throws -> MessageView {
             throw FixtureError.unexpectedRequest
         }
     }

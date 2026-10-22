@@ -4,6 +4,11 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
 /**
  * 多实例实现：在线状态 = Redis 里一个带 25 秒 TTL 的 key。
  *
@@ -38,5 +43,19 @@ public class RedisPresenceStore implements PresenceStore {
     @Override
     public boolean isOnline(Long userId) {
         return userId != null && Boolean.TRUE.equals(redis.hasKey(PREFIX + userId));
+    }
+
+    @Override
+    public Set<Long> batchOnlineIds(Set<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) { return Set.of(); }
+        List<Long> ordered = userIds.stream().filter(Objects::nonNull).sorted().toList();
+        if (ordered.isEmpty()) { return Set.of(); }
+        List<String> values = redis.opsForValue().multiGet(ordered.stream().map(id -> PREFIX + id).toList());
+        if (values == null || values.size() != ordered.size()) { return Set.of(); }
+        Set<Long> online = new HashSet<>();
+        for (int index = 0; index < ordered.size(); index++) {
+            if (values.get(index) != null) { online.add(ordered.get(index)); }
+        }
+        return Set.copyOf(online);
     }
 }

@@ -30,7 +30,7 @@ def baseline_mode():
 
 
 def client_script():
-    name = ("identity-baseline.py" if baseline_mode() else "identity-fault.py" if fault_mode()
+    name = ("message-http.py" if message_mode() else "identity-baseline.py" if baseline_mode() else "identity-fault.py" if fault_mode()
             else "identity-smoke.py" if smoke_mode() else "identity-http.py")
     return FIXTURE_DIR / name
 
@@ -47,6 +47,22 @@ def smoke_mode():
     if value not in ("0", "1") or value == "1" and (baseline_mode() or fault_mode()):
         fail("Smoke mode must be explicit and separate from the identity modes")
     return value == "1"
+
+
+def message_mode():
+    value = os.environ.get("UNIPO_DP15_HTTP_INTEGRATION", "0")
+    if value not in ("0", "1"):
+        fail("The explicit message HTTP integration mode flag must be 0 or 1")
+    return value == "1"
+
+
+def validate_modes():
+    flags = ("UNIPO_DP02_BASELINE", "UNIPO_DP02_FAULT", "UNIPO_DP02_SMOKE", "UNIPO_DP15_HTTP_INTEGRATION")
+    values = [os.environ.get(name, "0") for name in flags]
+    if any(value not in ("0", "1") for value in values) or values.count("1") > 1:
+        fail("HTTP fixture modes must be explicit 0/1 flags and mutually exclusive")
+    if os.environ.get("UNIPO_DP14_SCHEDULE_SMOKE", "0") == "1" and not smoke_mode():
+        fail("The schedule observation requires the explicit original smoke mode")
 
 
 def fail(message):
@@ -168,11 +184,13 @@ def application_environment(env):
     })
     result["UNIPO_DP02_ADMIN_ACCOUNT"] = result["BOOTSTRAP_ADMIN_EMAIL"]
     result["UNIPO_DP02_ADMIN_PASSWORD"] = result["BOOTSTRAP_ADMIN_PASSWORD"]
-    if fault_mode() or smoke_mode():
+    if fault_mode() or smoke_mode() or message_mode():
         result.update({"JWT_EXPIRATION_MINUTES": "5", "AUTH_SESSION_TTL_MINUTES": "5",
                        "JWT_REFRESH_EXPIRATION_MINUTES": "15",
                        "SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT": "2000",
                        "SPRING_DATASOURCE_HIKARI_VALIDATION_TIMEOUT": "1000"})
+    if message_mode():
+        result["MESSAGE_OUTBOX_ENABLED"] = "false"
     return result
 
 
@@ -325,7 +343,8 @@ def run_http(jar):
     verify_fixtures(os.environ)
     prefix = ("baseline-" if baseline_mode() else "fault-" if fault_mode()
               else "smoke-" if smoke_mode() else "http-")
-    artifacts = ROOT / ".logs/dp02" / (prefix + os.environ["UNIPO_DP02_MYSQL_RUN_ID"])
+    artifact_root = ROOT / (".logs/dp15" if message_mode() else ".logs/dp02")
+    artifacts = artifact_root / (prefix + os.environ["UNIPO_DP02_MYSQL_RUN_ID"])
     runtime = artifacts / "runtime"
     runtime.mkdir(parents=True, exist_ok=False)
     snapshot = artifacts / "backend.jar"
@@ -404,7 +423,7 @@ def run_http(jar):
 
 def main():
     os.umask(0o077)
-    smoke_mode()  # Validate mutually exclusive mode flags before creating any resources.
+    validate_modes()  # Validate mutually exclusive mode flags before creating any resources.
     jar = backend_jar()
     if not client_script().is_file():
         fail("The HTTP client script is not ready; no fixture was started")

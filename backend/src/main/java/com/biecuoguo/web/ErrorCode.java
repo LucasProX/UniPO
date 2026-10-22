@@ -44,6 +44,7 @@ public enum ErrorCode {
     // ---- 通用 ----
     VALIDATION_FAILED("请求参数不完整或格式不正确"),
     DUPLICATE("名称或账号已被占用"),
+    STATE_CONFLICT("当前状态已变化，请刷新后重试"),
     NOT_FOUND("请求的资源不存在"),
     RATE_LIMITED("操作太频繁了，请稍后再试"),
     INTERNAL("服务器开小差了，请稍后再试");

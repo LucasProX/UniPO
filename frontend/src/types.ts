@@ -244,6 +244,8 @@ export interface MessageView {
   content: string;
   read: boolean;
   createdAt: string;
+  /** 发送重试的客户端意图标识；旧消息与旧客户端为空。 */
+  clientMessageId?: string | null;
 }
 
 // ---- 前端扩展类型（组件化后从 App.vue 迁出，Web/App 两端共用）----

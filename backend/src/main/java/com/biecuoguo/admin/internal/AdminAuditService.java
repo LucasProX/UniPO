@@ -8,8 +8,10 @@ import com.biecuoguo.web.RequestContextHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -33,19 +35,32 @@ public class AdminAuditService implements AdminAuditApi {
     @Override
     public void record(CurrentUser actor, String action, String targetType, Object targetId, String detail) {
         try {
-            AdminAuditLog entry = new AdminAuditLog();
-            entry.setActorId(actor == null ? null : actor.id());
-            entry.setActorEmail(actor == null ? null : actor.email());
-            entry.setAction(action);
-            entry.setTargetType(targetType);
-            entry.setTargetId(targetId == null ? null : String.valueOf(targetId));
-            entry.setDetail(detail == null ? null : detail.substring(0, Math.min(detail.length(), MAX_DETAIL)));
-            entry.setRequestId(RequestContextHolder.requestId());
-            entry.setCreatedAt(LocalDateTime.now());
-            mapper.insert(entry);
+            write(actor, action, targetType, targetId, detail);
         } catch (RuntimeException error) {
             log.warn("审计日志写入失败 action={} target={}:{}", action, targetType, targetId, error);
         }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordRequired(CurrentUser actor, String action, String targetType, Object targetId, String detail) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("Required audit must share an active business transaction");
+        }
+        write(actor, action, targetType, targetId, detail);
+    }
+
+    private void write(CurrentUser actor, String action, String targetType, Object targetId, String detail) {
+        AdminAuditLog entry = new AdminAuditLog();
+        entry.setActorId(actor == null ? null : actor.id());
+        entry.setActorEmail(actor == null ? null : actor.email());
+        entry.setAction(action);
+        entry.setTargetType(targetType);
+        entry.setTargetId(targetId == null ? null : String.valueOf(targetId));
+        entry.setDetail(detail == null ? null : detail.substring(0, Math.min(detail.length(), MAX_DETAIL)));
+        entry.setRequestId(RequestContextHolder.requestId());
+        entry.setCreatedAt(AppTime.nowLocal());
+        if (mapper.insert(entry) != 1) { throw new IllegalStateException("Required audit row was not saved"); }
     }
 
     @Override
