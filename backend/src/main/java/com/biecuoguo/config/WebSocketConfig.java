@@ -2,6 +2,7 @@ package com.biecuoguo.config;
 
 import com.biecuoguo.realtime.RealtimeHandshakeInterceptor;
 import com.biecuoguo.realtime.RealtimeWebSocketHandler;
+import com.biecuoguo.realtime.RealtimeSecurityExecutor;
 import com.biecuoguo.security.SessionService;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -23,12 +24,14 @@ public class WebSocketConfig implements WebSocketConfigurer {
     private final RealtimeWebSocketHandler handler;
     private final SessionService sessionService;
     private final AppProperties appProperties;
+    private final RealtimeSecurityExecutor security;
 
     public WebSocketConfig(RealtimeWebSocketHandler handler, SessionService sessionService,
-                           AppProperties appProperties) {
+                           AppProperties appProperties, RealtimeSecurityExecutor security) {
         this.handler = handler;
         this.sessionService = sessionService;
         this.appProperties = appProperties;
+        this.security = security;
     }
 
     @Override
@@ -38,7 +41,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .filter(origin -> !origin.isBlank())
                 .toArray(String[]::new);
         registry.addHandler(handler, "/api/realtime/ws")
-                .addInterceptors(new RealtimeHandshakeInterceptor(sessionService))
+                .addInterceptors(new RealtimeHandshakeInterceptor(security, sessionService.config().sessionCookieName()))
                 .setAllowedOriginPatterns(origins.length == 0 ? new String[]{"*"} : origins);
     }
 }

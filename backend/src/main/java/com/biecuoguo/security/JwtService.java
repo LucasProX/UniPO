@@ -44,6 +44,14 @@ public class JwtService {
         return build(user, TYPE_REFRESH, properties.jwt().refreshExpirationMinutes() * 60);
     }
 
+    public String createToken(CurrentUser user, Instant sessionExpiresAt) {
+        return build(user, TYPE_ACCESS, properties.jwt().expirationMinutes() * 60, sessionExpiresAt);
+    }
+
+    public String createRefreshToken(CurrentUser user, Instant sessionExpiresAt) {
+        return build(user, TYPE_REFRESH, properties.jwt().refreshExpirationMinutes() * 60, sessionExpiresAt);
+    }
+
     /** access token 的有效期（秒）。客户端拿它算「还有多久该刷新了」。 */
     public long accessExpiresInSeconds() {
         return properties.jwt().expirationMinutes() * 60;
@@ -65,23 +73,40 @@ public class JwtService {
     }
 
     private String build(CurrentUser user, String type, long ttlSeconds) {
+        return build(user, type, ttlSeconds, null);
+    }
+
+    private String build(CurrentUser user, String type, long ttlSeconds, Instant sessionExpiresAt) {
+        if (user.authVersion() == null || user.authVersion() < 0 || user.sessionId() == null || user.sessionId().isBlank()) {
+            throw new IllegalArgumentException("认证缺少身份版本或设备会话");
+        }
         Instant now = Instant.now();
+        Instant expiresAt = now.plusSeconds(ttlSeconds);
+        if (sessionExpiresAt != null && sessionExpiresAt.isBefore(expiresAt)) { expiresAt = sessionExpiresAt; }
         return Jwts.builder()
                 .subject(String.valueOf(user.id()))
                 .claim("email", user.email())
                 .claim("role", user.role())
                 .claim(CLAIM_TYPE, type)
+                .claim("av", user.authVersion())
+                .claim("sid", user.sessionId())
+                .id(java.util.UUID.randomUUID().toString())
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plusSeconds(ttlSeconds)))
+                .expiration(Date.from(expiresAt))
                 .signWith(key())
                 .compact();
     }
 
     private CurrentUser toUser(Claims claims) {
+        Number version = claims.get("av", Number.class);
+        String sessionId = claims.get("sid", String.class);
+        if (version == null || version.longValue() < 0 || sessionId == null || sessionId.isBlank()) {
+            throw new IllegalArgumentException("旧登录信息需要重新认证");
+        }
         return new CurrentUser(
                 Long.valueOf(claims.getSubject()),
                 claims.get("email", String.class),
-                claims.get("role", String.class)
+                claims.get("role", String.class), version.longValue(), sessionId
         );
     }
 
@@ -93,11 +118,6 @@ public class JwtService {
                 .getPayload();
         if (expectedType != null) {
             String actual = claims.get(CLAIM_TYPE, String.class);
-            // 这次改动之前签发的 token 没有 typ。一律当成 access，
-            // 否则上线那一刻所有在线用户会被踢下线。
-            if (actual == null) {
-                actual = TYPE_ACCESS;
-            }
             if (!expectedType.equals(actual)) {
                 throw new IllegalArgumentException("token 类型不匹配");
             }

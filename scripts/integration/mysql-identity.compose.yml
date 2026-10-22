@@ -1,0 +1,30 @@
+services:
+  mysql:
+    image: docker.m.daocloud.io/library/mysql:8.4
+    container_name: ${UNIPO_DP02_MYSQL_CONTAINER:?fixture container name is required}
+    labels:
+      com.unipo.fixture: dp02-mysql-identity
+      com.unipo.fixture.run: ${UNIPO_DP02_MYSQL_RUN_ID:?fixture run id is required}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${UNIPO_DP02_MYSQL_ROOT_PASSWORD:?fixture root password is required}
+      MYSQL_DATABASE: ${UNIPO_DP02_MYSQL_SCHEMA:?fixture schema is required}
+      MYSQL_USER: unipo_fixture
+      MYSQL_PASSWORD: ${UNIPO_DP02_MYSQL_PASSWORD:?fixture password is required}
+      UNIPO_DP02_MYSQL_RUN_ID: ${UNIPO_DP02_MYSQL_RUN_ID:?fixture run id is required}
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --innodb-redo-log-capacity=64M
+      - --max-connections=30
+      - --performance-schema=OFF
+      - --mysqlx=OFF
+    ports:
+      - "127.0.0.1:22306:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'MYSQL_PWD="$$MYSQL_PASSWORD" mysql --protocol=TCP --host=127.0.0.1 --user="$$MYSQL_USER" --database="$$MYSQL_DATABASE" --batch --skip-column-names --execute="SELECT 1" >/dev/null 2>&1'
+      interval: 2s
+      timeout: 2s
+      retries: 45

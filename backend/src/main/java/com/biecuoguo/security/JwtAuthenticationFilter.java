@@ -15,12 +15,10 @@ import java.util.List;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
-    private final JwtService jwtService;
-    private final TokenBlacklistService tokenBlacklistService;
+    private final AuthenticationStateService state;
 
-    public JwtAuthenticationFilter(JwtService jwtService, TokenBlacklistService tokenBlacklistService) {
-        this.jwtService = jwtService;
-        this.tokenBlacklistService = tokenBlacklistService;
+    public JwtAuthenticationFilter(AuthenticationStateService state) {
+        this.state = state;
     }
 
     @Override
@@ -30,8 +28,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 String token = header.substring(7);
-                if (!tokenBlacklistService.isRevoked(token)) {
-                    CurrentUser currentUser = jwtService.parse(token);
+                var context = state.authenticateAccess(token);
+                if (context.isPresent()) {
+                    CurrentUser currentUser = context.get().user();
                     UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                             currentUser,
                             null,

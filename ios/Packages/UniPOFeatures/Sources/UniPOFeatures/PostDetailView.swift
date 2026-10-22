@@ -20,10 +20,18 @@ struct PostDetailView: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @State private var startedConversation: ConversationView?
+    @State private var conversationOwnerID: Int64?
     @State private var commentError: String?
+    @State private var commentRequestID: UUID?
+    @State private var commentsLoadID: UUID?
+    @State private var isLiking = false
+    @State private var isFavoriting = false
     @FocusState private var commentFocused: Bool
 
     private let commentLimit = 1_000
+    private var identityKey: String {
+        "\(auth.authenticationRevision):\(auth.profile?.id ?? 0):\(auth.isSessionRecoveryPending)"
+    }
 
     init(post: PostView) {
         self.post = post
@@ -58,8 +66,20 @@ struct PostDetailView: View {
                     Button("关闭") { dismiss() }
                 }
             }
+            .task(id: identityKey) { await loadComments() }
+            .onChange(of: identityKey) { _, _ in
+                if let conversationOwnerID, auth.profile?.id != conversationOwnerID, !auth.isSessionRecoveryPending {
+                    startedConversation = nil
+                    self.conversationOwnerID = nil
+                }
+                commentRequestID = nil
+                isSending = false
+                isLiking = false
+                isFavoriting = false
+                errorMessage = nil
+                commentError = nil
+            }
             .task {
-                await loadComments()
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("-like-test") {
                     try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -345,81 +365,116 @@ struct PostDetailView: View {
     private var canSendComment: Bool { !isSending && !trimmedComment.isEmpty && !commentOverLimit }
 
     private func startChat() async {
-        guard auth.isAuthenticated else {
+        guard let userID = auth.profile?.id else {
             auth.requireLogin()
             return
         }
+        let revision = auth.authenticationRevision
         if post.author.uid == auth.profile?.publicUid {
             errorMessage = "这是你自己发的帖子"
             return
         }
         do {
-            startedConversation = try await APIClient.shared.createConversation(peerUid: post.author.uid)
+            let conversation = try await APIClient.shared.createConversation(peerUid: post.author.uid)
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            conversationOwnerID = userID
+            startedConversation = conversation
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription
         }
     }
 
     private func loadComments() async {
+        let userID = auth.profile?.id
+        let revision = auth.authenticationRevision
+        let requestID = UUID()
+        commentsLoadID = requestID
         isLoading = true
+        defer { if commentsLoadID == requestID { isLoading = false; commentsLoadID = nil } }
         let existingIds = Set(comments.map(\.id))
         do {
             let loaded = try await APIClient.shared.comments(postId: post.id)
+            guard isCurrentIdentity(userID: userID, revision: revision), commentsLoadID == requestID else { return }
             let loadedIds = Set(loaded.map(\.id))
             let submittedWhileLoading = comments.filter { !existingIds.contains($0.id) && !loadedIds.contains($0.id) }
             comments = loaded + submittedWhileLoading
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision), commentsLoadID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription
         }
-        isLoading = false
     }
 
     private func sendComment() async {
         guard !isSending else { return }
-        guard auth.isAuthenticated else {
+        guard let userID = auth.profile?.id else {
             auth.requireLogin()
             return
         }
+        let revision = auth.authenticationRevision
         let text = trimmedComment
         guard !text.isEmpty, !commentOverLimit else { return }
         isSending = true
+        let requestID = UUID()
+        commentRequestID = requestID
         commentError = nil
-        defer { isSending = false }
+        defer {
+            if commentRequestID == requestID { isSending = false; commentRequestID = nil }
+        }
         do {
             let created = try await APIClient.shared.addComment(postId: post.id, content: text)
+            guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
             if !comments.contains(where: { $0.id == created.id }) { comments.append(created) }
             commentCount += 1
-            commentText = ""
-            commentFocused = false
+            if trimmedComment == text { commentText = ""; commentFocused = false }
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
             commentError = (error as? LocalizedError)?.errorDescription ?? "评论未发送，请重试"
         }
     }
 
     private func toggleLike() {
-        guard auth.isAuthenticated else { auth.requireLogin(); return }
+        guard let userID = auth.profile?.id else { auth.requireLogin(); return }
+        guard !isLiking else { return }
+        let revision = auth.authenticationRevision
+        let wasLiked = liked
+        isLiking = true
         Task {
+            defer { if isCurrentIdentity(userID: userID, revision: revision) { isLiking = false } }
             do {
-                try await APIClient.shared.likePost(id: post.id, liked: liked)
-                liked.toggle()
+                try await APIClient.shared.likePost(id: post.id, liked: wasLiked)
+                guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+                liked = !wasLiked
                 likeCount = max(0, likeCount + (liked ? 1 : -1))
             } catch {
+                guard isCurrentIdentity(userID: userID, revision: revision) else { return }
                 errorMessage = (error as? LocalizedError)?.errorDescription
             }
         }
     }
 
     private func toggleFavorite() {
-        guard auth.isAuthenticated else { auth.requireLogin(); return }
+        guard let userID = auth.profile?.id else { auth.requireLogin(); return }
+        guard !isFavoriting else { return }
+        let revision = auth.authenticationRevision
+        let wasFavorited = favorited
+        isFavoriting = true
         Task {
+            defer { if isCurrentIdentity(userID: userID, revision: revision) { isFavoriting = false } }
             do {
-                try await APIClient.shared.favoritePost(id: post.id, favorited: favorited)
-                favorited.toggle()
+                try await APIClient.shared.favoritePost(id: post.id, favorited: wasFavorited)
+                guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+                favorited = !wasFavorited
                 favoriteCount = max(0, favoriteCount + (favorited ? 1 : -1))
             } catch {
+                guard isCurrentIdentity(userID: userID, revision: revision) else { return }
                 errorMessage = (error as? LocalizedError)?.errorDescription
             }
         }
+    }
+
+    private func isCurrentIdentity(userID: Int64?, revision: UInt64) -> Bool {
+        auth.profile?.id == userID && auth.authenticationRevision == revision
     }
 
     private func boardLabel(_ board: String) -> String {

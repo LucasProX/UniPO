@@ -62,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/prometheus",
                                 "/swagger-ui/**", "/v3/api-docs/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/verification-code", "/api/auth/verification-code/verify", "/api/auth/reset-password", "/api/auth/email-availability", "/api/auth/nickname-availability", "/api/auth/refresh", "/api/auth/sms-code", "/api/auth/sms-login").permitAll()
+                        // Logout can prove the current device with a valid refresh even after access expires.
+                        .requestMatchers(HttpMethod.POST, "/api/auth/logout").permitAll()
                         // 首页轮播位是公开只读；写入在 /api/admin/spotlights（已受角色保护）。
                         .requestMatchers(HttpMethod.GET, "/api/categories", "/api/tags", "/api/schools", "/api/spotlights", "/api/v1/spotlights").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/options/**").permitAll()
@@ -72,6 +74,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites",
                                 "/api/users/*/followers", "/api/users/*/following").permitAll()
+                        .requestMatchers("/api/admin/users", "/api/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
                         // WebSocket 握手必须放行：浏览器握手带不了 Authorization 头，
                         // 真正的鉴权在握手拦截器（Cookie）或首条 auth 消息（Bearer）里做。

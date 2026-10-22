@@ -86,6 +86,16 @@ final class AuthStoreTests: XCTestCase {
     }
 
     @MainActor
+    private final class MessageAPI: MessagesAPI {
+        let listGate = Gate<Void, [ConversationView]>()
+        func conversations() async throws -> [ConversationView] { try await listGate.invoke(()) }
+        func messages(conversationId: Int64) async throws -> [MessageView] { throw FixtureError.unexpectedRequest }
+        func sendMessage(conversationId: Int64, content: String) async throws -> MessageView {
+            throw FixtureError.unexpectedRequest
+        }
+    }
+
+    @MainActor
     private final class API: AuthenticationAPI {
         struct LogoutInput {
             let accessToken: String?
@@ -107,9 +117,20 @@ final class AuthStoreTests: XCTestCase {
         private(set) var logoutCalls: [LogoutInput] = []
         nonisolated private let tokenState = AuthTokenState()
         var accessToken: String? { tokenState.currentToken() }
+        var authenticationRevision: UInt64 { tokenState.snapshot().revision }
 
         nonisolated func advanceAuthenticationRevision(_ revision: UInt64, clearToken: Bool) {
             tokenState.advance(to: revision, clearToken: clearToken)
+        }
+
+        nonisolated func setUnauthorizedHandler(_ handler: @escaping @Sendable (UInt64) async -> Void) {
+            tokenState.setUnauthorizedHandler(handler)
+        }
+
+        func rejectRequest(revision: UInt64) async {
+            // Inject even an obsolete callback to exercise AuthStore's own fence.
+            let handler = tokenState.handler(for: authenticationRevision)
+            await handler?(revision)
         }
 
         func setAccessToken(_ token: String?, revision: UInt64) async {
@@ -180,6 +201,181 @@ final class AuthStoreTests: XCTestCase {
         [APIError.transport(URLError(.notConnectedToInternet)),
          APIError.server(code: "SERVER_ERROR", message: "服务暂不可用", status: 500),
          APIError.decoding(DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "fixture")))]
+    }
+
+    func testProtectedRequestUnauthorizedHidesIdentityAndRefreshesTheCurrentAccountOnce() async {
+        let api = API()
+        let refreshGate = Gate<String, AuthSession>()
+        api.refreshGate = refreshGate
+        let credentials = Credentials(nil)
+        let store = AuthStore(api: api, credentials: credentials)
+        let initial = session(1)
+        api.loginResult = .success(initial)
+        await store.login(email: "fixture-a", password: "fixture-password")
+        let rejectedRevision = api.authenticationRevision
+
+        let rejection = Task { await api.rejectRequest(revision: rejectedRevision) }
+        await refreshGate.waitForCall()
+        XCTAssertNil(store.profile)
+        XCTAssertNil(api.accessToken)
+        XCTAssertTrue(store.isSessionRecoveryPending)
+        XCTAssertEqual(credentials.value, bundle(initial))
+        XCTAssertTrue(api.meGate.calls.isEmpty)
+        XCTAssertEqual(api.refreshCalls, [initial.refreshToken])
+
+        let refreshed = AuthSession(token: "fixture-refreshed-a", refreshToken: initial.refreshToken,
+                                    expiresInSeconds: 7200, user: profile(1))
+        refreshGate.calls[0].completion.resume(returning: refreshed)
+        await rejection.value
+        XCTAssertEqual(store.session, refreshed)
+        XCTAssertFalse(store.isSessionRecoveryPending)
+        XCTAssertEqual(api.accessToken, refreshed.token)
+        XCTAssertEqual(credentials.clearCount, 0)
+    }
+
+    func testRevokedAccountUnauthorizedThenRefreshUnauthorizedClearsTheLocalSession() async {
+        let api = API()
+        let refreshGate = Gate<String, AuthSession>()
+        api.refreshGate = refreshGate
+        let credentials = Credentials(nil)
+        let store = AuthStore(api: api, credentials: credentials)
+        api.loginResult = .success(session(1))
+        await store.login(email: "fixture-a", password: "fixture-password")
+        let rejectedRevision = api.authenticationRevision
+        let rejection = Task { await api.rejectRequest(revision: rejectedRevision) }
+        await refreshGate.waitForCall()
+        refreshGate.calls[0].completion.resume(throwing: APIError.unauthorized(""))
+        await rejection.value
+
+        XCTAssertFalse(store.isAuthenticated)
+        XCTAssertFalse(store.isSessionRecoveryPending)
+        XCTAssertNil(credentials.value)
+        XCTAssertNil(api.accessToken)
+        XCTAssertEqual(credentials.clearCount, 1)
+        XCTAssertEqual(api.refreshCalls.count, 1)
+        await api.rejectRequest(revision: rejectedRevision)
+        XCTAssertEqual(credentials.clearCount, 1)
+    }
+
+    func testRepeatedProtectedRequestRejectionsShareOneRecovery() async {
+        let api = API()
+        let refreshGate = Gate<String, AuthSession>()
+        api.refreshGate = refreshGate
+        let store = AuthStore(api: api, credentials: Credentials(nil))
+        api.loginResult = .success(session(1))
+        await store.login(email: "fixture-a", password: "fixture-password")
+        let rejectedRevision = api.authenticationRevision
+        let first = Task { await api.rejectRequest(revision: rejectedRevision) }
+        await refreshGate.waitForCall()
+        await api.rejectRequest(revision: rejectedRevision)
+        await api.rejectRequest(revision: rejectedRevision)
+        XCTAssertEqual(api.refreshCalls.count, 1)
+        refreshGate.calls[0].completion.resume(returning: session(1))
+        await first.value
+        await api.rejectRequest(revision: rejectedRevision)
+        XCTAssertEqual(api.refreshCalls.count, 1)
+        XCTAssertTrue(store.isAuthenticated)
+    }
+
+    func testOldRequestRejectionCannotRecoverOrClearTheNewAccount() async {
+        let api = API()
+        let credentials = Credentials(nil)
+        let store = AuthStore(api: api, credentials: credentials)
+        api.loginResult = .success(session(1))
+        await store.login(email: "fixture-a", password: "fixture-password")
+        let oldRevision = api.authenticationRevision
+        let newer = session(2)
+        api.loginResult = .success(newer)
+        await store.login(email: "fixture-b", password: "fixture-password")
+        await api.rejectRequest(revision: oldRevision)
+
+        XCTAssertEqual(store.session, newer)
+        XCTAssertEqual(credentials.value, bundle(newer))
+        XCTAssertTrue(api.refreshCalls.isEmpty)
+        XCTAssertEqual(credentials.clearCount, 0)
+    }
+
+    func testRuntimeRecoveryFailureKeepsCredentialsAndOwnerForRetry() async {
+        for error in recoverableErrors {
+            let api = API()
+            let refreshGate = Gate<String, AuthSession>()
+            api.refreshGate = refreshGate
+            let credentials = Credentials(nil)
+            let store = AuthStore(api: api, credentials: credentials)
+            let initial = session(1)
+            api.loginResult = .success(initial)
+            await store.login(email: "fixture-a", password: "fixture-password")
+            let rejectedRevision = api.authenticationRevision
+            let rejection = Task { await api.rejectRequest(revision: rejectedRevision) }
+            await refreshGate.waitForCall()
+            refreshGate.calls[0].completion.resume(throwing: error)
+            await rejection.value
+
+            XCTAssertFalse(store.isAuthenticated)
+            XCTAssertTrue(store.isSessionRecoveryPending)
+            XCTAssertEqual(credentials.value, bundle(initial))
+            XCTAssertEqual(credentials.clearCount, 0)
+            XCTAssertNotNil(store.recoveryError)
+
+            let retry = Task { await store.restore() }
+            await refreshGate.waitForCall(2)
+            refreshGate.calls[1].completion.resume(returning: session(1))
+            await retry.value
+            XCTAssertEqual(store.profile?.id, 1)
+            XCTAssertNil(store.recoveryError)
+            XCTAssertFalse(store.isSessionRecoveryPending)
+            XCTAssertTrue(api.meGate.calls.isEmpty)
+        }
+    }
+
+    func testRuntimeRecoveryCannotSwitchToAnUnexpectedRefreshOwner() async {
+        let api = API()
+        let refreshGate = Gate<String, AuthSession>()
+        api.refreshGate = refreshGate
+        let credentials = Credentials(nil)
+        let store = AuthStore(api: api, credentials: credentials)
+        let initial = session(1)
+        api.loginResult = .success(initial)
+        await store.login(email: "fixture-a", password: "fixture-password")
+        let rejectedRevision = api.authenticationRevision
+        let rejection = Task { await api.rejectRequest(revision: rejectedRevision) }
+        await refreshGate.waitForCall()
+        refreshGate.calls[0].completion.resume(returning: session(2))
+        await rejection.value
+
+        XCTAssertNil(store.profile)
+        XCTAssertNil(api.accessToken)
+        XCTAssertEqual(credentials.value, bundle(initial))
+        XCTAssertTrue(store.recoveryError?.contains("重新登录") == true)
+    }
+
+    func testMessageVisibilityAndLateResultFollowAuthEvenBeforeTheUIHasSynchronized() async throws {
+        let api = API()
+        let credentials = Credentials(nil)
+        let auth = AuthStore(api: api, credentials: credentials)
+        api.loginResult = .success(session(1))
+        await auth.login(email: "fixture-a", password: "fixture-password")
+        let messageAPI = MessageAPI()
+        let messages = MessagesStore(api: messageAPI)
+        messages.synchronize(with: auth)
+        messages.draft = "A 的私人草稿"
+        let old = Task { await messages.loadConversations() }
+        await messageAPI.listGate.waitForCall()
+        XCTAssertTrue(messages.hasVerifiedIdentity)
+
+        api.loginResult = .success(session(2))
+        await auth.login(email: "fixture-b", password: "fixture-password")
+        // No MessagesStore synchronization yet: the identity source itself fences
+        // both rendering and commits, independent of SwiftUI callback timing.
+        XCTAssertFalse(messages.hasVerifiedIdentity)
+        let oldConversation = try JSONDecoder().decode(ConversationView.self, from:
+            Data(#"{"id":11,"peer":{"id":10,"uid":"fixture-peer","nickname":"同学","role":"USER","level":1},"lastMessage":"A 私信"}"#.utf8))
+        messageAPI.listGate.calls[0].completion.resume(returning: [oldConversation])
+        await old.value
+        XCTAssertTrue(messages.conversations.isEmpty)
+        messages.synchronize(with: auth)
+        XCTAssertTrue(messages.hasVerifiedIdentity)
+        XCTAssertEqual(messages.draft, "")
     }
 
     func testMissingCredentialsStayGuestWithoutContactingTheAPI() async {

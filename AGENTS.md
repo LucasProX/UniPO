@@ -26,6 +26,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/web/` | Controller 层（9 个），统一返回 `ApiResponse` |
 | `backend/src/main/java/com/biecuoguo/service/` | 业务逻辑（10 个），N+1 与手写权限判断都在这一层 |
 | `backend/src/main/java/com/biecuoguo/security/` | Spring Security + JWT + Cookie 会话 + `CurrentUser` |
+| `backend/src/main/java/com/biecuoguo/auth/` | `api/AccountSecurityApi` 统一身份版本/持久设备会话；`internal/` 负责权威校验与撤销，外部不得直接碰 Mapper |
 | `backend/src/main/java/com/biecuoguo/media/` | **第一个按领域拆的模块**：`api/`（MediaDtos）+ `internal/`（Controller/Service/Mapper/实体/ImageSignature）。跨模块只能依赖 `api` |
 | `backend/src/main/java/com/biecuoguo/taxonomy/` | 分类字典模块（学校/学院/专业/标签/分类）：`api/`（TaxonomyDtos）+ `internal/`（Controller/Service）。**实体与 Mapper 暂时仍在共享的 domain/mapper 包**，等 post/user 模块迁移时再收进来 |
 | `backend/src/main/java/com/biecuoguo/message/` | 私信模块：`api/`（MessageDtos）+ `internal/`（Controller/Service/会话/消息实体/Mapper）。依赖共享的 `UserMapper` 与 `PostDtos`，等 user 模块迁移时收口 |
@@ -34,7 +35,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V11，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V20，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -118,12 +119,14 @@ cd ios
 xcodegen generate
 xcodebuild -project UniPO.xcodeproj -scheme UniPO -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
-  -derivedDataPath .build build CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath .build build
 xcrun simctl install booted .build/Build/Products/Debug-iphonesimulator/UniPO.app
 xcrun simctl launch booted com.unipo.app
 # 调试：-tab achievements / -email ... -password ...
 ```
 **不要手改 `UniPO.xcodeproj`**，改 `ios/project.yml` 后重新生成。
+模拟器构建保留本地 ad-hoc 签名及模拟器专属 application-identifier/Keychain 组，不要再传全局 `CODE_SIGNING_ALLOWED=NO`。
+真实系统 Keychain 验收：同一命令把 `build` 换成 `test`，运行 `UniPOTests` 的两个随机命名空间用例；不访问用户实际凭据。真机/Release 签名仍需正式 Team、证书与发布核对。
 
 ## 4. 后端约定
 - 分层：`web` -> `service` -> `mapper`（MyBatis-Plus）-> `domain`。Controller 不写业务，Service 不碰 HTTP。
@@ -153,12 +156,14 @@ xcrun simctl launch booted com.unipo.app
   refresh 默认 14 天（`JWT_REFRESH_EXPIRATION_MINUTES`），只能调 `POST /api/auth/refresh`。
   `security/JwtService.java` 的 `parse()` 只认 access、`parseRefresh()` 只认 refresh，**混用一律 401**——
   不要为了「少写一个方法」把类型检查去掉，那等于把 14 天的 token 变成能直接调接口的通行证。
-  退出登录会把 access 和 refresh 一起写进 `TokenBlacklistService`；**刷新刻意不轮换** refresh token（理由见 DEVLOG：
-  黑名单是进程内的，轮换会在多标签页并发刷新 / 多实例部署时把用户误踢下线）。
+  **2026-10-22 起** JWT 必须带 `av/sid`，Cookie 数据也关联同一身份版本与设备。旧凭据必须重新登录，不能给缺失字段补默认值。
+  身份权威是 MySQL 的 `users.auth_version` 与 `auth_device_sessions`；刷新保留同一设备和绝对期限，不互相消费并发 refresh，但退出设备会拒绝所有派生 token。具体边界见 ADR-0003。
+- **安全状态只经受控写入**：`passwordHash/role/operatorScope/status/authVersion` 禁止普通 `updateById` 回写。改密、重置、封禁、解封、角色变化、注销与 logout-all 在同一事务推进身份版本；不得让旧资料实体恢复旧密码或权限。用户列表、封禁和角色修改只允许 ADMIN，普通运营不可通过这些接口提权。
+- **实时身份不是永久 userId**：上下文保留版本、设备和到期时间；全部上行、每条 live/replay 帧均查权威。4 秒单调租约加 1 秒独立 watchdog 限制空闲连接的逻辑存活；校验超时/拥塞/未知身份关闭，不沿用旧成功。Cookie 只用 peek，不能靠 WS 巡检永久续期；已进入传输的在途帧不能撤回。
 - **Web 端登录态用 httpOnly Cookie，App 继续用 Bearer**（2026-10-20，ADR-0001 D3）：
   `POST /auth/login|register|refresh` 会额外下发两个 Cookie —— `unipo_sid`（HttpOnly，不透明 session id）
-  和 `unipo_csrf`（非 HttpOnly，前端读出来放进 `X-CSRF-Token`）。登录态存在 `SessionStore`（memory/redis），
-  所以「改密/封号/退出所有设备」能立即生效，这点纯 JWT 做不到。
+  和 `unipo_csrf`（非 HttpOnly，前端读出来放进 `X-CSRF-Token`）。Cookie 外壳存在 `SessionStore`（memory/redis），身份仍须通过持久设备和版本校验。
+  只在完全没有 Authorization 头时回退 Cookie，显式失效 Bearer 不能换用 Cookie。
   **规则**：Cookie 认证的写请求必须带 CSRF 头（`security/CsrfFilter.java`，双提交 + 定长比较）；
   安全方法不校验。Bearer 请求不经过 CSRF（Authorization 不会被浏览器自动带上）。
   Cookie 的 `Secure` 由 `AUTH_COOKIE_SECURE` 控制：HTTPS 必须 true，纯 HTTP 的 IP 部署必须 false，
@@ -183,7 +188,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已发布的 V1–V11 禁止修改，新增 `V12__xxx.sql`。
+- Flyway 管 schema：已有 V1–V20 只增不改，下一次迁移按实际最高版本递增（当前应为 `V21__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -215,6 +220,7 @@ xcrun simctl launch booted com.unipo.app
 - **iOS 登录恢复**：网络、服务端 5xx、解码和 Keychain 暂不可用不等于登录失效，保留凭据并显示可重试状态；只有后端验证成功才发布身份。access 明确 401 才刷新，refresh 明确 401 才清除当前凭据。旧双 key 迁移需验证两者属于同一用户；旧 access 已失效而无法确认配对时，要求重新登录，不能悄悄切到另一个 refresh 所属账号。
   access/refresh 作为同一个 `unipo.session` 条目保存，退出先写持久空标记，避免旧 key 删除失败后被重新读出。认证操作同时推进 AuthStore 和 APIClient 的代次；退出使用捕获的旧凭据，迟到结果不得修改新账号。相关改动运行 Core 全部测试。
 - **登录/刷新不带旧 Authorization**，否则过期 token 会让后端直接 403。
+- **运行中的 401**：请求发出时原子捕获认证代次，回调只携代次且拒绝旧账号结果；当前身份先隐藏，再单飞重验。登录、refresh、显式候选 me 和退出不触发递归恢复，不自动重放写请求。私信缓存与未发草稿按 owner 隔离，未知身份不展示，只有验证同账号才恢复草稿，明确退出/换号清理。
 - **测试登录（2026-10-21）**：iOS 默认仅手机号验证码页。Debug API 为 `http://127.0.0.1:18081/api/v1`，经 `scripts/connect-test-api.sh` 的 SSH 隧道连接服务器独立 `test` 实例；任意合规手机号加任意 4 位数字可登录，不发短信。测试数据库、JWT 和媒体桶独立，禁止将这个开关用于生产实例。Release API 仍为生产地址；Keychain 按 API 环境隔离。当前 HTTP 测试 IP 仅用 `project.yml` 的单主机 ATS 例外，禁止全局开启 `NSAllowsArbitraryLoads`。
 - **首页请求状态**统一走 `UniPOCore.FeedStore`：分页只允许一条在途请求，切板块/刷新/切账号作废旧响应；保留失败重试与按帖子 ID 去重。改动后运行 `swift test --package-path ios/Packages/UniPOCore`。
 - **改动必须同时考虑 iOS 17**：新 API 用 `if #available`；本机 iOS 26 模拟器不代表最低版本。
@@ -299,6 +305,7 @@ xcrun simctl launch booted com.unipo.app
 - [`ios/README.md`](ios/README.md) — **iOS 工程结构、构建、调试参数、Bearer/Keychain 约定**
 - `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障
 - [`docs/adr/`](docs/adr/) — 架构决策记录（ADR）。**改架构前先读，改完补一条新 ADR**
+- [`docs/DP02-VERIFICATION.md`](docs/DP02-VERIFICATION.md) — 身份撤销、双实例、故障与客户端的当前验证证据及剩余门槛
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
 
 ## 11. 开发手记必须同步（硬规矩）

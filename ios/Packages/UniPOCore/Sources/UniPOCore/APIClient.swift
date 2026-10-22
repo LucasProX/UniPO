@@ -52,6 +52,10 @@ public actor APIClient {
         tokenState.advance(to: revision, clearToken: clearToken)
     }
 
+    nonisolated func setUnauthorizedHandler(_ handler: @escaping @Sendable (UInt64) async -> Void) {
+        tokenState.setUnauthorizedHandler(handler)
+    }
+
     func setAccessToken(_ token: String?, revision: UInt64) {
         tokenState.set(token, revision: revision)
     }
@@ -251,7 +255,8 @@ public actor APIClient {
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.setValue("ios", forHTTPHeaderField: "X-Client")
-        if let accessToken = tokenState.currentToken(), !accessToken.isEmpty {
+        let authentication = tokenState.snapshot()
+        if let accessToken = authentication.token, !accessToken.isEmpty {
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
 
@@ -270,6 +275,7 @@ public actor APIClient {
             throw APIError.transport(error)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        await reportUnauthorized(status: status, authentication: authentication)
         return try decodeResponse(from: responseData, status: status)
     }
 
@@ -313,10 +319,16 @@ public actor APIClient {
         // 登录/刷新不能带旧 token：服务端过滤链看到过期 Bearer 会直接 403，
         // 表现就是「刚登录成功，再打开又是未登录」。
         let anonymousPaths: Set<String> = ["auth/login", "auth/refresh", "auth/sms-code", "auth/sms-login"]
+        let authentication: AuthTokenState.Snapshot?
         let requestToken: String?
         switch authorization {
-        case .current: requestToken = tokenState.currentToken()
-        case .explicit(let token): requestToken = token
+        case .current:
+            let snapshot = tokenState.snapshot()
+            authentication = anonymousPaths.contains(path) ? nil : snapshot
+            requestToken = snapshot.token
+        case .explicit(let token):
+            authentication = nil
+            requestToken = token
         }
         if let requestToken, !requestToken.isEmpty, !anonymousPaths.contains(path) {
             request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
@@ -335,7 +347,16 @@ public actor APIClient {
         }
 
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if let authentication { await reportUnauthorized(status: status, authentication: authentication) }
         return try decodeResponse(from: data, status: status)
+    }
+
+    private func reportUnauthorized(status: Int, authentication: AuthTokenState.Snapshot) async {
+        guard status == 401, let token = authentication.token, !token.isEmpty,
+              let handler = tokenState.handler(for: authentication.revision) else { return }
+        // The callback contains only the request's revision. Explicit candidates, login,
+        // refresh and logout never enter this path, and writes are never replayed.
+        await handler(authentication.revision)
     }
 
     private func decodeResponse<T: Decodable>(from data: Data, status: Int) throws -> T {

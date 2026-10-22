@@ -9,16 +9,31 @@
 /* Begin PBXBuildFile section */
 		16CCA538742A3F9057546D39 /* UniPOUI in Frameworks */ = {isa = PBXBuildFile; productRef = 85A5251948318FABB115FE7C /* UniPOUI */; };
 		2A642742D031C87052C6068A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 95BC03F3FF806A144A02E195 /* Assets.xcassets */; };
+		2AEFD1CDE7887B87E4E05B76 /* UniPOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4665AFEDFB151FBF3C7F6F95 /* UniPOCore */; };
 		2D7566BDBF2D6F752EBC45B4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B48BC11AC5AABA5091660F3 /* AppDelegate.swift */; };
+		5E4B2F543FC72B46D24D8D2B /* KeychainPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF05CEB13133339DCCB7EEF /* KeychainPersistenceTests.swift */; };
 		708C730686EEDF0CEDE50A9E /* UniPOFeatures in Frameworks */ = {isa = PBXBuildFile; productRef = 64083273EB1C35AE19A5E1B7 /* UniPOFeatures */; };
 		BF4F84B68C1F23932F0AAA99 /* UniPOApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35459761C47973B8691E5C3 /* UniPOApp.swift */; };
 		E72289B6885062A4ED62A550 /* UniPOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6C408DEC70C7F19C2E02DF36 /* UniPOCore */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		F404695FE9470C655DE13986 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0EBE2CCF172987CCD9EF3D49 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4DD6769F0226813D8A53F271;
+			remoteInfo = UniPO;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		17FA3C9113EDCCE28388C8B6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1BF05CEB13133339DCCB7EEF /* KeychainPersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainPersistenceTests.swift; sourceTree = "<group>"; };
 		2B48BC11AC5AABA5091660F3 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		4F1686353A9B3100935D7BD7 /* UniPO.simulator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UniPO.simulator.entitlements; sourceTree = "<group>"; };
 		6002AFC6C0FFE2B9851AE2E9 /* UniPOCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UniPOCore; path = Packages/UniPOCore; sourceTree = SOURCE_ROOT; };
+		8ED2D7A7DE499E38B05AC092 /* UniPOTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = UniPOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		95BC03F3FF806A144A02E195 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A35459761C47973B8691E5C3 /* UniPOApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniPOApp.swift; sourceTree = "<group>"; };
 		C2755B2BA34B2E9EDC3A3C29 /* UniPOFeatures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UniPOFeatures; path = Packages/UniPOFeatures; sourceTree = SOURCE_ROOT; };
@@ -28,6 +43,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		8B6DB8F1E8CAB6DAE3043C25 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2AEFD1CDE7887B87E4E05B76 /* UniPOCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A64CADD81D8E8576FCB91FFC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -56,6 +79,7 @@
 				C9F0B0E3546B5B394A449774 /* App */,
 				051EFFFE1FB636267845A9AF /* Resources */,
 				D30EAEDF56E831256FBE395F /* UniPO.entitlements */,
+				4F1686353A9B3100935D7BD7 /* UniPO.simulator.entitlements */,
 			);
 			path = UniPO;
 			sourceTree = "<group>";
@@ -64,6 +88,7 @@
 			isa = PBXGroup;
 			children = (
 				D88AE5A8FE6720EB0DD012B9 /* UniPO.app */,
+				8ED2D7A7DE499E38B05AC092 /* UniPOTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,6 +101,14 @@
 				F7CCD68992C7A560ED1886C1 /* UniPOUI */,
 			);
 			path = Packages;
+			sourceTree = "<group>";
+		};
+		C539E17CDDE5CAF0FF8F9CBF /* UniPOTests */ = {
+			isa = PBXGroup;
+			children = (
+				1BF05CEB13133339DCCB7EEF /* KeychainPersistenceTests.swift */,
+			);
+			path = UniPOTests;
 			sourceTree = "<group>";
 		};
 		C9F0B0E3546B5B394A449774 /* App */ = {
@@ -92,6 +125,7 @@
 			children = (
 				B54BEDB0D6FC6016181CE06C /* Packages */,
 				9F1F331F0CFB2159BC701F88 /* UniPO */,
+				C539E17CDDE5CAF0FF8F9CBF /* UniPOTests */,
 				B378A17D8964F3F7A04CCF37 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -120,6 +154,26 @@
 			productName = UniPO;
 			productReference = D88AE5A8FE6720EB0DD012B9 /* UniPO.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A2CDA4E40EE5C56B43AC0125 /* UniPOTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4E3033CD182C9F008765065D /* Build configuration list for PBXNativeTarget "UniPOTests" */;
+			buildPhases = (
+				D1AD840BB0C7BD9BE6B8B654 /* Sources */,
+				8B6DB8F1E8CAB6DAE3043C25 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				120107A2EA03E0296EDD406A /* PBXTargetDependency */,
+			);
+			name = UniPOTests;
+			packageProductDependencies = (
+				4665AFEDFB151FBF3C7F6F95 /* UniPOCore */,
+			);
+			productName = UniPOTests;
+			productReference = 8ED2D7A7DE499E38B05AC092 /* UniPOTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -152,6 +206,7 @@
 			projectRoot = "";
 			targets = (
 				4DD6769F0226813D8A53F271 /* UniPO */,
+				A2CDA4E40EE5C56B43AC0125 /* UniPOTests */,
 			);
 		};
 /* End PBXProject section */
@@ -177,7 +232,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D1AD840BB0C7BD9BE6B8B654 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5E4B2F543FC72B46D24D8D2B /* KeychainPersistenceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		120107A2EA03E0296EDD406A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 4DD6769F0226813D8A53F271 /* UniPO */;
+			targetProxy = F404695FE9470C655DE13986 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		04F8478982A0349A9894A406 /* Debug */ = {
@@ -251,8 +322,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+				"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = YES;
 				CODE_SIGN_ENTITLEMENTS = UniPO/UniPO.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = UniPO/UniPO.simulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UniPO/Resources/Info.plist;
@@ -329,13 +404,57 @@
 			};
 			name = Release;
 		};
+		CFA4526FC07BC829E1B878DE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.unipo.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UniPO.app/UniPO";
+			};
+			name = Release;
+		};
+		D913DE19381294DDF28BCB8F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.unipo.app.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/UniPO.app/UniPO";
+			};
+			name = Debug;
+		};
 		EAB5C57D2623EC2B7355B490 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				"CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]" = YES;
+				"CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]" = YES;
 				CODE_SIGN_ENTITLEMENTS = UniPO/UniPO.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = UniPO/UniPO.simulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				"CODE_SIGN_IDENTITY[sdk=iphonesimulator*]" = "-";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UniPO/Resources/Info.plist;
@@ -356,6 +475,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		4E3033CD182C9F008765065D /* Build configuration list for PBXNativeTarget "UniPOTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D913DE19381294DDF28BCB8F /* Debug */,
+				CFA4526FC07BC829E1B878DE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		6FC6F9EC9C4BDB7F7E0496B0 /* Build configuration list for PBXProject "UniPO" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -392,6 +520,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4665AFEDFB151FBF3C7F6F95 /* UniPOCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UniPOCore;
+		};
 		64083273EB1C35AE19A5E1B7 /* UniPOFeatures */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UniPOFeatures;

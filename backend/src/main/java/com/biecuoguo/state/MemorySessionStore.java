@@ -23,28 +23,35 @@ public class MemorySessionStore implements SessionStore {
     private final ConcurrentHashMap<Long, Set<String>> byUser = new ConcurrentHashMap<>();
 
     @Override
-    public void save(String sessionId, SessionData data, Duration ttl) {
+    public synchronized void save(String sessionId, SessionData data, Duration ttl) {
         sessions.put(sessionId, new Entry(data, Instant.now().plus(ttl)));
         byUser.computeIfAbsent(data.userId(), k -> ConcurrentHashMap.newKeySet()).add(sessionId);
     }
 
     @Override
-    public Optional<SessionData> loadAndTouch(String sessionId, Duration ttl) {
+    public synchronized Optional<SessionData> loadAndTouch(String sessionId, Duration ttl) {
+        Optional<SessionData> data = load(sessionId);
+        data.ifPresent(value -> sessions.put(sessionId, new Entry(value, Instant.now().plus(ttl))));
+        return data;
+    }
+
+    @Override
+    public synchronized Optional<SessionData> load(String sessionId) {
         Entry entry = sessions.get(sessionId);
         if (entry == null) {
             return Optional.empty();
         }
         if (entry.expiresAt().isBefore(Instant.now())) {
             sessions.remove(sessionId);
-            byUser.getOrDefault(entry.data().userId(), Set.of()).remove(sessionId);
+            Set<String> owned = byUser.get(entry.data().userId());
+            if (owned != null) { owned.remove(sessionId); }
             return Optional.empty();
         }
-        sessions.put(sessionId, new Entry(entry.data(), Instant.now().plus(ttl)));
         return Optional.of(entry.data());
     }
 
     @Override
-    public void delete(String sessionId, long userId) {
+    public synchronized void delete(String sessionId, long userId) {
         sessions.remove(sessionId);
         Set<String> set = byUser.get(userId);
         if (set != null) {
@@ -53,7 +60,7 @@ public class MemorySessionStore implements SessionStore {
     }
 
     @Override
-    public void deleteAllForUser(long userId) {
+    public synchronized void deleteAllForUser(long userId) {
         Set<String> set = byUser.remove(userId);
         if (set != null) {
             set.forEach(sessions::remove);

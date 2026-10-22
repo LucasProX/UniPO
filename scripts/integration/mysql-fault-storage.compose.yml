@@ -1,0 +1,11 @@
+services:
+  mysql:
+    tmpfs: !reset []
+    volumes:
+      - mysql-data:/var/lib/mysql
+volumes:
+  mysql-data:
+    name: ${UNIPO_DP02_MYSQL_CONTAINER:?fixture name is required}-data
+    labels:
+      com.unipo.fixture: dp02-mysql-identity
+      com.unipo.fixture.run: ${UNIPO_DP02_MYSQL_RUN_ID:?fixture run id is required}

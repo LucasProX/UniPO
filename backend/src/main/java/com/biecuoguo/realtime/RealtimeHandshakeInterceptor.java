@@ -1,6 +1,5 @@
 package com.biecuoguo.realtime;
 
-import com.biecuoguo.security.SessionService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.server.ServerHttpRequest;
@@ -22,10 +21,12 @@ import java.util.Map;
  */
 public class RealtimeHandshakeInterceptor implements HandshakeInterceptor {
 
-    private final SessionService sessionService;
+    private final RealtimeSecurityExecutor security;
+    private final String cookieName;
 
-    public RealtimeHandshakeInterceptor(SessionService sessionService) {
-        this.sessionService = sessionService;
+    public RealtimeHandshakeInterceptor(RealtimeSecurityExecutor security, String cookieName) {
+        this.security = security;
+        this.cookieName = cookieName;
     }
 
     @Override
@@ -35,8 +36,10 @@ public class RealtimeHandshakeInterceptor implements HandshakeInterceptor {
             HttpServletRequest http = servletRequest.getServletRequest();
             String sessionId = readSessionCookie(http);
             if (sessionId != null) {
-                sessionService.resolve(sessionId).ifPresent(data ->
-                        attributes.put(RealtimeWebSocketHandler.ATTR_USER, data.userId()));
+                security.authenticateCookie(sessionId).ifPresent(identity -> {
+                    attributes.put(RealtimeWebSocketHandler.ATTR_AUTH, identity);
+                    attributes.put(RealtimeWebSocketHandler.ATTR_USER, identity.user().id());
+                });
             }
         }
         return true;
@@ -53,9 +56,8 @@ public class RealtimeHandshakeInterceptor implements HandshakeInterceptor {
         if (cookies == null) {
             return null;
         }
-        String name = sessionService.config().sessionCookieName();
         for (Cookie cookie : cookies) {
-            if (name.equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
+            if (cookieName.equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
                 return cookie.getValue();
             }
         }

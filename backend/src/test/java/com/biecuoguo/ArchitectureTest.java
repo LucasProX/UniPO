@@ -82,6 +82,14 @@ class ArchitectureTest {
     }
 
     @Test
+    void authenticationInternalsAreNotAccessedFromOutside() {
+        noClasses().that().resideOutsideOfPackage("com.biecuoguo.auth..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.auth.internal..")
+                .because("身份状态跨模块只经 AccountSecurityApi，不能绕过统一失效校验")
+                .check(CLASSES);
+    }
+
+    @Test
     void postInternalsAreNotAccessedFromOutside() {
         ArchRule rule = noClasses()
                 .that().resideOutsideOfPackage("com.biecuoguo.post..")

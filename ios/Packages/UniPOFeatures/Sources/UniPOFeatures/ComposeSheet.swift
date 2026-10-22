@@ -16,6 +16,12 @@ struct ComposeSheet: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var imageURLs: [String] = []
     @State private var isUploading = false
+    @State private var uploadRequestID: UUID?
+    @State private var submitRequestID: UUID?
+
+    private var identityKey: String {
+        "\(auth.authenticationRevision):\(auth.profile?.id ?? 0)"
+    }
 
     private let boards = [("school", "校 PO"), ("college", "院 PO"), ("major", "专业 PO")]
 
@@ -36,6 +42,13 @@ struct ComposeSheet: View {
             .navigationTitle("发一条校园 PO")
             .onChange(of: pickerItem) { _, item in
                 Task { await upload(item) }
+            }
+            .onChange(of: identityKey) { _, _ in
+                uploadRequestID = nil
+                submitRequestID = nil
+                isUploading = false
+                isSubmitting = false
+                errorMessage = nil
             }
             .task(id: auth.isAuthenticated) {
                 #if DEBUG
@@ -62,7 +75,7 @@ struct ComposeSheet: View {
                         }
                     }
                     .tint(canPublish ? UniColor.ink : UniColor.tertiary)
-                    .disabled(!canPublish || isSubmitting)
+                    .disabled(!auth.isAuthenticated || !canPublish || isSubmitting || isUploading)
                 }
             }
         }
@@ -145,22 +158,34 @@ struct ComposeSheet: View {
 
     private var signedOut: some View {
         VStack(spacing: 16) {
-            Text("登录后才能发 PO")
+            Text(auth.isSessionRecoveryPending ? "正在确认登录状态" : "登录后才能发 PO")
                 .font(.system(size: 20, weight: .bold))
-            Text("登录后可以发帖、评论、关注同学。")
-                .font(.uniBody(13))
-                .foregroundStyle(UniColor.secondary)
-            Button("去登录") {
-                dismiss()
-                auth.requireLogin()
+            if auth.isRestoring {
+                ProgressView().tint(UniColor.blue)
+            } else if auth.isSessionRecoveryPending {
+                Text(auth.recoveryError ?? "请稍后重试")
+                    .font(.uniBody(13)).foregroundStyle(UniColor.secondary)
+                Button("重试") { Task { await auth.restore() } }
+                    .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40)
+            } else {
+                Text("登录后可以发帖、评论、关注同学。")
+                    .font(.uniBody(13))
+                    .foregroundStyle(UniColor.secondary)
+                Button("去登录") {
+                    dismiss()
+                    auth.requireLogin()
+                }
+                    .buttonStyle(UniPrimaryButtonStyle())
+                    .padding(.horizontal, 40)
             }
-                .buttonStyle(UniPrimaryButtonStyle())
-                .padding(.horizontal, 40)
         }
     }
 
     #if DEBUG
     private func uploadGeneratedImage() async {
+        guard let userID = auth.profile?.id, !isUploading else { return }
+        let revision = auth.authenticationRevision
+        let requestID = UUID()
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 400))
         let image = renderer.image { context in
             UIColor(red: 0.18, green: 0.42, blue: 1, alpha: 1).setFill()
@@ -172,36 +197,57 @@ struct ComposeSheet: View {
             ])
         }
         guard let data = image.pngData() else { return }
+        uploadRequestID = requestID
         isUploading = true
-        defer { isUploading = false }
+        defer {
+            if uploadRequestID == requestID { isUploading = false; uploadRequestID = nil }
+        }
         do {
             let result = try await APIClient.shared.uploadImage(data: data, filename: "test.png", mimeType: "image/png")
+            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             imageURLs = [result.url]
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
         }
     }
     #endif
 
     private func upload(_ item: PhotosPickerItem?) async {
-        guard let item else { return }
+        guard let item, let userID = auth.profile?.id else { return }
+        let revision = auth.authenticationRevision
+        let requestID = UUID()
+        uploadRequestID = requestID
         isUploading = true
-        defer { isUploading = false }
+        defer {
+            if uploadRequestID == requestID { isUploading = false; uploadRequestID = nil }
+        }
         do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
+                guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
                 errorMessage = "读取图片失败"
                 return
             }
+            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             let result = try await APIClient.shared.uploadImage(data: data)
+            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             imageURLs = [result.url]
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
         }
     }
 
     private func submit() async {
+        guard let userID = auth.profile?.id, canPublish, !isSubmitting, !isUploading else { return }
+        let revision = auth.authenticationRevision
+        let requestID = UUID()
+        submitRequestID = requestID
         isSubmitting = true
         errorMessage = nil
+        defer {
+            if submitRequestID == requestID { isSubmitting = false; submitRequestID = nil }
+        }
         do {
             _ = try await APIClient.shared.createPost(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -209,10 +255,15 @@ struct ComposeSheet: View {
                 board: board,
                 images: imageURLs
             )
+            guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             dismiss()
         } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "发布失败"
         }
-        isSubmitting = false
+    }
+
+    private func isCurrentIdentity(userID: Int64, revision: UInt64) -> Bool {
+        auth.profile?.id == userID && auth.authenticationRevision == revision
     }
 }

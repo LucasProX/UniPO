@@ -55,6 +55,10 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: UniPO/UniPO.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]": UniPO/UniPO.simulator.entitlements
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
       configs:
         Debug:
           UNIPO_API_BASE_URL: http://127.0.0.1:18081/api/v1
@@ -62,3 +66,27 @@ targets:
       - package: UniPOCore
       - package: UniPOUI
       - package: UniPOFeatures
+  UniPOTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UniPOTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.unipo.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": YES
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+    dependencies:
+      - target: UniPO
+      - package: UniPOCore
+schemes:
+  UniPO:
+    build:
+      targets:
+        UniPO: all
+        UniPOTests: [test]
+    test:
+      targets:
+        - UniPOTests

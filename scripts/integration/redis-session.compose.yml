@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: ${UNIPO_DP02_REDIS_IMAGE:-redis:7-alpine}
+    container_name: ${UNIPO_DP02_REDIS_CONTAINER:?fixture container name is required}
+    labels:
+      com.unipo.fixture: dp02-identity
+      com.unipo.fixture.run: ${UNIPO_DP02_RUN_ID:?fixture run id is required}
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:26379:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 20

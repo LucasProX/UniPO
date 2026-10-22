@@ -20,6 +20,25 @@ private final class StubProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private actor RejectionRecorder {
+    var revisions: [UInt64] = []
+    func record(_ revision: UInt64) { revisions.append(revision) }
+}
+
+private final class Delayed401Protocol: URLProtocol {
+    static var onRequest: ((Delayed401Protocol) -> Void)?
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { Self.onRequest?(self) }
+    override func stopLoading() {}
+    func reject() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"code":"AUTH_UNAUTHENTICATED","message":"","data":null}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+}
+
 final class APIClientTests: XCTestCase {
     private func client() -> APIClient {
         let config = URLSessionConfiguration.ephemeral
@@ -67,7 +86,79 @@ final class APIClientTests: XCTestCase {
 
     override func tearDown() {
         StubProtocol.handler = nil
+        Delayed401Protocol.onRequest = nil
         super.tearDown()
+    }
+
+    func testProtectedRequestAndUploadReportOnlyTheirAuthenticationRevision() async {
+        let api = client()
+        let recorder = RejectionRecorder()
+        api.setUnauthorizedHandler { await recorder.record($0) }
+        await api.setAccessToken("fixture-access", revision: 7)
+        let error = unauthorizedBody()
+        StubProtocol.handler = { _ in (401, error) }
+        _ = try? await api.conversations()
+        _ = try? await api.uploadImage(data: Data([0xFF, 0xD8, 0xFF]))
+        let revisions = await recorder.revisions
+        XCTAssertEqual(revisions, [7, 7])
+    }
+
+    func testCandidatesLoginRefreshLogoutAndGuest401NeverReportCurrentAuthenticationFailure() async {
+        let api = client()
+        let recorder = RejectionRecorder()
+        api.setUnauthorizedHandler { await recorder.record($0) }
+        await api.setAccessToken("fixture-current", revision: 4)
+        let error = unauthorizedBody()
+        StubProtocol.handler = { _ in (401, error) }
+        _ = try? await api.me(accessToken: "fixture-candidate")
+        _ = try? await api.login(email: "fixture", password: "fixture")
+        _ = try? await api.refresh(refreshToken: "fixture")
+        _ = try? await api.requestSmsCode(phone: "fixture")
+        _ = try? await api.smsLogin(phone: "fixture", code: "fixture")
+        await api.logout(accessToken: "fixture-old", refreshToken: "fixture")
+        api.advanceAuthenticationRevision(5, clearToken: true)
+        _ = try? await api.me()
+        _ = try? await api.uploadImage(data: Data([0xFF, 0xD8, 0xFF]))
+        let revisions = await recorder.revisions
+        XCTAssertTrue(revisions.isEmpty)
+    }
+
+    func testLate401FromPreviousAuthenticationRevisionDoesNotNotifyTheNewAccount() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [Delayed401Protocol.self]
+        let api = APIClient(session: URLSession(configuration: config))
+        let recorder = RejectionRecorder()
+        api.setUnauthorizedHandler { await recorder.record($0) }
+        await api.setAccessToken("fixture-a", revision: 1)
+        let arrived = expectation(description: "Old authenticated request arrived")
+        var pending: Delayed401Protocol?
+        Delayed401Protocol.onRequest = { request in
+            XCTAssertEqual(request.request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-a")
+            pending = request
+            arrived.fulfill()
+        }
+        let old = Task { _ = try? await api.conversations() }
+        await fulfillment(of: [arrived], timeout: 2)
+        api.advanceAuthenticationRevision(2, clearToken: true)
+        await api.setAccessToken("fixture-b", revision: 2)
+        try XCTUnwrap(pending).reject()
+        await old.value
+        let revisions = await recorder.revisions
+        XCTAssertTrue(revisions.isEmpty)
+    }
+
+    func testForbiddenAndServerFailureDoNotTriggerAuthenticationRecovery() async {
+        let api = client()
+        let recorder = RejectionRecorder()
+        api.setUnauthorizedHandler { await recorder.record($0) }
+        await api.setAccessToken("fixture-access", revision: 3)
+        let body = unauthorizedBody()
+        for status in [403, 429, 500, 503] {
+            StubProtocol.handler = { _ in (status, body) }
+            _ = try? await api.conversations()
+        }
+        let revisions = await recorder.revisions
+        XCTAssertTrue(revisions.isEmpty)
     }
 
     func testAllLoginEntrypointsOmitExpiredAuthorization() async {

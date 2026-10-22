@@ -6,26 +6,29 @@ struct MessagesView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
-    @State private var conversations: [ConversationView] = []
-    @State private var selected: ConversationView?
-    @State private var messages: [MessageView] = []
-    @State private var draft = ""
-    @State private var isLoading = true
-    @State private var isSending = false
-    @State private var errorMessage: String?
+    @State private var store = MessagesStore()
     @State private var realtimeTick = 0
 
     private let initialConversationId: Int64?
 
+    private var conversations: [ConversationView] { store.conversations }
+    private var selected: ConversationView? { store.selected }
+    private var messages: [MessageView] { store.messages }
+    private var draft: String { store.draft }
+    private var isLoading: Bool { store.isLoading }
+    private var isSending: Bool { store.isSending }
+    private var identityKey: String {
+        "\(auth.authenticationRevision):\(auth.profile?.id ?? 0):\(auth.isSessionRecoveryPending)"
+    }
+
     init(initialConversation: ConversationView? = nil, initialConversationId: Int64? = nil) {
-        _selected = State(initialValue: initialConversation)
-        self.initialConversationId = initialConversationId
+        self.initialConversationId = initialConversation?.id ?? initialConversationId
     }
 
     var body: some View {
         NavigationStack {
             Group {
-                if !auth.isAuthenticated {
+                if !auth.isAuthenticated || !store.hasVerifiedIdentity {
                     signedOut
                 } else if let selected {
                     thread(selected)
@@ -39,7 +42,7 @@ struct MessagesView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     if selected != nil {
                         Button {
-                            selected = nil
+                            store.select(nil)
                         } label: {
                             Image(systemName: "chevron.left")
                         }
@@ -49,14 +52,35 @@ struct MessagesView: View {
                     Button("关闭") { dismiss() }
                 }
             }
-            .task(id: auth.isAuthenticated) { await bootstrap() }
-            .onChange(of: realtimeTick) { _, _ in
-                Task {
-                    await loadConversations()
-                    if let selected { await loadMessages(selected.id) }
+            .task(id: identityKey) { await bootstrap() }
+            .onChange(of: identityKey) { _, _ in
+                store.synchronize(with: auth)
+                if !auth.isAuthenticated {
+                    RealtimeClient.shared.onEvent = nil
+                    RealtimeClient.shared.disconnect()
                 }
             }
-            .onDisappear { RealtimeClient.shared.disconnect() }
+            .onChange(of: realtimeTick) { _, _ in
+                Task {
+                    await store.loadConversations()
+                    if let selected { await store.loadMessages(selected.id) }
+                }
+            }
+            .onDisappear {
+                RealtimeClient.shared.onEvent = nil
+                RealtimeClient.shared.disconnect()
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if store.hasVerifiedIdentity, let error = store.errorMessage {
+                    HStack {
+                        Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                        Spacer()
+                        Button("重试") { Task { await bootstrap() } }
+                            .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                    }
+                    .padding(14).background(UniColor.paper)
+                }
+            }
             .fullScreenCover(isPresented: Binding(
                 get: { auth.loginRequested },
                 set: { auth.loginRequested = $0 }
@@ -72,12 +96,20 @@ struct MessagesView: View {
             Image(systemName: "bubble.left.and.bubble.right")
                 .font(.system(size: 34))
                 .foregroundStyle(UniColor.tertiary)
-            Text("登录后查看私信")
+            Text(auth.isSessionRecoveryPending ? "正在确认登录状态" : "登录后查看私信")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(UniColor.ink)
-            Button("去登录") { auth.requireLogin() }
-                .buttonStyle(UniPrimaryButtonStyle())
-                .padding(.horizontal, 40)
+            if auth.isRestoring {
+                ProgressView().tint(UniColor.blue)
+            } else if auth.isSessionRecoveryPending {
+                Text(auth.recoveryError ?? "请稍后重试")
+                    .font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                Button("重试") { Task { await auth.restore() } }
+                    .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40)
+            } else {
+                Button("去登录") { auth.requireLogin() }
+                    .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -109,8 +141,8 @@ struct MessagesView: View {
                             UniAvatar(url: conversation.peer.avatarUrl, name: conversation.peer.nickname, size: 46)
                         }
                         Button {
-                            selected = conversation
-                            Task { await loadMessages(conversation.id) }
+                            store.select(conversation)
+                            Task { await store.loadMessages(conversation.id) }
                         } label: {
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 3) {
@@ -145,7 +177,7 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
-        .refreshable { await loadConversations() }
+        .refreshable { await store.loadConversations() }
     }
 
     private func thread(_ conversation: ConversationView) -> some View {
@@ -191,13 +223,13 @@ struct MessagesView: View {
             }
 
             HStack(spacing: 8) {
-                TextField("发消息…", text: $draft, axis: .vertical)
+                TextField("发消息…", text: Binding(get: { store.draft }, set: { store.draft = $0 }), axis: .vertical)
                     .lineLimit(1...3)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(UniColor.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 Button {
-                    Task { await send(conversation) }
+                    Task { await store.send() }
                 } label: {
                     if isSending { ProgressView() } else { Image(systemName: "arrow.up.circle.fill") }
                 }
@@ -229,65 +261,38 @@ struct MessagesView: View {
     }
 
     private func bootstrap() async {
-        isLoading = true
-        await loadConversations()
-        if selected == nil, let initialConversationId,
-           let match = conversations.first(where: { $0.id == initialConversationId }) {
-            selected = match
-        }
+        RealtimeClient.shared.onEvent = nil
+        RealtimeClient.shared.disconnect()
+        store.synchronize(with: auth)
+        let userID = auth.profile?.id
+        let revision = auth.authenticationRevision
+        guard userID != nil else { return }
+        await store.loadConversations(initialConversationID: initialConversationId)
+        guard auth.profile?.id == userID, auth.authenticationRevision == revision, !Task.isCancelled else { return }
         #if DEBUG
         if selected == nil,
            ProcessInfo.processInfo.arguments.contains("-open-thread"),
            let first = conversations.first {
-            selected = first
+            store.select(first)
         }
         #endif
         if let selected {
-            await loadMessages(selected.id)
+            await store.loadMessages(selected.id)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-send-test") {
-                draft = "iOS 自动测试消息"
-                await send(selected)
+                store.draft = "iOS 自动测试消息"
+                await store.send()
             }
             #endif
         }
-        isLoading = false
+        guard auth.profile?.id == userID, auth.authenticationRevision == revision, !Task.isCancelled else { return }
         if let token = auth.session?.token {
             RealtimeClient.shared.onEvent = { _, _ in
+                guard auth.profile?.id == userID, auth.authenticationRevision == revision else { return }
                 realtimeTick += 1
             }
             RealtimeClient.shared.connect(token: token)
         }
     }
 
-    private func loadConversations() async {
-        do {
-            conversations = try await APIClient.shared.conversations()
-        } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription
-        }
-    }
-
-    private func loadMessages(_ id: Int64) async {
-        do {
-            messages = try await APIClient.shared.messages(conversationId: id)
-        } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription
-        }
-    }
-
-    private func send(_ conversation: ConversationView) async {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        isSending = true
-        do {
-            let message = try await APIClient.shared.sendMessage(conversationId: conversation.id, content: text)
-            messages.append(message)
-            draft = ""
-            await loadConversations()
-        } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription
-        }
-        isSending = false
-    }
 }

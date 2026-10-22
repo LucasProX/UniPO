@@ -93,7 +93,9 @@
 |---|---|---|---|
 | POST | `/register` | 公开 | 注册。必填 `email`（账号，任意字符串）+ `password` + `verificationCode`；`nickname` / `confirmPassword` 可选 |
 | POST | `/login` | 公开 | 邮箱或用户名。`good` / `xiaoba` / `yuanhua` 三个别名只在本地 `seed-demo-data=true` 时有意义 |
-| POST | `/logout` | 登录 | 把 jti 加入内存黑名单 |
+| POST | `/logout` | 当前设备凭据 | 撤销该设备所有派生 token；access 过期时可只用有效 refresh；Cookie 写请求仍要求 CSRF |
+| POST | `/logout-all` | 登录 | 撤销本人所有设备，并清当前 Cookie |
+| POST | `/change-password` | 登录 | `oldPassword/password/confirmPassword?`，修改后撤销所有旧设备 |
 | POST | `/heartbeat` | 登录 | 在线心跳（内存 Map） |
 | GET | `/me` | 登录 | 当前用户 |
 | POST | `/verification-code` | 公开 | 发验证码。真实模式走 SMTP 真发信；`mock-accept-any-code=true`（本地）时不发信、不落库，任意 4 位数字可用 |
@@ -216,8 +218,10 @@
 
 - **两种 token 不能混用**：拿 refresh 当 access 调业务接口是 401，拿 access 去 `/auth/refresh` 也是 401。
 - `expiresInSeconds` 是 access 的剩余秒数，客户端可据此提前刷新，不必等 401。
-- `POST /api/auth/logout` 可选带 `{"refreshToken":"..."}`，把 access 与 refresh 一起拉黑；不带也能退出（只拉黑 access）。
-- 刷新**不轮换** refresh token：换出来的 refresh 还是原来那一个，直到过期或退出登录。原因见 DEVLOG 同名条目（拉黑表是进程内的，轮换会在多标签页/多实例下误踢人）。
+- `POST /api/auth/logout` 可选带 `{"refreshToken":"..."}`，撤销凭据所属设备的全部 access/refresh（含历史刷新结果）和 Cookie 载体；另一设备不受影响。有效 refresh 可以在 access 过期后完成退出。两份可验证凭据必须属于同一用户和设备。
+- 刷新返回新的 token 字符串，保留同一设备 ID、身份版本和绝对期限；并发刷新不互相消费旧 refresh，不延长设备寿命。
+- V20 起 access/refresh 必须含 `av/sid`。每次认证查询持久设备和用户版本；重置、改密、封禁、解封、降权、注销和 logout-all 后拒绝旧身份。旧格式 JWT/Cookie 需重新登录一次。
+- `Authorization` 存在时不会回退 Cookie；未知身份状态不授权。部署不得混跑接受旧 JWT 的节点，回滚也必须保留新的撤销校验，见 [ADR-0003](adr/0003-authentication-revocation.md)。
 
 ### 9.2 首页轮播位（spotlights）
 
@@ -249,14 +253,15 @@
 ### 9.3 管理后台 API（MVP）
 
 统一前缀 `/api/admin`，需要 `OPERATOR / SCHOOL_OPERATOR / COLLEGE_OPERATOR / MAJOR_OPERATOR / ADMIN` 之一。
+其中 `/api/admin/users` 和其子路径仅允许 **ADMIN**，HTTP 与 Service 方法双重限制；普通运营不得提权、封号或读取完整用户列表。
 **所有写操作都会写 `admin_audit_logs`**（actor / action / target / detail / requestId）。
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/admin/analytics/overview` | 用户/帖子/已发布/评论总量 |
-| GET | `/api/admin/users` | 用户列表 |
-| PUT | `/api/admin/users/{id}/status` | 封禁/解封（`active` / `disabled`） |
-| PUT | `/api/admin/users/{id}/role` | 改角色与运营范围 |
+| GET | `/api/admin/users` | ADMIN 用户列表，不返回 passwordHash/authVersion |
+| PUT | `/api/admin/users/{id}/status` | ADMIN 封禁/解封（仅 `active` / `disabled`），同时撤销旧身份 |
+| PUT | `/api/admin/users/{id}/role` | ADMIN 改合法角色与运营范围，同时撤销旧身份；非法角色返回 400 |
 | GET | `/api/admin/posts?keyword=&status=&limit=` | 帖子搜索（含已下架） |
 | PATCH | `/api/admin/posts/{id}` | 置顶/官方/免错过/上下架（部分更新） |
 | GET/POST/PUT/DELETE | `/api/admin/spotlights[/{id}]` | 轮播位 CRUD（见 9.2） |
@@ -408,7 +413,7 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 `DELETE /api/users/me`：软删除 + 匿名化。
 
 - `users.status=deleted`，邮箱/手机号/昵称/头像/资料清空或替换；
-- 关注、拉黑、device token 删除；Web 会话全吊销；
+- 关注、拉黑、device token 删除；持久身份版本与设备撤销同时提交，旧 Cookie/access/refresh 均失效；
 - 不物理删用户行（帖子/评论/消息仍有引用）；
 - 注销后登录返回「账号已被停用」。
 
@@ -461,6 +466,7 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 - 多实例：事件先落 Redis Stream（每用户最近 500 条），再经 Redis Pub/Sub 广播给所有实例；
   单机则是进程内回调。切换只由 `STATE_BACKEND` 决定，业务代码不变。
 - 推送只是加速通道：WS 断开时前端自动退回原有轮询，离线消息仍靠 `/messages/unread-count` 拉。
+- 已绑定 WS 仍在全部上行及每条下行/重放帧前复验身份；空闲连接按 4 秒单调租约与 1 秒 watchdog 逻辑关闭，正常调度目标上界 5 秒。已进入传输的在途帧不能撤回，5 秒不等于底层 TCP 关闭帧保证；详见 ADR-0003。
 
 ## 11. 已知不一致
 
@@ -468,5 +474,5 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 2. 评论点赞有两套路径（见 §8）。
 3. ~~全部列表无分页~~ 已补：`GET /api/v1/posts/page` 用游标分页（旧的 `/api/posts` 全量列表仍保留）。
 4. ~~没有接口版本号~~ 已补：`/api/v1/**`，见 §1 的版本化说明。
-5. refresh token **不轮换**，也不落库——进程内黑名单重启即清空（见 ISSUES Q-4）。
-5. 错误体没有业务错误码，App 只能靠中文 message 判断类型。
+5. ~~refresh 只靠单 token 黑名单撤销~~ V20 已加入持久设备和用户版本；刷新不延长绝对期限，见 ADR-0003。
+6. ~~错误体没有业务错误码~~ 已统一 `code/message/data/requestId`，客户端按稳定 code 分支。

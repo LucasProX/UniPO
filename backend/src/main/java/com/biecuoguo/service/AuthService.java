@@ -1,6 +1,8 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.biecuoguo.auth.api.AccountSecurityApi;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserPreference;
@@ -11,6 +13,7 @@ import com.biecuoguo.mapper.UserPreferenceMapper;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.security.JwtService;
 import com.biecuoguo.security.TokenBlacklistService;
+import com.biecuoguo.security.SessionService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
@@ -41,8 +44,10 @@ public class AuthService implements CommandLineRunner {
     private final TokenBlacklistService tokenBlacklistService;
     private final PresenceService presenceService;
     private final SmsService smsService;
+    private final AccountSecurityApi accounts;
+    private final SessionService sessions;
 
-    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService, SmsService smsService) {
+    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService, SmsService smsService, AccountSecurityApi accounts, SessionService sessions) {
         this.properties = properties;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
@@ -52,6 +57,8 @@ public class AuthService implements CommandLineRunner {
         this.tokenBlacklistService = tokenBlacklistService;
         this.presenceService = presenceService;
         this.smsService = smsService;
+        this.accounts = accounts;
+        this.sessions = sessions;
     }
 
     @Transactional
@@ -109,17 +116,12 @@ public class AuthService implements CommandLineRunner {
     }
 
     /**
-     * 用 refresh token 换一对新 token。
-     *
-     * <p>刻意**不做轮换**（旧 refresh token 换完仍然有效，直到过期或退出登录被拉黑）。
-     * 轮换需要「旧 token 立刻作废」，而拉黑表是进程内 ConcurrentHashMap（见 ISSUES Q-4），
-     * 于是多标签页并发刷新、或多实例部署时会出现「A 刚刷新成功，B 拿刚被作废的旧 token 刷新失败」，
-     * 用户莫名其妙被踢下线。而 refresh token 的安全边界本来就等价于「已登录」，
-     * 轮换带来的收益要等有共享存储（Redis）之后才值得。
+     * 用 refresh 换新凭据，保留同一设备会话和身份版本。
+     * 并发刷新不互相消费旧 refresh；撤销设备可一次拒绝全部派生凭据，
+     * 设备绝对期限不会因刷新延长。共享权威校验不依赖单实例黑名单。
      */
     public AuthDtos.AuthResponse refresh(String refreshToken) {
-        // 退出登录会把 refresh token 也写进拉黑表，这里必须先查——否则「退出登录」只是本地清了个 key，
-        // 手里留着 refresh token 的人还能一直换出新的 access token。
+        // 保留已有单 token 撤销兼容，再验证持久设备和用户版本。
         if (tokenBlacklistService.isRevoked(refreshToken)) {
             throw new InsufficientAuthenticationException("refresh token 已失效");
         }
@@ -130,11 +132,12 @@ public class AuthService implements CommandLineRunner {
             // 过期 / 签名不对 / 拿 access token 来冒充，一律当成「未登录」。
             throw new InsufficientAuthenticationException("refresh token 无效或已过期");
         }
+        var identity = accounts.validate(claims).orElseThrow(() -> new InsufficientAuthenticationException("登录已失效，请重新登录"));
         User user = userMapper.selectById(claims.id());
         if (user == null || !"active".equals(user.getStatus())) {
             throw new InsufficientAuthenticationException("账号不存在或已被禁用");
         }
-        return issueTokens(user, preferenceFor(user.getId()));
+        return issueTokens(user, preferenceFor(user.getId()), identity);
     }
 
     public AuthDtos.SmsCodeResponse requestSmsCode(String phone) {
@@ -166,7 +169,7 @@ public class AuthService implements CommandLineRunner {
         }
         user.setLastLoginAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        updateLoginTime(user);
         presenceService.markOnline(user.getId());
         return issueTokens(user, preferenceFor(user.getId()));
     }
@@ -214,11 +217,16 @@ public class AuthService implements CommandLineRunner {
 
     /** 签发 access + refresh 并组装返回。登录、注册、刷新三条路径都走这里，别各写一遍。 */
     private AuthDtos.AuthResponse issueTokens(User user, UserPreference preference) {
-        CurrentUser current = new CurrentUser(user.getId(), user.getEmail(), user.getRole());
+        var identity = accounts.createSession(new CurrentUser(user.getId(), user.getEmail(), user.getRole(), user.getAuthVersion(), null));
+        return issueTokens(user, preference, identity);
+    }
+
+    private AuthDtos.AuthResponse issueTokens(User user, UserPreference preference, AccountSecurityApi.ValidatedIdentity identity) {
+        CurrentUser current = identity.user();
         return new AuthDtos.AuthResponse(
-                jwtService.createToken(current),
-                jwtService.createRefreshToken(current),
-                jwtService.accessExpiresInSeconds(),
+                jwtService.createToken(current, identity.expiresAt()),
+                jwtService.createRefreshToken(current, identity.expiresAt()),
+                Math.min(jwtService.accessExpiresInSeconds(), Math.max(0, java.time.Duration.between(java.time.Instant.now(), identity.expiresAt()).getSeconds())),
                 UserProfile.from(user, preference, true)
         );
     }
@@ -316,7 +324,35 @@ public class AuthService implements CommandLineRunner {
         verificationService.verifyCode(email, "reset-password", request.verificationCode());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        int changed = userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, user.getId())
+                .eq(User::getAuthVersion, user.getAuthVersion()).set(User::getPasswordHash, user.getPasswordHash())
+                .set(User::getUpdatedAt, user.getUpdatedAt()));
+        if (changed != 1) { throw new InsufficientAuthenticationException("账号状态已变化，请重试"); }
+        sessions.revokeAllForUser(user.getId());
+    }
+
+    @Transactional
+    public void changePassword(CurrentUser current, AuthDtos.ChangePasswordRequest request) {
+        User user = userMapper.selectById(current.id());
+        if (user == null || !passwordEncoder.matches(request.oldPassword(), user.getPasswordHash())) {
+            throw new BadCredentialsException("原密码不正确");
+        }
+        if (request.confirmPassword() != null && !request.password().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("两次输入的密码不一致");
+        }
+        assertPasswordAcceptable(request.password());
+        int changed = userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, current.id())
+                .eq(User::getAuthVersion, current.authVersion()).set(User::getPasswordHash, passwordEncoder.encode(request.password()))
+                .set(User::getUpdatedAt, LocalDateTime.now()));
+        if (changed != 1) { throw new InsufficientAuthenticationException("账号状态已变化，请重新登录"); }
+        sessions.revokeAllForUser(current.id());
+    }
+
+    public void revokeDevice(CurrentUser user) { accounts.revokeSession(user.sessionId(), user.id()); }
+
+    private void updateLoginTime(User user) {
+        userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, user.getId())
+                .set(User::getLastLoginAt, user.getLastLoginAt()).set(User::getUpdatedAt, user.getUpdatedAt()));
     }
 
     public AuthDtos.AuthResponse login(AuthDtos.LoginRequest request) {
@@ -329,7 +365,7 @@ public class AuthService implements CommandLineRunner {
         }
         user.setLastLoginAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        updateLoginTime(user);
         UserPreference preference = preferenceFor(user.getId());
         presenceService.markOnline(user.getId());
         return issueTokens(user, preference);
@@ -338,6 +374,7 @@ public class AuthService implements CommandLineRunner {
     public UserProfile me(Long userId) {
         presenceService.markOnline(userId);
         User user = userMapper.selectById(userId);
+        if (user == null || !"active".equals(user.getStatus())) { throw new InsufficientAuthenticationException("账号不存在或已被停用"); }
         return UserProfile.from(user, preferenceFor(userId), presenceService.isOnline(userId));
     }
 
@@ -408,18 +445,21 @@ public class AuthService implements CommandLineRunner {
                 admin.setPublicUid(generatePublicUid());
                 dirty = true;
             }
-            if (!"ADMIN".equals(admin.getRole())) {
+            if (admin.getRole() == null || admin.getRole().isBlank()) {
                 admin.setRole("ADMIN");
                 admin.setOperatorScope("admin");
                 dirty = true;
             }
-            if (!"active".equals(admin.getStatus())) {
+            if (admin.getStatus() == null || admin.getStatus().isBlank()) {
                 admin.setStatus("active");
                 dirty = true;
             }
             if (dirty) {
                 admin.setUpdatedAt(now);
-                userMapper.updateById(admin);
+                userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, admin.getId())
+                        .set(User::getPublicUid, admin.getPublicUid()).set(User::getRole, admin.getRole())
+                        .set(User::getOperatorScope, admin.getOperatorScope()).set(User::getStatus, admin.getStatus())
+                        .set(User::getUpdatedAt, now));
             }
         }
         preferenceFor(admin.getId());
@@ -432,7 +472,9 @@ public class AuthService implements CommandLineRunner {
             existing.setPasswordHash(passwordEncoder.encode(GOOD_PASSWORD));
             existing.setStatus("active");
             existing.setUpdatedAt(now);
-            userMapper.updateById(existing);
+            userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, existing.getId())
+                    .set(User::getPasswordHash, existing.getPasswordHash()).set(User::getStatus, "active").set(User::getUpdatedAt, now));
+            sessions.revokeAllForUser(existing.getId());
             preferenceFor(existing.getId());
             return;
         }

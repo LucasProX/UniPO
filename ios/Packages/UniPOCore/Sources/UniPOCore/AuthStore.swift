@@ -3,6 +3,7 @@ import Observation
 
 protocol AuthenticationAPI {
     func advanceAuthenticationRevision(_ revision: UInt64, clearToken: Bool)
+    func setUnauthorizedHandler(_ handler: @escaping @Sendable (UInt64) async -> Void)
     func setAccessToken(_ token: String?, revision: UInt64) async
     func me(accessToken: String) async throws -> UserProfile
     func refresh(refreshToken: String) async throws -> AuthSession
@@ -34,6 +35,8 @@ public final class AuthStore {
     private var recoveryTask: Task<Void, Never>?
     private var codeRequestID: UUID?
     private var restorationSuppressed = false
+    private var recoveryExpectedUserID: Int64?
+    private var accessWasRejected = false
 
     public convenience init() {
         self.init(api: APIClient.shared, credentials: KeychainSessionCredentialStore(), restoreAutomatically: true)
@@ -42,6 +45,9 @@ public final class AuthStore {
     init(api: any AuthenticationAPI, credentials: any SessionCredentialStore, restoreAutomatically: Bool = false) {
         self.api = api
         self.credentials = credentials
+        api.setUnauthorizedHandler { [weak self] requestRevision in
+            await self?.recoverAfterUnauthorized(requestRevision: requestRevision)
+        }
         if restoreAutomatically {
             isRestoring = true
             Task { await restore() }
@@ -50,6 +56,11 @@ public final class AuthStore {
 
     public var isAuthenticated: Bool { session != nil }
     public var profile: UserProfile? { session?.user }
+    public var isSessionRecoveryPending: Bool {
+        isRestoring || (!restorationSuppressed && recoveryError != nil)
+    }
+    /// Fence for private UI work, including recovery of the same account.
+    public var authenticationRevision: UInt64 { revision }
 
     public func requireLogin() {
         guard !isAuthenticated else { return }
@@ -93,6 +104,8 @@ public final class AuthStore {
     private func authenticate(using operation: () async throws -> AuthSession) async {
         guard !isLoggingIn else { return }
         let current = beginOperation()
+        recoveryExpectedUserID = nil
+        accessWasRejected = false
         isLoggingIn = true
         errorMessage = nil
         defer { if current == revision { isLoggingIn = false } }
@@ -120,6 +133,20 @@ public final class AuthStore {
         await task.value
     }
 
+    private func recoverAfterUnauthorized(requestRevision: UInt64) async {
+        guard requestRevision == revision, let rejected = session else { return }
+        // Stop showing private identity before waiting for storage or the network.
+        // Keep the verified owner across retryable failures to prevent account drift.
+        recoveryExpectedUserID = rejected.user.id
+        accessWasRejected = true
+        session = nil
+        let current = beginOperation()
+        isRestoring = true
+        let task = Task { await performRestore(revision: current) }
+        recoveryTask = task
+        await task.value
+    }
+
     private func performRestore(revision current: UInt64) async {
         defer {
             if current == revision { isRestoring = false; recoveryTask = nil }
@@ -127,7 +154,7 @@ public final class AuthStore {
         do {
             guard let saved = try credentials.load() else { return }
             var verifiedUser: UserProfile?
-            if !saved.accessToken.isEmpty {
+            if !saved.accessToken.isEmpty, !accessWasRejected {
                 do {
                     // A candidate is private to this request until the server validates it.
                     verifiedUser = try await api.me(accessToken: saved.accessToken)
@@ -142,11 +169,14 @@ public final class AuthStore {
                 }
             }
             guard current == revision else { return }
+            if let expectedUserID = recoveryExpectedUserID, let verifiedUser, verifiedUser.id != expectedUserID {
+                throw SessionRecoveryFailure.identityMismatch
+            }
             if let user = verifiedUser, !saved.requiresRefreshValidation || saved.refreshToken.isEmpty {
                 try await persist(AuthSession(token: saved.accessToken, refreshToken: saved.refreshToken,
                                               expiresInSeconds: 0, user: user), revision: current)
             } else {
-                try await refreshSession(saved, expectedUserID: verifiedUser?.id, revision: current)
+                try await refreshSession(saved, expectedUserID: recoveryExpectedUserID ?? verifiedUser?.id, revision: current)
             }
         } catch {
             guard current == revision, !Task.isCancelled else { return }
@@ -230,6 +260,8 @@ public final class AuthStore {
         await api.setAccessToken(result.token, revision: current)
         guard current == revision else { return }
         session = result
+        recoveryExpectedUserID = nil
+        accessWasRejected = false
         restorationSuppressed = false
         errorMessage = nil
         recoveryError = nil
@@ -240,6 +272,8 @@ public final class AuthStore {
         guard current == revision else { return }
         restorationSuppressed = true
         session = nil
+        recoveryExpectedUserID = nil
+        accessWasRejected = false
         api.advanceAuthenticationRevision(current, clearToken: true)
         do { try credentials.clear() }
         catch { recoveryError = message(error, fallback: "登录信息清理失败，请重试") }

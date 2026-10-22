@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -17,7 +18,13 @@ public class User {
     private String publicUid;
     private String email;
     private String phone;
+    @JsonIgnore
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String passwordHash;
+    /** Only AccountSecurityApi may advance this value; stale profile writes must never restore it. */
+    @JsonIgnore
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Long authVersion = 0L;
     private String nickname;
     private String avatarUrl;
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
@@ -30,11 +37,14 @@ public class User {
     private String grade;
     private String bio;
     private String verifiedStatus;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String role;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String operatorScope;
     private Integer level;
     private Integer xp;
     private String levelTitle;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

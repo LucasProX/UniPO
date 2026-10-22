@@ -14,6 +14,11 @@ public struct RootView: View {
     @State private var showMessages = false
     @State private var pendingConversationId: Int64?
     @State private var pendingProfileTab = false
+    @State private var lastVerifiedUserID: Int64?
+
+    private var identityKey: String {
+        "\(auth.authenticationRevision):\(auth.profile?.id ?? 0):\(auth.isSessionRecoveryPending)"
+    }
 
     public init() {
         // 调试用：xcrun simctl launch booted com.unipo.app -tab achievements
@@ -50,8 +55,10 @@ public struct RootView: View {
                     ToolsView()
                 case .achievements:
                     AchievementsView()
+                        .id(identityKey)
                 case .profile:
                     ProfileView()
+                        .id(identityKey)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -109,12 +116,20 @@ public struct RootView: View {
                 tab = .profile
             }
         }
-        .task(id: auth.isAuthenticated) {
+        .task(id: identityKey) {
+            let userID = auth.profile?.id
+            if let userID {
+                if let previous = lastVerifiedUserID, previous != userID { clearPrivatePresentation() }
+                lastVerifiedUserID = userID
+            } else if !auth.isSessionRecoveryPending {
+                clearPrivatePresentation()
+                lastVerifiedUserID = nil
+            }
             if auth.isAuthenticated, pendingProfileTab, auth.profile?.onboardingCompleted == true {
                 pendingProfileTab = false
                 tab = .profile
             }
-            if !auth.isAuthenticated, tab == .profile {
+            if !auth.isAuthenticated, !auth.isSessionRecoveryPending, tab == .profile {
                 tab = .home
             }
             if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
@@ -129,7 +144,7 @@ public struct RootView: View {
             Task { _ = try? await APIClient.shared.registerPushToken(token) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .unipoOpenConversation)) { note in
-            guard let id = note.object as? Int64 else { return }
+            guard auth.isAuthenticated, let id = note.object as? Int64 else { return }
             pendingConversationId = id
             showMessages = true
         }
@@ -149,6 +164,14 @@ public struct RootView: View {
             }
             #endif
         }
+    }
+
+    private func clearPrivatePresentation() {
+        showMessages = false
+        showCompose = false
+        pendingConversationId = nil
+        RealtimeClient.shared.onEvent = nil
+        RealtimeClient.shared.disconnect()
     }
 
     private var sessionRecoveryNotice: some View {

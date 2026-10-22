@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class JwtServiceTest {
     private static final String SECRET = "unit-test-secret-0123456789abcdef0123456789";
-    private static final CurrentUser USER = new CurrentUser(7L, "u@example.com", "USER");
+    private static final CurrentUser USER = new CurrentUser(7L, "u@example.com", "USER", 0L, "unit-device-session");
 
     private static JwtService service(String secret, long accessMinutes, long refreshMinutes) {
         return new JwtService(new AppProperties(
@@ -75,5 +75,36 @@ class JwtServiceTest {
         JwtService expired = service(SECRET, -1, 20160);
         String token = expired.createToken(USER);
         assertThrows(RuntimeException.class, () -> expired.parse(token));
+    }
+
+    @Test
+    void deviceAndVersionSurviveRoundTripAndBoundTokenLifetime() {
+        JwtService jwt = service();
+        Instant deviceDeadline = Instant.now().plusSeconds(30);
+        String access = jwt.createToken(USER, deviceDeadline);
+        String refresh = jwt.createRefreshToken(USER, deviceDeadline);
+        assertEquals(USER, jwt.parse(access));
+        assertEquals(USER, jwt.parseRefresh(refresh));
+        assertTrue(!jwt.expiresAt(access).isAfter(deviceDeadline));
+        assertTrue(!jwt.expiresAt(refresh).isAfter(deviceDeadline));
+    }
+
+    @Test
+    void oldUnversionedAndTypelessCredentialsRequireNewAuthentication() {
+        var key = io.jsonwebtoken.security.Keys.hmacShaKeyFor(SECRET.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        for (String type : new String[]{"access", "refresh", ""}) {
+            var builder = io.jsonwebtoken.Jwts.builder().subject("7").claim("role", "ADMIN")
+                    .expiration(java.util.Date.from(Instant.now().plusSeconds(300)));
+            if (!type.isBlank()) { builder.claim("typ", type); }
+            String old = builder.signWith(key).compact();
+            assertThrows(RuntimeException.class, () -> service().parse(old));
+            assertThrows(RuntimeException.class, () -> service().parseRefresh(old));
+        }
+        assertThrows(IllegalArgumentException.class, () -> service().createToken(new CurrentUser(7L, "fixture", "USER")));
+    }
+
+    @Test
+    void issuingTwiceInOneSecondStillProducesDistinctCredentials() {
+        org.junit.jupiter.api.Assertions.assertNotEquals(service().createToken(USER), service().createToken(USER));
     }
 }

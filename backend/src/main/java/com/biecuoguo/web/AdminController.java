@@ -6,6 +6,7 @@ import com.biecuoguo.dto.AdminDtos;
 import com.biecuoguo.security.SecurityUtils;
 import com.biecuoguo.service.AdminService;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -26,14 +27,14 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/status")
-    public ApiResponse<User> updateUserStatus(@PathVariable Long id, @RequestBody AdminDtos.UserStatusRequest request) {
+    public ApiResponse<User> updateUserStatus(@PathVariable Long id, @Valid @RequestBody AdminDtos.UserStatusRequest request) {
         User updated = adminService.updateUserStatus(id, request);
         auditApi.record(SecurityUtils.currentUser(), "user.status.update", "user", id, "status=" + request.status());
         return ApiResponse.ok(updated);
     }
 
     @PutMapping("/users/{id}/role")
-    public ApiResponse<User> updateUserRole(@PathVariable Long id, @RequestBody AdminDtos.UserRoleRequest request) {
+    public ApiResponse<User> updateUserRole(@PathVariable Long id, @Valid @RequestBody AdminDtos.UserRoleRequest request) {
         User updated = adminService.updateUserRole(id, request);
         auditApi.record(SecurityUtils.currentUser(), "user.role.update", "user", id,
                 "role=" + request.role() + " scope=" + request.operatorScope());

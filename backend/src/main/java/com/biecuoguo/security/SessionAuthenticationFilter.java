@@ -27,6 +27,7 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
 
     /** request attribute：当前请求使用的服务端会话；null 表示不是 Cookie 认证。 */
     public static final String SESSION_ATTRIBUTE = "unipo.session";
+    public static final String SESSION_UNAVAILABLE_ATTRIBUTE = "unipo.session.unavailable";
 
     private final SessionService sessionService;
 
@@ -37,15 +38,18 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-        if (SecurityContextHolder.getContext().getAuthentication() == null) {
+        if (request.getHeader("Authorization") == null && SecurityContextHolder.getContext().getAuthentication() == null) {
             String sessionId = readSessionCookie(request);
             if (sessionId != null) {
-                sessionService.resolve(sessionId).ifPresent(data -> {
-                    CurrentUser user = new CurrentUser(data.userId(), data.email(), data.role());
+                try { sessionService.resolve(sessionId).ifPresent(data -> {
+                    CurrentUser user = new CurrentUser(data.userId(), data.email(), data.role(), data.authVersion(), data.deviceSessionId());
                     SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                             user, null, List.of(new SimpleGrantedAuthority("ROLE_" + data.role()))));
                     request.setAttribute(SESSION_ATTRIBUTE, data);
-                });
+                }); } catch (RuntimeException ex) {
+                    request.setAttribute(SESSION_UNAVAILABLE_ATTRIBUTE, Boolean.TRUE);
+                    SecurityContextHolder.clearContext();
+                }
             }
         }
         filterChain.doFilter(request, response);

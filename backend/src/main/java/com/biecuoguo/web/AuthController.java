@@ -3,10 +3,11 @@ package com.biecuoguo.web;
 import com.biecuoguo.dto.AuthDtos;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.security.CookieSupport;
+import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.security.JwtService;
 import com.biecuoguo.security.SecurityUtils;
 import com.biecuoguo.security.SessionService;
-import com.biecuoguo.security.TokenBlacklistService;
+import com.biecuoguo.security.SessionAuthenticationFilter;
 import com.biecuoguo.service.AuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,14 +21,11 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
     private final AuthService authService;
     private final JwtService jwtService;
-    private final TokenBlacklistService tokenBlacklistService;
     private final SessionService sessionService;
 
-    public AuthController(AuthService authService, JwtService jwtService,
-                          TokenBlacklistService tokenBlacklistService, SessionService sessionService) {
+    public AuthController(AuthService authService, JwtService jwtService, SessionService sessionService) {
         this.authService = authService;
         this.jwtService = jwtService;
-        this.tokenBlacklistService = tokenBlacklistService;
         this.sessionService = sessionService;
     }
 
@@ -101,33 +99,63 @@ public class AuthController {
     public ApiResponse<Boolean> logout(HttpServletRequest request,
                                           @RequestBody(required = false) AuthDtos.LogoutRequest body,
                                           HttpServletResponse response) {
-        Long currentUserId = null;
-        try {
-            currentUserId = SecurityUtils.currentUser().id();
-        } catch (RuntimeException ignored) {
-            // The token may already be invalid or missing; still revoke it below when possible.
-        }
         String header = request.getHeader("Authorization");
+        if (header == null && Boolean.TRUE.equals(request.getAttribute(SessionAuthenticationFilter.SESSION_UNAVAILABLE_ATTRIBUTE))) {
+            throw new IllegalStateException("会话暂时无法确认，请稍后重试退出");
+        }
+        CurrentUser credential = null;
         if (header != null && header.startsWith("Bearer ")) {
-            String token = header.substring(7);
-            tokenBlacklistService.revoke(token, jwtService.expiresAt(token));
+            try { credential = jwtService.parse(header.substring(7)); }
+            catch (RuntimeException ignored) { /* An expired access may use a valid refresh below. */ }
+        } else if (header == null) {
+            try { credential = SecurityUtils.currentUser(); }
+            catch (org.springframework.security.core.AuthenticationException ignored) { }
         }
-        // refresh token 也拉黑，否则退出登录后它还能换出一对新的 access token。
         if (body != null && body.refreshToken() != null && !body.refreshToken().isBlank()) {
+            CurrentUser refresh;
             try {
-                tokenBlacklistService.revoke(body.refreshToken(), jwtService.expiresAt(body.refreshToken()));
-            } catch (RuntimeException ignored) {
-                // 已经过期或格式不对的 refresh token 不用拉黑，本来也用不了。
+                refresh = jwtService.parseRefresh(body.refreshToken());
+            } catch (RuntimeException ex) {
+                if (credential == null) {
+                    throw new org.springframework.security.authentication.InsufficientAuthenticationException("登录信息已失效");
+                }
+                refresh = credential;
             }
+            if (credential != null && (!credential.id().equals(refresh.id())
+                    || !java.util.Objects.equals(credential.sessionId(), refresh.sessionId()))) {
+                throw new IllegalArgumentException("登录信息不属于同一设备");
+            }
+            credential = refresh;
         }
-        if (currentUserId != null) {
-            authService.logout(currentUserId);
+        if (credential == null) {
+            if (header != null || body != null && body.refreshToken() != null) {
+                throw new org.springframework.security.authentication.InsufficientAuthenticationException("请重新登录");
+            }
+            clearWebSession(response);
+            return ApiResponse.ok(true);
         }
-        // Cookie 会话也要跟着失效，否则浏览器这边「退出」了还能继续用旧 Cookie 调接口。
+        // Durable device revocation covers every token derived by refresh. Storage failures propagate.
+        authService.revokeDevice(credential);
+        authService.logout(credential.id());
         String sessionId = sessionIdFrom(request);
-        if (sessionId != null && currentUserId != null) {
-            sessionService.revoke(sessionId, currentUserId);
+        if (header == null && sessionId != null) {
+            sessionService.revoke(sessionId, credential.id());
         }
+        if (header == null) { clearWebSession(response); }
+        return ApiResponse.ok(true);
+    }
+
+    @PostMapping("/logout-all")
+    public ApiResponse<Boolean> logoutAll(HttpServletResponse response) {
+        sessionService.revokeAllForUser(SecurityUtils.currentUser().id());
+        clearWebSession(response);
+        return ApiResponse.ok(true);
+    }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Boolean> changePassword(@Valid @RequestBody AuthDtos.ChangePasswordRequest body,
+                                               HttpServletResponse response) {
+        authService.changePassword(SecurityUtils.currentUser(), body);
         clearWebSession(response);
         return ApiResponse.ok(true);
     }
@@ -140,7 +168,7 @@ public class AuthController {
      */
     private void issueWebSession(AuthDtos.AuthResponse auth, HttpServletResponse response) {
         var user = auth.user();
-        SessionService.IssuedSession session = sessionService.create(user.id(), user.role(), user.email());
+        SessionService.IssuedSession session = sessionService.create(jwtService.parse(auth.token()));
         var config = sessionService.config();
         response.addHeader(HttpHeaders.SET_COOKIE,
                 CookieSupport.sessionCookie(config, session.sessionId(), sessionService.ttl()).toString());

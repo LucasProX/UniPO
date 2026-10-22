@@ -4747,3 +4747,45 @@ if let uploaded = try? await APIClient.shared.uploadImage(...) {
 现在 Keychain 优先 update，不存在才 add，并区分不存在与读写失败。两枚 token 保存在一个 `unipo.session` 条目；成功验证后才迁移旧格式。迁移时 access 和 refresh 都经服务端验证，用户 ID 不一致就要求重新登录。旧 access 已失效时无法确认旧配对，也要求重新登录一次；新格式继续支持正常的 401 后刷新。
 
 退出先把新条目原子写成 JSON null，再尽力删除两个旧条目。null 是持久退出标记，重建 Store 也不能回退旧值。标记本身写失败时保留错误并禁止本进程自动恢复，重试执行清理，不能谎称安全存储已清完。整个 Keychain 不可写时仍需要恢复存储可用性才能完成持久清理；本地清理也不等于服务端已撤销所有设备，后者继续按 DP02 处理。
+
+## 2026-10-22 退出要撤销设备，不是只记住本次 token
+
+在旧版 `aef8dcc` 的隔离夹具上，重置密码真的换了新 hash，旧密码也登录不了，但两设备保存的 access、Cookie、refresh 仍能跨两个实例读私信。最初看黑名单和 `users.status` 容易觉得已经有边界，实际上过滤器只读 JWT 的 role，业务方法也不一定查当前账号状态；刷新还会持续签出新凭据。
+
+现在 V20 把 `users.auth_version` 和 `auth_device_sessions` 作为 MySQL 权威，JWT/Cookie 都携带版本与设备关联。refresh 保留设备和绝对期限；单设备退出撤销整个派生家族，全设备退出、改密、封禁和降权推进版本。普通 `User.updateById` 不再允许回写密码、角色、状态、运营范围和版本，否则旧资料实体仍可能把刚改的安全状态覆盖回去。安全写入改成显式列更新并参与同一事务。
+
+查询也不能随手加入业务事务：Repeatable Read 的旧快照或 MyBatis 正向缓存可能继续认旧身份。`AccountSecurityApi.validate` 用新的已提交视图、禁用缓存来校验；登录条件插入只接受验证前捕获的版本，不能把旧密码校验结果升级成新版本。代价是每次授权要查库，目前没有容量证据，不能拿隔离验收推导百万日活已达标。
+
+## 2026-10-22 Redis Lua 修了续期，却被大用户 ID 绕回旧坑
+
+R06 先复现到：session touch 后还有约 1.8 秒寿命，用户索引却已经过期，`deleteAllForUser` 找不到它。把保存、touch 与索引更新改成 Lua 后，原大 BIGINT fixture 仍然红，第一反应是脚本没执行或时间窗口不稳。
+
+实际是 `cjson.decode` 把 userId 当 double，`tostring` 拼出来的键与 Java 的整数键不一致，超过精确整数范围后会丢精度甚至转科学计数法。没有把测试 ID 缩小来绕开：SessionData 把 userId 以 JSON 字符串保存，Lua 只按字符串使用；原来的大 ID 用例红转绿。读取不续期的 `peek` 另开入口，WS 每秒检查不能偷偷把 Cookie 永久续命。
+
+隔离也踩了一个环境坑：Docker 列表有 12306/6379 映射，但宿主实际监听是 SSH。本轮测试用全新 22306/26379 和随机 marker，连前先确认归属，不能把 compose 项目名换一下就当隔离。故障夹具的 marker 起初带 600 秒 TTL，长启动后 marker 自己先过期，恢复检查两次等满 90 秒；这不是 Redis 没恢复。marker 改成跟随本轮容器生命周期，恢复只读不补写，同时分别保存业务失败和 finally 恢复失败，避免只剩最后一个异常。
+
+## 2026-10-22 WebSocket 收过一次 auth 不能永久收私信
+
+旧 handler 首次认证后只留下 userId，账号被封或退出后，HTTP 能拒绝，已有连接仍会收到 message 正文。只在 `resume` 入口补一下也不够，live 投递、逐帧重放、ping/ack 和真正的控制帧都得经过统一校验。Spring 的 `PongMessage` 不走 `handleTextMessage`，因此检查放在框架分派前的 `handleMessage`。
+
+连接现在保留不含原始 Bearer 的不可变身份上下文。每条投递和重放帧前查权威，空闲连接用 4 秒租约和每秒独立 watchdog 兜住；DB 校验在有界线程池，超时和拥塞拒绝授权，watchdog 不做数据库和 socket 阻塞操作。租约和慢写计时使用 `System.nanoTime`，墙钟只判断凭据绝对过期；否则系统回拨会把“五秒”偷偷拉长。关闭先标逻辑状态、移出投递集合，再尝试关传输，不能承诺收回已经进入网络的帧。
+
+这轮还修了 register/remove 的集合竞态：先判空再 remove 整组，会把刚注册的连接一并从 map 摘掉，让巡检永远看不见。现在同一用户的集合变更走 `compute`。双实例实测覆盖七类安全变更和自然过期，阻塞/迟到/慢写另用可控测试覆盖；真实大规模空闲连接与容量仍要单独测。
+
+## 2026-10-22 查不到 Cookie 不代表退出已经成功
+
+故障演练最初只测 Bearer。复审发现 Cookie-only logout 在 Redis 异常时，过滤器把异常当未登录，Controller 又把没有身份当作幂等退出，直接清 Cookie 返回 200。MySQL 设备并没有撤销，复制出来的 Cookie 和 refresh 在 Redis 恢复后仍可能用。
+
+现在 request 明确区分“会话不存在”和“会话状态不可确认”，后者不能报告退出成功。最终故障用例保留原 Cookie，故障时得到 500，恢复后先证明原 Cookie 仍可用，再用它重试退出得到 200，随后旧设备全部凭据 401。依赖启动与应用连接重连是两层，原有效对照需有界暖机；暂时 401 不能当作持久撤销的证据。
+
+## 2026-10-22 运行中的 401 要带请求代次，私人草稿要记 owner
+
+服务端真正吊销身份后，普通 API 原先只抛 401，App 的 AuthStore 仍留着已登录资料。直接广播“退出”又会出另一个问题：A 的迟到 401 可能清掉刚登录的 B。现在请求发送时原子捕获 token 与 revision，通知只带 revision；APIClient 和 AuthStore 都拒绝旧代次，当前身份先隐藏，再单飞验证。候选 me、登录、刷新和退出不广播，避免递归恢复。
+
+没有自动重放写请求。评论、发布和私信可能已经在服务端提交，网络失败后重放会造成重复；草稿保留，用户明确决定下一步。消息可见缓存与未发草稿分开：身份未知不展示私人会话，只私存 owner、会话 ID 和草稿；重新验证同一个 owner 才恢复，明确退出或换号就销毁。Home 的公开帖子评论草稿继续跨登录保留，迟到上传、发布和私信结果都有代次检查。
+
+## 2026-10-22 模拟器能启动不代表 Keychain 有权限
+
+新版本界面提示“无法读取或保存登录信息”，起初需要排除锁屏和网络。securityd 给的实际错误是 `-34018`，明确缺 application-identifier 或 keychain-access-groups；锁屏交互限制是另一个码。工程此前全局 `CODE_SIGNING_ALLOWED=NO`，旧 Keychain 实现又把失败静默折成 nil，难怪看起来像登录没保存。
+
+现在只给 simulator SDK 启用本地 ad-hoc 签名与单一 App 组，device/Release 不借用模拟器前缀。Xcode 模拟器把权限嵌在 Mach-O 的 `__TEXT __entitlements`，`codesign` 的 plist 为空也不能单独判失败。新增 hosted XCTest，用随机 service 实际做 SecItem 保存、覆盖、重建读取和删除，两项均通过，不读取用户 token。iOS 17、真机和正式签名仍要各自验收，不能从模拟器结果推断。

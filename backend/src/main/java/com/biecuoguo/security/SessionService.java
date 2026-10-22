@@ -1,7 +1,10 @@
 package com.biecuoguo.security;
 
 import com.biecuoguo.config.AppProperties;
+import com.biecuoguo.auth.api.AccountSecurityApi;
 import com.biecuoguo.state.SessionStore;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.security.SecureRandom;
@@ -26,16 +29,20 @@ public class SessionService {
 
     private final SessionStore store;
     private final AppProperties.Auth auth;
+    private final AccountSecurityApi accountSecurity;
 
-    public SessionService(SessionStore store, AppProperties properties) {
+    public SessionService(SessionStore store, AppProperties properties, AccountSecurityApi accountSecurity) {
         this.store = store;
         this.auth = properties.auth();
+        this.accountSecurity = accountSecurity;
     }
 
-    public IssuedSession create(long userId, String role, String email) {
+    public IssuedSession create(CurrentUser user) {
+        accountSecurity.validate(user).orElseThrow(() -> new InsufficientAuthenticationException("登录身份已失效"));
         String sessionId = randomToken();
         String csrfToken = randomToken();
-        store.save(sessionId, new SessionStore.SessionData(userId, role, email, csrfToken), ttl());
+        store.save(sessionId, new SessionStore.SessionData(user.id(), user.role(), user.email(), csrfToken,
+                user.authVersion(), user.sessionId()), ttl());
         return new IssuedSession(sessionId, csrfToken);
     }
 
@@ -43,7 +50,19 @@ public class SessionService {
         if (sessionId == null || sessionId.isBlank()) {
             return Optional.empty();
         }
-        return store.loadAndTouch(sessionId, ttl());
+        return validate(store.loadAndTouch(sessionId, ttl()));
+    }
+
+    public Optional<SessionStore.SessionData> peek(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) { return Optional.empty(); }
+        return validate(store.load(sessionId));
+    }
+
+    private Optional<SessionStore.SessionData> validate(Optional<SessionStore.SessionData> stored) {
+        return stored.flatMap(data -> accountSecurity.validate(new CurrentUser(data.userId(), data.email(), data.role(),
+                        data.authVersion(), data.deviceSessionId()))
+                .map(valid -> new SessionStore.SessionData(valid.user().id(), valid.user().role(), valid.user().email(),
+                        data.csrfToken(), valid.user().authVersion(), valid.user().sessionId())));
     }
 
     public void revoke(String sessionId, long userId) {
@@ -52,7 +71,9 @@ public class SessionService {
         }
     }
 
+    @Transactional
     public void revokeAllForUser(long userId) {
+        accountSecurity.revokeAll(userId);
         store.deleteAllForUser(userId);
     }
 

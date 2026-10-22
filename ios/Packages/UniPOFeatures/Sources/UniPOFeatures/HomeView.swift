@@ -43,13 +43,20 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await load(reset: true) }
-        .task(id: "\(auth.isRestoring):\(auth.profile?.id ?? 0)") {
-            guard !auth.isRestoring else { return }
-            if let previousViewerID, previousViewerID != auth.profile?.id { selectedPost = nil }
-            previousViewerID = auth.profile?.id
+        .task(id: "\(auth.authenticationRevision):\(auth.isRestoring):\(auth.profile?.id ?? 0)") {
+            // Public post details and their comment draft survive guest/login and
+            // same-owner recovery. A different verified account starts afresh.
+            if let userID = auth.profile?.id {
+                if let previousViewerID, previousViewerID != userID { selectedPost = nil }
+                previousViewerID = userID
+            }
             unreadCount = 0
             growth = nil
+            growthError = nil
+            growthLoading = false
+            growthGeneration += 1
             feed.clear()
+            guard !auth.isRestoring else { return }
             await load(reset: true)
         }
         .task { await pollUnread() }
@@ -298,6 +305,7 @@ struct HomeView: View {
         growthGeneration += 1
         let requestGeneration = growthGeneration
         let userID = auth.profile?.id
+        let revision = auth.authenticationRevision
         guard userID != nil else {
             growth = nil
             growthError = nil
@@ -308,10 +316,12 @@ struct HomeView: View {
         growthError = nil
         do {
             let result = try await APIClient.shared.achievements()
-            guard auth.profile?.id == userID, growthGeneration == requestGeneration else { return }
+            guard auth.profile?.id == userID, auth.authenticationRevision == revision,
+                  growthGeneration == requestGeneration else { return }
             growth = result
         } catch {
-            guard auth.profile?.id == userID, growthGeneration == requestGeneration else { return }
+            guard auth.profile?.id == userID, auth.authenticationRevision == revision,
+                  growthGeneration == requestGeneration else { return }
             growthError = (error as? LocalizedError)?.errorDescription ?? "成长进度加载失败"
         }
         growthLoading = false
@@ -320,7 +330,9 @@ struct HomeView: View {
     private func pollUnread() async {
         while !Task.isCancelled {
             let userID = auth.profile?.id
-            if userID != nil, let count = try? await APIClient.shared.unreadCount(), auth.profile?.id == userID {
+            let revision = auth.authenticationRevision
+            if userID != nil, let count = try? await APIClient.shared.unreadCount(),
+               auth.profile?.id == userID, auth.authenticationRevision == revision {
                 unreadCount = count
             } else if !auth.isAuthenticated {
                 unreadCount = 0

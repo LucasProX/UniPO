@@ -1,5 +1,9 @@
 package com.biecuoguo.dto;
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+
 public final class AdminDtos {
     private AdminDtos() {}
 
@@ -14,6 +18,7 @@ public final class AdminDtos {
             long comments
     ) {}
 
-    public record UserStatusRequest(String status) {}
-    public record UserRoleRequest(String role, String operatorScope) {}
+    public record UserStatusRequest(@NotBlank @Pattern(regexp = "active|disabled") String status) {}
+    public record UserRoleRequest(@NotBlank @Pattern(regexp = "USER|OPERATOR|SCHOOL_OPERATOR|COLLEGE_OPERATOR|MAJOR_OPERATOR|ADMIN") String role,
+                                  @Size(max = 32) String operatorScope) {}
 }

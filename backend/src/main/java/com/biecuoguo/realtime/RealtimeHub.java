@@ -1,17 +1,24 @@
 package com.biecuoguo.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.biecuoguo.security.AuthenticationContext;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * 实时推送中心。连接注册在本进程，事件的跨实例分发交给 {@link RealtimeBroker}。
@@ -24,6 +31,8 @@ public class RealtimeHub {
 
     private static final Logger log = LoggerFactory.getLogger(RealtimeHub.class);
     private static final int REPLAY_LIMIT = 100;
+    static final Duration VALIDATION_LEASE = Duration.ofSeconds(4);
+    static final Duration WRITE_LIMIT = Duration.ofSeconds(2);
 
     private final Map<Long, Set<RealtimeConnection>> connections = new ConcurrentHashMap<>();
     private final RealtimeBroker broker;
@@ -32,12 +41,22 @@ public class RealtimeHub {
     private final Counter publishedCounter;
     private final Counter deliveredCounter;
     private final Counter failedCounter;
+    private final RealtimeSecurityExecutor security;
+    private final LongSupplier ticker;
 
+    @Autowired
     public RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper,
-                       MeterRegistry meterRegistry) {
+                       MeterRegistry meterRegistry, RealtimeSecurityExecutor security) {
+        this(broker, store, objectMapper, meterRegistry, security, System::nanoTime);
+    }
+
+    RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper,
+                MeterRegistry meterRegistry, RealtimeSecurityExecutor security, LongSupplier ticker) {
         this.broker = broker;
         this.store = store;
         this.objectMapper = objectMapper;
+        this.security = security;
+        this.ticker = ticker;
         this.publishedCounter = meterRegistry.counter("unipo.realtime.events.published");
         this.deliveredCounter = meterRegistry.counter("unipo.realtime.events.delivered");
         this.failedCounter = meterRegistry.counter("unipo.realtime.events.delivery.failed");
@@ -51,9 +70,15 @@ public class RealtimeHub {
     }
 
     /** 一条本地连接。sink 收到的是已经序列化好的 JSON 帧。 */
-    public RealtimeConnection register(Long userId, Consumer<String> sink) {
-        RealtimeConnection connection = new RealtimeConnection(userId, sink);
-        connections.computeIfAbsent(userId, key -> ConcurrentHashMap.newKeySet()).add(connection);
+    public RealtimeConnection register(AuthenticationContext identity, Consumer<String> sink, Runnable closeTransport) {
+        RealtimeConnection connection = new RealtimeConnection(identity, sink, closeTransport);
+        connections.compute(connection.userId(), (key, existing) -> {
+            Set<RealtimeConnection> targets = existing == null ? ConcurrentHashMap.newKeySet() : existing;
+            targets.add(connection);
+            return targets;
+        });
+        // The identity may have been revoked between the HTTP handshake and registration.
+        connection.requireValid();
         return connection;
     }
 
@@ -67,12 +92,22 @@ public class RealtimeHub {
     }
 
     /** 补发断线期间的事件；返回实际补发条数。 */
-    public int replay(Long userId, long afterSeq, Consumer<String> sink) {
-        var missed = store.after(userId, afterSeq, REPLAY_LIMIT);
+    public int replay(RealtimeConnection connection, long afterSeq) {
+        if (!connection.requireValid()) { return 0; }
+        var missed = store.after(connection.userId(), afterSeq, REPLAY_LIMIT);
+        int delivered = 0;
         for (RealtimeEvent event : missed) {
-            sink.accept(toJson(event));
+            try {
+                if (!connection.send(toJson(event))) { break; }
+                delivered++;
+                deliveredCounter.increment();
+            } catch (RuntimeException failure) {
+                failedCounter.increment();
+                connection.close();
+                break;
+            }
         }
-        return missed.size();
+        return delivered;
     }
 
     void deliverLocal(RealtimeBroker.BrokerMessage message) {
@@ -83,12 +118,11 @@ public class RealtimeHub {
         String json = toJson(message.event());
         for (RealtimeConnection connection : targets) {
             try {
-                connection.send(json);
-                deliveredCounter.increment();
+                if (connection.send(json)) { deliveredCounter.increment(); }
             } catch (RuntimeException error) {
                 // 客户端断开是常态，摘掉即可，别让它污染别的连接
                 failedCounter.increment();
-                remove(connection);
+                connection.close();
                 log.debug("realtime delivery drop user={}", message.userId());
             }
         }
@@ -99,12 +133,17 @@ public class RealtimeHub {
     }
 
     public void remove(RealtimeConnection connection) {
-        Set<RealtimeConnection> targets = connections.get(connection.userId());
-        if (targets != null) {
+        connections.computeIfPresent(connection.userId(), (user, targets) -> {
             targets.remove(connection);
-            if (targets.isEmpty()) {
-                connections.remove(connection.userId());
-            }
+            return targets.isEmpty() ? null : targets;
+        });
+    }
+
+    /** No authority lookup or socket write runs on this watchdog thread. */
+    public void revalidateConnections() {
+        long now = ticker.getAsLong();
+        for (Set<RealtimeConnection> targets : connections.values()) {
+            for (RealtimeConnection connection : targets) { connection.sweep(now); }
         }
     }
 
@@ -123,28 +162,83 @@ public class RealtimeHub {
     }
 
     /** 连接句柄；close() 幂等。 */
-    public static final class RealtimeConnection {
-        private final Long userId;
+    public final class RealtimeConnection {
+        private final AuthenticationContext identity;
         private final Consumer<String> sink;
-        private volatile boolean closed;
+        private final Runnable closeTransport;
+        private final Object sendLock = new Object();
+        private final AtomicBoolean closed = new AtomicBoolean();
+        private final AtomicBoolean validationPending = new AtomicBoolean();
+        private final AtomicLong validationDeadline;
+        private final AtomicReference<Long> writeStarted = new AtomicReference<>();
 
-        RealtimeConnection(Long userId, Consumer<String> sink) {
-            this.userId = userId;
+        RealtimeConnection(AuthenticationContext identity, Consumer<String> sink, Runnable closeTransport) {
+            this.identity = identity;
             this.sink = sink;
+            this.closeTransport = closeTransport;
+            this.validationDeadline = new AtomicLong(ticker.getAsLong() + VALIDATION_LEASE.toNanos());
         }
 
         public Long userId() {
-            return userId;
+            return identity.user().id();
         }
 
-        public void send(String json) {
-            if (!closed) {
-                sink.accept(json);
+        public boolean isClosed() { return closed.get(); }
+
+        public boolean requireValid() {
+            long started = ticker.getAsLong();
+            if (closed.get() || started - validationDeadline.get() >= 0) { close(); return false; }
+            if (!security.isValidNow(identity)) { close(); return false; }
+            return acceptValidation(started);
+        }
+
+        public boolean send(String json) {
+            synchronized (sendLock) {
+                if (!requireValid() || closed.get()) { return false; }
+                writeStarted.set(ticker.getAsLong());
+                try {
+                    if (closed.get()) { return false; }
+                    sink.accept(json);
+                    return !closed.get();
+                } catch (RuntimeException failure) {
+                    close();
+                    throw failure;
+                } finally {
+                    writeStarted.set(null);
+                }
             }
         }
 
         public void close() {
-            closed = true;
+            if (closed.compareAndSet(false, true)) {
+                remove(this);
+                security.closeTransport(closeTransport);
+            }
+        }
+
+        private boolean acceptValidation(long started) {
+            long now = ticker.getAsLong();
+            long next = started + VALIDATION_LEASE.toNanos();
+            if (closed.get() || now - validationDeadline.get() >= 0 || now - next >= 0) {
+                close(); return false;
+            }
+            validationDeadline.accumulateAndGet(next, (old, candidate) -> candidate - old > 0 ? candidate : old);
+            return !closed.get();
+        }
+
+        private void sweep(long now) {
+            Long writingSince = writeStarted.get();
+            if (closed.get() || now - validationDeadline.get() >= 0
+                    || (writingSince != null && now - writingSince >= WRITE_LIMIT.toNanos())) {
+                close(); return;
+            }
+            if (!validationPending.compareAndSet(false, true)) { return; }
+            long started = ticker.getAsLong();
+            boolean submitted = security.validateAsync(identity, valid -> {
+                validationPending.set(false);
+                if (!valid) { close(); } else { acceptValidation(started); }
+            });
+            if (!submitted) { validationPending.set(false); close(); }
         }
     }
 }

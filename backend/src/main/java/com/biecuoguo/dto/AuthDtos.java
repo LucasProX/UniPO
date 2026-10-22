@@ -58,6 +58,8 @@ public final class AuthDtos {
     /** 退出登录时可选地带上 refresh token，一起拉黑。 */
     public record LogoutRequest(String refreshToken) {}
 
+    public record ChangePasswordRequest(@NotBlank String oldPassword, @NotBlank String password, String confirmPassword) {}
+
     public record VerificationRequest(@Email @NotBlank String email, @NotBlank @Pattern(regexp = "register|reset-password") String purpose) {}
 
     public record VerifyCodeRequest(@Email @NotBlank String email, @NotBlank @Pattern(regexp = "register|reset-password") String purpose, @NotBlank @Size(min = 4, max = 4) String code) {}

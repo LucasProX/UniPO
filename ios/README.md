@@ -19,8 +19,12 @@ cd ios
 xcodebuild -project UniPO.xcodeproj -scheme UniPO \
   -configuration Debug \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
-  -derivedDataPath .build build CODE_SIGNING_ALLOWED=NO
+  -derivedDataPath .build build
 ```
+
+模拟器保留 ad-hoc 签名和专属 Keychain entitlement，不再覆盖 `CODE_SIGNING_ALLOWED=NO`。
+真实 Keychain 测试把最后的 `build` 改为 `test`；`UniPOTests` 在 App 宿主内使用随机 fixture service 验证保存、覆盖、读取和删除，不读用户凭据。
+模拟器通过不代表真机签名、APNs 或 Release 发布就绪。
 
 安装到模拟器：
 
@@ -115,6 +119,11 @@ ios/
 只有服务端验证通过才显示登录后的私人资料。退出与换号会作废旧操作，access/refresh 使用同一 Keychain 条目配对保存，退出标记优先于旧格式回退。
 旧版双条目迁移会校验双方身份；旧 access 失效而无法确认配对时，需要重新登录一次。
 详细实施与验收见 [SESSION-RECOVERY-VERIFICATION.md](../docs/SESSION-RECOVERY-VERIFICATION.md)。
+
+普通 Bearer 请求与上传收到 401 时按发出请求时的认证代次触发单飞重验，先隐藏私人身份与内容；旧请求不能影响新账号。
+网络、5xx 和解码错误保留凭据供重试，refresh 明确被拒绝后清除；写请求不自动重放。
+私信通过 Core `MessagesStore` 隔离缓存与未发草稿，验证同一 owner 后才恢复草稿，换号或明确失效后清理。
+2026-10-22 当前 Core 全部 88 项与模拟器系统 Keychain 2 项通过；后端身份撤销及仍待完成的 UI/真机/部署验收见 [DP02-VERIFICATION.md](../docs/DP02-VERIFICATION.md)。
 
 ```bash
 # 仓库根运行；Core 的 macOS 14 测试平台仅用于验证 Foundation/状态逻辑，不改变 App 的 iOS 17 基线

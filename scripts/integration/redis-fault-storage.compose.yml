@@ -1,0 +1,12 @@
+services:
+  redis:
+    tmpfs: !reset []
+    command: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "always"]
+    volumes:
+      - redis-data:/data
+volumes:
+  redis-data:
+    name: ${UNIPO_DP02_REDIS_CONTAINER:?fixture name is required}-data
+    labels:
+      com.unipo.fixture: dp02-identity
+      com.unipo.fixture.run: ${UNIPO_DP02_RUN_ID:?fixture run id is required}

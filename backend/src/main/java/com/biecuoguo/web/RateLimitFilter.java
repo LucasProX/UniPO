@@ -51,6 +51,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("verification-code", "POST", "/api/auth/verification-code", 20, Duration.ofMinutes(10)),
             new Rule("register", "POST", "/api/auth/register", 20, Duration.ofHours(1)),
             new Rule("reset-password", "POST", "/api/auth/reset-password", 20, Duration.ofMinutes(10)),
+            new Rule("change-password", "POST", "/api/auth/change-password", 10, Duration.ofMinutes(10)),
+            new Rule("logout-all", "POST", "/api/auth/logout-all", 10, Duration.ofMinutes(10)),
+            new Rule("logout", "POST", "/api/auth/logout", 120, Duration.ofMinutes(5)),
+            new Rule("refresh", "POST", "/api/auth/refresh", 120, Duration.ofMinutes(5)),
+            new Rule("sms-code", "POST", "/api/auth/sms-code", 20, Duration.ofMinutes(10)),
+            new Rule("sms-login", "POST", "/api/auth/sms-login", 30, Duration.ofMinutes(5)),
             // 上传：每张图都占存储和带宽
             new Rule("upload", "POST", "/api/media/upload", 30, Duration.ofMinutes(5)),
             new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5))

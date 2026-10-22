@@ -1,6 +1,7 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
@@ -178,8 +179,8 @@ public class UserService {
      * 注销账号：软删除 + 匿名化。
      *
      * <p>不物理删除用户行，因为帖子/评论/消息还引用它；把 PII 清掉、状态置 deleted，
-     * 登录会被 status 拦截。Web 会话立即吊销；App 的 Bearer token 最长 2 小时自然过期，
-     * 客户端同时清 Keychain。
+     * 登录会被 status 拦截；事务内递增身份版本并吊销设备，旧 Cookie、access、refresh
+     * 和实时连接在下一次权威校验时失效，客户端同时清 Keychain。
      */
     @Transactional
     public void deleteAccount(Long userId) {
@@ -202,7 +203,12 @@ public class UserService {
         user.setOnboardingCompleted(true);
         user.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
         user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, userId)
+                .set(User::getEmail, user.getEmail()).set(User::getPhone, null).set(User::getNickname, user.getNickname())
+                .set(User::getAvatarUrl, null).set(User::getBackgroundUrl, null).set(User::getBio, null)
+                .set(User::getGender, null).set(User::getBirthYear, null).set(User::getZodiac, null).set(User::getMbti, null)
+                .set(User::getStatus, "deleted").set(User::getOnboardingCompleted, true)
+                .set(User::getPasswordHash, user.getPasswordHash()).set(User::getUpdatedAt, user.getUpdatedAt()));
 
         userFollowMapper.delete(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, userId).or().eq(UserFollow::getFollowingId, userId));

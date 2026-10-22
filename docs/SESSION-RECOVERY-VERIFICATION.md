@@ -2,6 +2,8 @@
 
 日期：2026-10-21。关联 DP05（登录核心流程）与 DP21（客户端回归）的增量交付。完整开发范围继续以 [DEVELOPMENT-PLAN.md](DEVELOPMENT-PLAN.md) 为准；不新增 Web 用户端开发。
 
+> 2026-10-22 后续：运行中 401 的代次恢复、私信缓存隔离与模拟器真实 Keychain 测试已补齐，当前 Core 88 项和系统 Keychain 2 项通过。下文保留初轮记录，最新证据及未验边界见 [DP02-VERIFICATION.md](DP02-VERIFICATION.md)。模拟器签名配置已修复此前缺 entitlement 的 `-34018`，不等于真机/Release 验收。
+
 ## 本轮验收规则
 
 | 场景 | 必须满足的行为 |

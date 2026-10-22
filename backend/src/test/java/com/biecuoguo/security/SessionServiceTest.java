@@ -2,6 +2,7 @@ package com.biecuoguo.security;
 
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.state.MemorySessionStore;
+import com.biecuoguo.auth.api.AccountSecurityApi;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,11 +23,23 @@ class SessionServiceTest {
             new AppProperties.Auth("unipo_sid", "unipo_csrf", "X-CSRF-Token", 60, false, "Lax"),
             null);
 
-    private final SessionService service = new SessionService(new MemorySessionStore(), PROPS);
+    private final AccountSecurityApi accounts = org.mockito.Mockito.mock(AccountSecurityApi.class);
+    private final SessionService service = service();
+
+    private SessionService service() {
+        org.mockito.Mockito.when(accounts.validate(org.mockito.ArgumentMatchers.any())).thenAnswer(invocation ->
+                java.util.Optional.of(new AccountSecurityApi.ValidatedIdentity(invocation.getArgument(0),
+                        java.time.Instant.now().plusSeconds(3600))));
+        return new SessionService(new MemorySessionStore(), PROPS, accounts);
+    }
+
+    private SessionService.IssuedSession create(long id, String role, String email) {
+        return service.create(new CurrentUser(id, email, role, 0L, java.util.UUID.randomUUID().toString()));
+    }
 
     @Test
     void createsSessionThatResolves() {
-        SessionService.IssuedSession issued = service.create(42L, "USER", "a@b.com");
+        SessionService.IssuedSession issued = create(42L, "USER", "a@b.com");
         var data = service.resolve(issued.sessionId()).orElseThrow();
         assertEquals(42L, data.userId());
         assertEquals("USER", data.role());
@@ -36,8 +49,8 @@ class SessionServiceTest {
 
     @Test
     void idsAndCsrfTokensAreRandom() {
-        SessionService.IssuedSession first = service.create(1L, "USER", "a@b.com");
-        SessionService.IssuedSession second = service.create(1L, "USER", "a@b.com");
+        SessionService.IssuedSession first = create(1L, "USER", "a@b.com");
+        SessionService.IssuedSession second = create(1L, "USER", "a@b.com");
         assertNotEquals(first.sessionId(), second.sessionId());
         assertNotEquals(first.csrfToken(), second.csrfToken());
         assertTrue(first.sessionId().length() >= 40, "session id 至少 32 字节随机数");
@@ -45,8 +58,8 @@ class SessionServiceTest {
 
     @Test
     void revokeKillsOnlyThatSession() {
-        SessionService.IssuedSession keep = service.create(7L, "USER", "a@b.com");
-        SessionService.IssuedSession gone = service.create(7L, "USER", "a@b.com");
+        SessionService.IssuedSession keep = create(7L, "USER", "a@b.com");
+        SessionService.IssuedSession gone = create(7L, "USER", "a@b.com");
         service.revoke(gone.sessionId(), 7L);
 
         assertTrue(service.resolve(keep.sessionId()).isPresent());
@@ -56,9 +69,9 @@ class SessionServiceTest {
 
     @Test
     void revokeAllKicksEveryDeviceButLeavesOtherUsersAlone() {
-        SessionService.IssuedSession phone = service.create(9L, "USER", "a@b.com");
-        SessionService.IssuedSession laptop = service.create(9L, "USER", "a@b.com");
-        SessionService.IssuedSession other = service.create(10L, "USER", "other@b.com");
+        SessionService.IssuedSession phone = create(9L, "USER", "a@b.com");
+        SessionService.IssuedSession laptop = create(9L, "USER", "a@b.com");
+        SessionService.IssuedSession other = create(10L, "USER", "other@b.com");
 
         service.revokeAllForUser(9L);
 
