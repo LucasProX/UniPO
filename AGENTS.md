@@ -103,6 +103,11 @@ docker compose --profile observability up -d prometheus   # 仅需要看指标�
 `unipo.ratelimit.blocked{rule=...}`；HTTP/JVM 指标由 Micrometer 自动提供。
 **不要把 requestId 做成指标 tag**（基数会爆炸），它只在日志 MDC 里。
 
+MySQL 备份/恢复（R03，服务器用法、cron、恢复步骤见 `docs/DEPLOY-SERVER.md` §7）：
+```bash
+bash scripts/integration/mysql-backup-restore.sh   # 本机隔离演练，需先 mvn package；只建本轮容器，不碰 12306
+```
+
 冒烟（后端/MySQL/MinIO 都在跑时）：
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/smoke.ps1   # 42 项全链路检查（含 /api/v1、游标分页、响应包、时区、注册/验证码、refresh token）
@@ -289,6 +294,7 @@ xcrun simctl launch booted com.unipo.app
   改 workflow 后先在本地跑 `actionlint .github/workflows/ci.yml`——GitHub 的 YAML 报错要到网页 logs 里看，
   而「解析就失败」的那种 run 连 job 都没有（`total_count == 0`、`created_at == updated_at`），没有 logs 可看。
 - **headless DOM 验证**：后台窗口截图会返回纯白（Chromium 暂停绘制被遮挡窗口），唯一可靠的是 `msedge --headless=new --dump-dom`。直接 `> file` 重定向在 `Start-Process`/`Invoke-WebRequest` 组合下可能产出 0 字节文件——**把命令写进 `.bat` 再用 `cmd /c` 跑**最稳（见 `docs/LOCAL-DEV.md` §8）。
+- **MySQL 恢复只进空库、演练不进 `unipo-mysql`**（2026-10-23）：`scripts/ops/mysql-restore.sh` 先验 `.sha256` 再连库，目标容器和库名必须显式给，生产样子的目标要 `--allow-production-target`。核对恢复结果看 information_schema 和 `CHECKSUM TABLE`，别比 `SHOW CREATE TABLE` 文本——恢复库会多出 `CHARACTER SET utf8mb4` 写法（见 DEVLOG）。
 
 ## 9. 当前优先级（2026-10，本地开发模式）
 > 完整分级见 `docs/ISSUES.md`：**B 阻塞 / D 开发体验 / R 上线阻断 / Q 质量**。

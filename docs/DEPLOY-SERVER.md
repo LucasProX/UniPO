@@ -150,9 +150,164 @@ curl -s http://127.0.0.1/actuator/health          # 只有 health 对外，其�
 | 拉镜像 `i/o timeout` | 镜像没加 `docker.m.daocloud.io/` 前缀（minio 是 `MINIO_IMAGE`，不是 `DOCKER_REGISTRY`） |
 | 构建 OOM | 看 `free -m` 的 swap 有没有生效 |
 
-## 7. 还没做的（按优先级）
+## 7. MySQL 备份与恢复（R03）
+
+> **现状（2026-10-23）**：脚本已在仓库，本机隔离演练通过；**服务器上还没装 cron、也没跑过第一次备份**，
+> `unipo_mysql_data` 目前仍是唯一副本（10-21 那次手工 `database.sql.gz` 除外）。安装是单独一步，需要负责人同意后按 §7.3 执行。
+> 媒体（MinIO）备份是 R04，告警是 R05，都不在这里。
+
+### 7.1 目标与边界
+
+| 项 | 值 |
+|---|---|
+| RPO（可接受丢数据窗口） | ≤ 24 小时：每天一份逻辑备份，没有开 binlog 增量/时间点恢复，最坏丢最近一天 |
+| RTO（从决定恢复到服务可用） | ≤ 4 小时：主要花在人工判断、保留现场和验证上，导入本身按首次服务器演练实测再填 |
+| 来源 | 开发规划书 §12.3，**待演练确认的内部目标**，不是已达到的能力 |
+| 备份内容 | 单个库的结构 + 数据 + routines/triggers/events（目前三者都为 0）+ `flyway_schema_history` |
+| 不在备份里 | MinIO 对象（R04）、`/opt/unipo/.env` 和 `.env.test`（敏感配置单独受控保管）、Redis/内存会话 |
+
+### 7.2 脚本做了什么
+
+- `scripts/ops/mysql-backup.sh`：只读环境变量，没有参数，cron 行里看不到密码。
+  在容器里跑 `mysqldump --single-transaction --quick --routines --triggers --events --hex-blob --no-tablespaces --set-gtid-purged=OFF`，
+  **不带 `--databases`**，所以 dump 里没有 `CREATE DATABASE`/`USE`，恢复只会落进恢复时显式指定的库。
+  gzip 后检查 mysqldump 的结尾标记 `-- Dump completed`，写 `<库名>-<UTC时间>.sql.gz` 和同名 `.sha256`（`sha256sum -c` 可直接校验），
+  先写隐藏的 `.partial` 再改名，失败不留半截文件。目录 700、文件 600，同一个库同时只允许一个备份在跑（Linux 用 `flock`）。
+- 保留按**份数**不按天数：成功后只删同名库、严格匹配命名的最旧几份，默认留 14 份。这样备份停了几天也不会把最后几份好的“过期”删掉。
+- 密码默认用容器环境里的 `MYSQL_ROOT_PASSWORD`（在容器内转成 `MYSQL_PWD`），不经过任何命令行参数；
+  也可以给专用账号写一个 600 权限的密码文件，脚本读出后只以变量名传给 `docker exec -e`。
+- `scripts/ops/mysql-restore.sh`：先比对 `.sha256`（文件名和哈希都要对）、gzip 可读、结尾标记完整、没有切库语句，**全部通过才连 MySQL**。
+  目标容器和库名必须显式给，没有默认值；目标库必须为空（不存在时要加 `--create-database`）。
+  以下目标被视为“像生产”，不加 `--allow-production-target` 一律拒绝：容器 `unipo-mysql`、库名 `biecuoguo`、名字里有 `prod/production/live` 段、
+  或者等于容器自己的 `MYSQL_DATABASE`。恢复完打印表数、Flyway 最新版本/失败数和 users/posts/comments/achievement_progress/conversations/messages 行数。
+- 两个脚本都只认本机 Unix socket 的 Docker context，`DOCKER_HOST` 指向别处时直接拒绝。
+
+| 环境变量（备份） | 默认 | 说明 |
+|---|---|---|
+| `UNIPO_BACKUP_DIR` | 必填 | 绝对路径，建议 `/var/backups/unipo/mysql` |
+| `UNIPO_BACKUP_DATABASE` | 必填 | 生产 `biecuoguo`；测试库 `unipo_test` 可另配一行 |
+| `UNIPO_BACKUP_CONTAINER` | `unipo-mysql` | |
+| `UNIPO_BACKUP_RETENTION` | `14` | 该库保留的最新份数 |
+| `UNIPO_BACKUP_MYSQL_USER` | `root` | 换成 `.env` 里的应用账号也能导（本机实测与 root 导出除结尾时间戳外完全一致），但它没有 `SHOW_ROUTINE`，以后有存储过程时会漏 |
+| `UNIPO_BACKUP_PASSWORD_FILE` | 空 | 600/400、属于当前用户的普通文件；不给时 root/应用账号密码从容器环境读 |
+
+### 7.3 服务器安装（需负责人同意后执行，本次未执行）
+
+`/opt/unipo` 不是 git checkout。先把 `scripts/ops/mysql-ops-lib.sh`、`mysql-backup.sh`、`mysql-restore.sh` 三个文件随下一次部署包或单独 scp 到
+`/opt/unipo/scripts/ops/`（保持可执行位），再手动跑一次，确认大小、耗时和校验：
+
+```bash
+cd /opt/unipo
+sudo UNIPO_BACKUP_DIR=/var/backups/unipo/mysql UNIPO_BACKUP_DATABASE=biecuoguo scripts/ops/mysql-backup.sh
+sudo sh -c 'cd /var/backups/unipo/mysql && sha256sum -c biecuoguo-*.sql.gz.sha256'
+df -h /var/backups
+```
+
+第一次的输出（文件大小、秒数）记到本节，后续用它估容量和 RTO。确认没问题再装 cron（服务器本地时区 03:30，避开晚间活跃；
+不要和部署/迁移同时跑——`--single-transaction` 挡不住并发 DDL）：
+
+```bash
+sudo tee /etc/cron.d/unipo-mysql-backup >/dev/null <<'EOF'
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 3 * * * root UNIPO_BACKUP_DIR=/var/backups/unipo/mysql UNIPO_BACKUP_DATABASE=biecuoguo /opt/unipo/scripts/ops/mysql-backup.sh >>/var/log/unipo-mysql-backup.log 2>&1
+# 可选：测试库少留几份
+45 3 * * * root UNIPO_BACKUP_DIR=/var/backups/unipo/mysql UNIPO_BACKUP_DATABASE=unipo_test UNIPO_BACKUP_RETENTION=7 /opt/unipo/scripts/ops/mysql-backup.sh >>/var/log/unipo-mysql-backup.log 2>&1
+EOF
+sudo chmod 644 /etc/cron.d/unipo-mysql-backup
+```
+
+日志只有时间戳、文件名、大小、sha256 和错误，不含密码。备份失败目前只能看日志，告警等 R05；在那之前每周至少看一次
+`tail /var/log/unipo-mysql-backup.log` 和目录里最新文件的日期。40G 盘上 14 份 gzip 逻辑备份按首次实测大小乘 14 再留余量评估。
+
+### 7.4 异机副本（建议，未配置）
+
+备份和数据在同一块云盘上，盘坏、机器被删、误删目录时一起没。至少每天把**新文件和它的 `.sha256` 一起**放到另一处，二选一：
+
+1. **腾讯云 COS**：开版本控制 + 生命周期（例如 30 天），服务器上只放一个仅能写入该前缀的子账号密钥；
+   上传前用 `age`/`gpg` 加密（dump 里有手机号、密码哈希、私信正文），解密私钥不放在这台服务器上。
+2. **另一台机器定时拉取**：拉取方用自己的 SSH key 主动来取，服务器上不保存任何指向备份机的凭据；拉完在备份机上 `sha256sum -c`。
+
+异机副本的延迟也算进 RPO：如果每天 03:30 备份、09:00 才同步，那 09:00 之前整机丢失就要退回前一天的副本。
+
+### 7.5 恢复步骤
+
+**A. 演练或查数据（生产照常运行）**——在服务器上起一个一次性容器，不映射端口、不连网络，用完即删；不要恢复进 `unipo-mysql`：
+
+```bash
+cd /opt/unipo
+sudo bash -c 'umask 077; printf "MYSQL_ROOT_PASSWORD=%s\n" "$(openssl rand -hex 24)" >/root/unipo-restore-drill.env'
+sudo docker run -d --name unipo-restore-drill --network none --tmpfs /var/lib/mysql \
+    --env-file /root/unipo-restore-drill.env -e TZ=Asia/Shanghai \
+    docker.m.daocloud.io/library/mysql:8.4 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+# 等到下面这条返回 1（初始化约半分钟）
+sudo docker exec unipo-restore-drill sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -h127.0.0.1 -uroot -N -e "SELECT 1"'
+sudo scripts/ops/mysql-restore.sh --file /var/backups/unipo/mysql/biecuoguo-<UTC时间>.sql.gz \
+    --container unipo-restore-drill --database unipo_restore_check --create-database
+sudo docker rm -f unipo-restore-drill && sudo rm -f /root/unipo-restore-drill.env
+```
+
+数据量大到 tmpfs 放不下时把 `--tmpfs` 换成一个临时命名卷，用完连卷一起删。逻辑误删（某些行被删错）也走这条路：在一次性容器里取回需要的数据，
+人工核对后再决定怎么写回生产，**不要整库覆盖**。
+
+**B. 生产库丢失或损坏（卷坏、误删卷、MySQL 起不来）**——按顺序，每步记时间，用来核对 RTO：
+
+1. 停写：`sudo docker stop unipo-backend unipo-test-backend`。
+2. 保留现场：先在腾讯云控制台给数据盘打快照，再动卷；旧卷能读就别删。
+3. 选备份：用本机最新一份；本机也没了就从异机副本拷回，连同 `.sha256`。
+4. 重建空库：确认快照完成后再删卷（Docker 卷不能改名，快照就是旧数据的唯一退路）：
+   ```bash
+   sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.yml --profile local-db rm -sf mysql
+   sudo docker volume rm unipo_mysql_data
+   sudo docker compose --env-file .env -f docker-compose.yml -f docker-compose.ip.yml --profile local-db up -d mysql
+   ```
+   容器初始化会按 `.env` 建好空的 `biecuoguo` 和应用账号；`docker ps` 显示 healthy 后再继续。
+5. 导入：`sudo scripts/ops/mysql-restore.sh --file <备份> --container unipo-mysql --database biecuoguo --allow-production-target`
+   （库已存在且为空，不需要 `--create-database`）。记下输出的 Flyway 版本和行数。
+6. 测试库：`unipo_test` 也在同一实例里，要先按 [TEST-ENVIRONMENT.md](TEST-ENVIRONMENT.md) 重建 `unipo_test` 库和专用账号，再从它自己的备份导入；
+   不需要测试实例时可以跳过，但不要让测试后端连上空库后自己从 V1 迁移。
+7. 起应用：Flyway 版本要和当前后端镜像兼容（备份更旧时启动会补迁移，更新时先换回对应版本镜像）。
+   `sudo docker start unipo-backend` 后按 §5.2 的只读检查清单验证 readiness、公网 health、学校/分类、帖子游标和 WebSocket 101。
+
+恢复后会有这些已知差异：备份之后的注册、帖子和消息丢失（RPO）；之后签发的设备会话失效需重新登录；备份时还在 PENDING 的 Outbox 任务会再投递一次，
+可能重复提醒（Outbox 本来就不承诺 exactly-once）；备份之后上传的图片在 MinIO 里成了没有引用的对象（R04 处理）。
+
+### 7.6 本机演练证据（2026-10-23）
+
+```bash
+cd backend && mvn -o -B -ntp -DskipTests package && cd ..
+bash scripts/integration/mysql-backup-restore.sh
+```
+
+演练脚本只建本轮带 `com.unipo.fixture.run` 标签的两个 MySQL 8.4 容器（源库映射 `127.0.0.1:22316`，目标库不映射端口，数据都在 tmpfs），
+随机密码只走环境变量，不读仓库 `.env`，不碰本机 `unipo-mysql`/12306，也不连服务器。源库先写入本轮 marker，
+再用**后端 jar 里打包的 Flyway 和迁移**（与源码目录逐文件比对一致才继续）从 V1 迁到 V25，然后导入 `scripts/integration/mysql-backup-restore-seed.sql`
+的合成数据（emoji、中文、引号、反斜杠、换行、JSON、`DATETIME(6)`、生成列两种分支）。之后用上面两个脚本备份、恢复、比较，结束时核对所有权再删容器和网络。
+
+最终一轮 run `f1d350bd9a88e138`（镜像 `sha256:0f51e63e…`，mysqldump 8.4.11）全部通过：
+
+| 检查 | 结果 |
+|---|---|
+| Flyway | 空库应用 25 个迁移到 V25；恢复后 latest=25、failed=0 |
+| 备份 | 12414 字节，`sha256 ffb83432…`；目录 700、文件 600 |
+| 保留 | 预埋 3 份旧备份、retention=2：删最旧 2 份及其 `.sha256`，`notes.txt` 和 `other_db-*` 不动 |
+| 抽查行数（源库 = 恢复库） | users=8、posts=7、comments=4、achievement_progress=4、conversations=2、messages=3、message_delivery_outbox=1 |
+| 全库对比 | 40 张表逐表行数与 `CHECKSUM TABLE` 一致；information_schema 结构指纹（列类型/字符集/默认值/生成表达式/索引/外键/CHECK/AUTO_INCREMENT，708 行）一致 |
+| 特殊值 | 昵称、私信、帖子正文按 HEX 比对一致；`activity_at` 与 `COALESCE(last_message_at, created_at)` 不一致行数 0；JSON 与微秒时间一致；marker 等于 run id |
+| 拒绝路径（均退出 2） | 缺 `UNIPO_BACKUP_DIR`；密码文件 644；密码文件内容错误（Access denied，未留任何文件）；篡改 1 字节后 Checksum mismatch；目标 `biecuoguo`；目标 `unipo_prod_copy`；目标等于容器 `MYSQL_DATABASE`；目标库不存在且未加 `--create-database`；目标库非空。拒绝后目标实例里没有多出任何库 |
+| 恢复路径 | 加 `--allow-production-target` 后可恢复进 `biecuoguo`，行数与普通恢复一致 |
+| 清理 | 两个容器、项目网络已删；22316 无监听；产物在 `.logs/r03/f1d350bd9a88e138/`，搜索不到 48 位随机密码 |
+
+数据只有 12KB，导入 0 秒，**不代表生产 RTO**。另外恢复库的 `SHOW CREATE TABLE` 文本会多出 `CHARACTER SET utf8mb4`（实际字符集/排序规则不变），
+所以对比用 information_schema 而不是 DDL 文本，见 DEVLOG 2026-10-23。前几轮 `aa6ca8a45891b101`、`ca22c5e2bec941ea`（脚本自身问题）
+和 `1d0ede9e35bf6222`（DDL 文本比对误报）的失败产物保留在 `.logs/r03/`。
+
+还没验证的：服务器上的首次备份和恢复演练、实际数据量下的导入时长、cron、异机副本、备份失败告警、媒体与数据库引用的联合恢复。
+
+## 8. 还没做的（按优先级）
 
 1. **HTTPS**：现在 80 明文。上域名 + Caddy（`Caddyfile` 已就绪）或云厂商证书，然后把 `AUTH_COOKIE_SECURE` 改成 true。
-2. **备份**：MySQL 现在没有任何备份策略，`unipo_mysql_data` 是唯一的副本。
+2. **备份**：MySQL 备份/恢复脚本和本机演练已就绪（§7），服务器 cron、首次服务器演练和异机副本还没做；媒体备份（R04）和备份告警（R05）未开始。
+   在 cron 装上之前，`unipo_mysql_data` 仍是唯一的持续副本。
 3. **多实例**：`STATE_BACKEND=memory` + WebSocket 单机 broker，扩到两台之前必须先切 Redis（或直接换 CloudBase）。
 4. **漏洞面**：80 端口直接对外，限流是唯一的第一道闸；数据库/MinIO 目前靠「只绑 127.0.0.1」保护，别改。

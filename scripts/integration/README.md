@@ -205,3 +205,11 @@ Redis 夹具证明 R06 存储撤销与 TTL，MySQL 夹具证明设备身份领�
 自动调度与指标可用 `UNIPO_DP14_SCHEDULE_SMOKE=1 UNIPO_DP02_SMOKE=1 bash scripts/integration/identity-e2e.sh` 检查；Redis/MySQL 镜像按本机已有缓存指定。原 42 项不变，之后独立读取归属 marker，并只聚合本轮专用 peer 的消息，在 20 秒内等待两通道自然完成；最后检查两台 Boot 的十项 Prometheus 名称和 TYPE。默认不启用该额外 gate，以保持旧包冒烟入口。
 
 最终 run `e5d04e2f8d779cdf`：42/42，上传开启，1 条本轮消息、2 条意图全部自动 DELIVERED，其余状态为 0，两端指标通过。JSON 的 `scheduled_outbox.complete`、`owned_peer_only`、`metrics_a_ok`、`metrics_b_ok` 和 `cleanup_complete` 均 true；凭据未记录，未调用 manual drain。APNs 关闭，只证明服务端通道处理结束。产物在 `.logs/dp02/smoke-e5d04e2f8d779cdf/`。
+
+## R03 MySQL 备份恢复演练
+
+先 `cd backend && mvn -DskipTests package`，再从仓库根执行 `bash scripts/integration/mysql-backup-restore.sh`。本机必须已缓存 `docker.m.daocloud.io/library/mysql:8.4`（或用 `UNIPO_R03_MYSQL_IMAGE` 指定缓存的 8.4 镜像），脚本不拉镜像、不读仓库 `.env`。
+
+每轮建两个带本轮 run 标签的容器：源库映射固定 `127.0.0.1:22316`（占用即退出），目标库不映射端口，数据目录都是 tmpfs；随机 root/应用密码只走环境变量。源库先由容器内部写入 marker，`FixtureFlywayMigrate.java` 用后端 jar 里打包的 Flyway、连接器和迁移（先与源码目录逐文件比对）核对 marker 后从 V1 迁到最新版本，再导入 `mysql-backup-restore-seed.sql` 的合成数据。随后调用 `scripts/ops/mysql-backup.sh` 与 `mysql-restore.sh` 跑正常路径、保留策略和九条拒绝路径，最后比对两库的逐表行数、`CHECKSUM TABLE`、information_schema 结构指纹与特殊值。退出时核对容器 ID、run 标签和项目网络后清理，产物留在 `.logs/r03/{运行ID}/`。
+
+2026-10-23 最终 run `f1d350bd9a88e138` 通过，结果与边界见 [部署文档](../../docs/DEPLOY-SERVER.md) §7.6。它证明脚本和恢复链路正确，不代表服务器已装定时备份，也不代表生产数据量下的恢复耗时。
