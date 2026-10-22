@@ -62,6 +62,13 @@ targets:
       configs:
         Debug:
           UNIPO_API_BASE_URL: http://49.234.21.63:18081/api/v1
+          # 真机 Debug：个人开发者账号（免费 Team）自动签名。免费 Team 不支持推送权限，
+          # 也不能注册已被占用的包名，所以真机调试包用单独的包名和不含 aps 的权限文件。
+          "CODE_SIGNING_ALLOWED[sdk=iphoneos*]": YES
+          "CODE_SIGN_STYLE[sdk=iphoneos*]": Automatic
+          "DEVELOPMENT_TEAM[sdk=iphoneos*]": 27B586T4LV
+          "PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]": com.unipo.lj27b586.dev
+          "CODE_SIGN_ENTITLEMENTS[sdk=iphoneos*]": UniPO/UniPO.personal.entitlements
     dependencies:
       - package: UniPOCore
       - package: UniPOUI

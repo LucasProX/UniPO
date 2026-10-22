@@ -17,6 +17,7 @@ frontend/vite.config.d.ts
 
 # iOS
 ios/.build/
+ios/.build-device/
 ios/**/.build/
 ios/DerivedData/
 ios/**/xcuserdata/
