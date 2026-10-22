@@ -489,7 +489,10 @@ struct OnboardingView: View {
 
     private func renderAvatar(_ preset: AvatarPreset) -> Data? {
         let size = CGSize(width: 600, height: 600)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        // 默认按屏幕倍率渲染会得到 1800 像素、约 3MB 的 PNG；头像 600 像素足够。
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         let image = renderer.image { context in
             let colors = [UIColor(rgb: preset.color1).cgColor, UIColor(rgb: preset.color2).cgColor] as CFArray
             if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1]),

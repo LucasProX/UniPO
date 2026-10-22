@@ -66,6 +66,9 @@ struct HomeView: View {
             }
             #endif
         }
+        .onChange(of: auth.profile?.entryYear) { _, _ in
+            Task { await loadGrowth() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .unipoPostPublished)) { _ in
             Task { await feed.refresh() }
         }

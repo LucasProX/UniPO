@@ -30,7 +30,7 @@ struct AchievementsView: View {
             .padding(.bottom, 120)
         }
         .scrollIndicators(.hidden)
-        .task(id: auth.isAuthenticated) { await load() }
+        .task(id: "\(auth.isAuthenticated):\(auth.profile?.entryYear ?? 0)") { await load() }
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                 appeared = true

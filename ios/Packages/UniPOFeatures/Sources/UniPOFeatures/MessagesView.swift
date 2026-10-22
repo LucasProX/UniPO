@@ -140,6 +140,7 @@ struct MessagesView: View {
             if isLoading && conversations.isEmpty {
                 UniLoadingState("加载会话…")
                     .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             } else if conversations.isEmpty && store.conversationError == nil && !store.hasMoreConversations {
                 VStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right")
@@ -155,6 +156,7 @@ struct MessagesView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else {
                 ForEach(conversations) { conversation in
                     HStack(spacing: 12) {
@@ -194,6 +196,7 @@ struct MessagesView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    .listRowBackground(Color.clear)
                 }
             }
             if store.hasMoreConversations {
@@ -211,6 +214,7 @@ struct MessagesView: View {
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
         .listStyle(.plain)

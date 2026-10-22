@@ -58,6 +58,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 - 生产服务器 **`49.234.21.63`**（Ubuntu 22.04 / 4C4G，腾讯云）跑整套 docker compose：MySQL + MinIO + 后端 + 前端，公网只开 80/22。部署与更新流程见 [`docs/DEPLOY-SERVER.md`](docs/DEPLOY-SERVER.md)；旧的 `115.190.3.204` 不再使用。本机开发不连任何远端库。
 - 后端通过仓库根 `.env`（gitignored）覆盖 `SPRING_DATASOURCE_URL`，不用改代码。
 - PowerShell 里 npm 必须用 `npm.cmd`（`npm.ps1` 被执行策略拦截）。
+- **2026-10-23 起不再做本地演练**：后端组件与程序都跑在服务器上，本机 colima、MySQL/MinIO/Redis 容器、本地后端和 Vite 已停（数据卷保留）。改完后端：本机 `mvn package` 跑单测 → 按 `docs/TEST-ENVIRONMENT.md` 更新服务器 test 实例 → 模拟器/真机直连验证。需要隔离 MySQL 的专项（`scripts/integration/`）仍可临时起容器，跑完即清。
 - **2026-10-20 起主力机改为 macOS**（Win 机器仍是 `D:\Projects\unipo`）。Mac 上：JDK 21 + Maven 用 brew 装
   （`/opt/homebrew/opt/openjdk@21`，`JAVA_HOME` 写进 `~/.zshrc`），Node 在 `~/local/node-v22.12.0/bin`。
   **Docker 用 colima 提供，本地库走 `docker compose --profile local-db`（MySQL 12306 / MinIO 9000 / 9001），
@@ -232,7 +233,7 @@ xcrun simctl launch booted com.unipo.app
   access/refresh 作为同一个 `unipo.session` 条目保存，退出先写持久空标记，避免旧 key 删除失败后被重新读出。认证操作同时推进 AuthStore 和 APIClient 的代次；退出使用捕获的旧凭据，迟到结果不得修改新账号。相关改动运行 Core 全部测试。
 - **登录/刷新不带旧 Authorization**，否则过期 token 会让后端直接 403。
 - **运行中的 401**：请求发出时原子捕获认证代次，回调只携代次且拒绝旧账号结果；当前身份先隐藏，再单飞重验。登录、refresh、显式候选 me 和退出不触发递归恢复，不自动重放写请求。私信缓存与未发草稿按 owner 隔离，未知身份不展示，只有验证同账号才恢复草稿，明确退出/换号清理。
-- **测试登录（2026-10-21）**：iOS 默认仅手机号验证码页。Debug API 为 `http://127.0.0.1:18081/api/v1`，经 `scripts/connect-test-api.sh` 的 SSH 隧道连接服务器独立 `test` 实例；任意合规手机号加任意 4 位数字可登录，不发短信。测试数据库、JWT 和媒体桶独立，禁止将这个开关用于生产实例。Release API 仍为生产地址；Keychain 按 API 环境隔离。当前 HTTP 测试 IP 仅用 `project.yml` 的单主机 ATS 例外，禁止全局开启 `NSAllowsArbitraryLoads`。
+- **测试登录（2026-10-23 起直连服务器）**：iOS 默认仅手机号验证码页。Debug API 为 `http://49.234.21.63:18081/api/v1`，模拟器和真机都直连服务器独立 `test` 实例，不再需要 SSH 隧道；任意合规手机号加任意 4 位数字可登录，不发短信。该端口对公网开放，测试数据库、JWT 和媒体桶独立，actuator 只暴露 health；禁止将这个开关用于生产实例。Release API 仍为生产地址；Keychain 按 API 环境隔离。HTTP 测试 IP 仅用 `project.yml` 的单主机 ATS 例外（按域名生效，不分端口），禁止全局开启 `NSAllowsArbitraryLoads`。
 - **首页请求状态**统一走 `UniPOCore.FeedStore`：分页只允许一条在途请求，切板块/刷新/切账号作废旧响应；保留失败重试与按帖子 ID 去重。改动后运行 `swift test --package-path ios/Packages/UniPOCore`。
 - **改动必须同时考虑 iOS 17**：新 API 用 `if #available`；本机 iOS 26 模拟器不代表最低版本。
 - **Liquid Glass**：`glassEffect` 只在 iOS 26+，旧系统退化 `.ultraThinMaterial`，统一走 `UniPOUI.GlassSurface`。

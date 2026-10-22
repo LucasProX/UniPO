@@ -4,22 +4,21 @@
 
 ## 连接方式
 
-服务器 `49.234.21.63` 上的 `unipo-test-backend` 仅绑定 `127.0.0.1:18081`，不新增公网端口。Mac 上通过 SSH 转发访问，终端保持运行：
+2026-10-23 起测试实例直接对公网开放在 `49.234.21.63:18081`（腾讯云安全组已放行 TCP 18081），模拟器和真机都直连，不再需要 SSH 隧道，本机也不再运行任何后端组件。
 
 ```bash
-bash scripts/connect-test-api.sh
-curl -fsS http://127.0.0.1:18081/actuator/health/readiness
+curl -fsS http://49.234.21.63:18081/actuator/health/readiness
 ```
 
-已经有隧道时不要重复启动；Mac 重启、网络切换导致 SSH 退出时重新连接。模拟器与 Mac 共用回环网络。当前配置面向本机模拟器，不是面向其他设备开放的公网测试接口。
+`ios/project.yml` 的 Debug API 为 `http://49.234.21.63:18081/api/v1`，Release API 仍指向生产。修改地址需重新运行 `xcodegen generate`、构建和安装；token 按 API URL 隔离存入 Keychain，换地址后需要重新登录。真机安装 Debug 包需要在 Xcode 里选择你自己的开发者 Team 签名。
 
-`ios/project.yml` 的 Debug API 为 `http://127.0.0.1:18081/api/v1`，Release API 仍指向原服务。修改地址需重新运行 `xcodegen generate`、构建和安装。token 按 API URL 隔离存入 Keychain。
+公开端口意味着任何知道地址的人都能用任意验证码在测试实例上注册测试账号；它只连 `unipo_test` 库和测试桶，碰不到生产数据。端口直连没有 nginx 挡 actuator，Compose 里用 `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health` 只暴露健康检查（prometheus 公网 404）。`scripts/connect-test-api.sh` 仅作历史保留。
 
 ## 服务端隔离
 
 | 项目 | 测试配置 |
 | --- | --- |
-| Compose | `/opt/unipo/docker-compose.test.yml`，项目名 `unipo-test` |
+| Compose | `/opt/unipo/docker-compose.test.yml`，项目名 `unipo-test`；端口 `0.0.0.0:18081` |
 | 容器和镜像 | `unipo-test-backend`，`unipo-backend:test` |
 | Profile | 仅 `test` |
 | 数据库和专用用户 | `unipo_test`，仅授权该库 |
@@ -70,3 +69,15 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 [SOCIAL-PROFILE-VERIFICATION.md](SOCIAL-PROFILE-VERIFICATION.md)。
 
 可重复运行 `python3 scripts/smoke-test-login.py`；它只向回环测试端口写入测试账号，生产侧仅做鉴权拒绝验证，不打印 token 或密码。
+
+## 2026-10-23 更新记录
+
+| 记录 | 值 |
+| --- | --- |
+| 后端版本 | `6cf3c50`（V26：入学年份与阶段学期区间） |
+| 迁移 | 测试库从 V19 应用 7 个迁移到 V26；V20 起旧登录凭据失效，需要重新登录 |
+| 部署前备份 | `/var/backups/unipo/test-before-6cf3c50-20261022T223227Z/unipo_test.sql.gz`（gzip 校验通过） |
+| 回退镜像 | `unipo-backend:test-rollback-20261022T223323Z`；旧 Compose 备份为 `docker-compose.test.yml.bak-*` |
+
+公网验证：readiness 200、prometheus 404；手机号任意 4 位码登录成功；学校选项、成长背景保存（2026 级 → 大一，`stageBasis=CALENDAR`，下一步「完成报到」）；信息流游标分页；WebSocket 握手 101；同一手机号与验证码请求生产被拒绝。模拟器直连服务器完成新号登录、4 步引导（含学校与入学年份）、首页阶段卡与图片加载。生产实例未更新。验证时新建了一个测试手机号账号（尾号 5791）和一个接口测试账号，留在测试库。
+

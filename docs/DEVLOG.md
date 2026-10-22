@@ -4937,3 +4937,11 @@ R03 的本机演练第一次对比源库和恢复库时，行数、`CHECKSUM TAB
 dump 故意不带 `--databases`。带上之后文件里会有 `CREATE DATABASE` 和 `USE biecuoguo`，恢复脚本不管指定什么目标库，导入都会切回生产库名，演练时可能直接写进生产。不带它，dump 只有表，恢复落在 `--database` 指定的库；恢复脚本还会扫一遍，发现行首的 `USE`/`CREATE DATABASE`/`DROP DATABASE` 就拒绝，防止有人手工拿别的 dump 来恢复。
 
 目前迁移里没有触发器、存储过程、视图和事件，`--routines --triggers --events` 导出来是空的。以后要是加了，DEFINER 账号必须在恢复实例里存在，开 binlog 时还会遇到 DP17 那次的 1419；那时需要补演练，不能假设现在的绿灯还适用。
+
+## 2026-10-23 测试实例改为公网直连，端口一开 actuator 也跟着出去了
+
+为了能拿真机点，测试后端从 `127.0.0.1:18081` 改成 `0.0.0.0:18081`，本机的 colima、容器、后端和 Vite 全停。部署后顺手从外网扫了一遍，`/actuator/prometheus` 居然 200。生产那边一直是 nginx 只放 `/actuator/health`，测试实例以前只绑回环所以没人注意，`application.yml` 里 exposure 是 `health,info,metrics,prometheus`，而 SecurityConfig 只拦了 metrics。最后在测试 Compose 里加 `MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health`，复查 prometheus 404、health 200。以后任何「直接对公网的端口」都要先外网扫一遍 actuator。
+
+模拟器走完新账号引导后，首页阶段卡还写着「按完成进度」，以为是后端没存上，查库 `entry_year=2026` 好好的。原因是首页在登录那一刻（引导还挡在上面）就读了成长数据，引导保存背景后 `.task(id:)` 的 id 只含账号和版本号，没变化就不重读。现在首页和成长页都跟着 `profile.entryYear` 变化重载。
+
+头像预设用 `UIGraphicsImageRenderer(size: 600×600)` 渲染，默认按屏幕 3 倍，实际是 1800 像素、3.3MB 的 PNG，模拟器上首页头像要等好几秒才出来，真机流量下更糟。改成 `format.scale = 1`。

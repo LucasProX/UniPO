@@ -16,10 +16,14 @@ services:
       SMS_MOCK_ACCEPT_ANY_CODE: "true"
       BOOTSTRAP_SEED_DEMO_DATA: "false"
       APNS_ENABLED: "false"
+      # 端口直接对公网，没有 nginx 挡 actuator；只暴露健康检查。
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health
       TZ: Asia/Shanghai
     mem_limit: 768m
+    # 2026-10-23 起对公网开放，供真机与模拟器直连；腾讯云安全组需放行 TCP 18081。
+    # 测试实例接受任意 4 位验证码，只连 unipo_test 库，绝不能指向生产配置。
     ports:
-      - "127.0.0.1:18081:8080"
+      - "0.0.0.0:18081:8080"
     networks:
       - infra
     healthcheck:
