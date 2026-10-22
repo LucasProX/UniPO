@@ -4907,3 +4907,33 @@ Outbox 的数据库专项直接调用 worker，能证事务与租约，但没有
 消息改成 Tab 后，`MessagesView` 里原来那层 `fullScreenCover(auth.loginRequested)` 会和 RootView 的登录 cover 同时触发；嵌入模式下关掉了自己的那层。互动通知的 id 分别来自点赞表、收藏表和评论表，SwiftUI `ForEach` 用数字 id 会撞，改用「类型 + id」。
 
 发帖原来只取 `loadTransferable(Data)` 直接上传，相册里的 HEIC 原图过不了服务端的文件头校验（只认 JPEG/PNG/GIF/WebP），表现是「图片上传失败」却看不出原因。现在上传前统一转成最长边 2048 的 JPEG，多选最多 9 张。
+
+## 2026-10-23 恢复库的 SHOW CREATE TABLE 多了 CHARACTER SET，不是备份丢了字符集
+
+R03 的本机演练第一次对比源库和恢复库时，行数、`CHECKSUM TABLE` 全部一致，偏偏我拿来当“结构相同”证据的 `SHOW CREATE TABLE` 拼接哈希对不上（run `1d0ede9e35bf6222`）。第一反应是 dump 把排序规则弄丢了，或者目标实例默认字符集不一样，导入时列被改成了 `utf8mb4_0900_ai_ci`。
+
+把两边的 DDL 展开逐行 diff，39 处差异全是同一种：源库是
+
+```text
+`code` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+```
+
+恢复库变成
+
+```text
+`code` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+```
+
+排序规则一个都没变，只是写法多了 `CHARACTER SET`。dump 里的建表语句和源库 `SHOW CREATE TABLE` 一模一样，都是只带 `COLLATE`；MySQL 8.4 执行这种“列上显式写了 COLLATE”的定义之后，再展示时就会把字符集也写出来。迁移当初是表级 `DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`、列上什么都没写，所以源库不显示。information_schema 里两边的 `CHARACTER_SET_NAME`/`COLLATION_NAME` 完全相同，两个实例的启动参数也和生产一样带了 `--collation-server=utf8mb4_unicode_ci`，排除了默认值不同的猜测。
+
+所以“恢复后结构一致”不能用 DDL 文本哈希判断，那会把无害的展示差异当成恢复失败，反过来也容易让人习惯性忽略真问题。演练脚本改成比对 information_schema 的表、列（类型、可空、默认值、字符集、排序规则、生成表达式）、索引、外键、CHECK 和 AUTO_INCREMENT，`SHOW CREATE TABLE` 只作为产物保留，并在摘要里注明“仅 CHARACTER SET 写法不同”。之后 `f1d350bd9a88e138` 的 708 行结构指纹一致。恢复库将来再被备份，dump 会带上 `CHARACTER SET` 写法，语义不变。
+
+顺手踩的一个小坑：备份脚本最初写 `chmod 700 -- "$dir"`，在 Mac 上直接报 `chmod: --: No such file or directory`。BSD chmod 读到第一个非选项参数（模式 700）就停止解析，后面的 `--` 被当成文件名；GNU 没这个问题。路径都是绝对路径，去掉 `--` 即可，`rm`/`mv`/`mkdir` 的 `--` 放在模式之前不受影响。
+
+## 2026-10-23 MySQL 备份按份数保留，dump 不带 --databases
+
+保留策略一开始想用 `find -mtime +14 -delete`，后来改成“同库按文件名排序，只留最新 14 份”。按天数删有个反直觉的后果：cron 如果坏了两周没人发现，下一次手动修好之前，旧的好备份会被逐天删光，正好在最需要的时候什么都没有。按份数删只有在新备份成功之后才动旧文件，备份停多久都至少留着最后 14 份。代价是 14 份不严格等于 14 天，手动多跑几次会挤掉旧的，所以文档里写的是“份”。
+
+dump 故意不带 `--databases`。带上之后文件里会有 `CREATE DATABASE` 和 `USE biecuoguo`，恢复脚本不管指定什么目标库，导入都会切回生产库名，演练时可能直接写进生产。不带它，dump 只有表，恢复落在 `--database` 指定的库；恢复脚本还会扫一遍，发现行首的 `USE`/`CREATE DATABASE`/`DROP DATABASE` 就拒绝，防止有人手工拿别的 dump 来恢复。
+
+目前迁移里没有触发器、存储过程、视图和事件，`--routines --triggers --events` 导出来是空的。以后要是加了，DEFINER 账号必须在恢复实例里存在，开 binlog 时还会遇到 DP17 那次的 1419；那时需要补演练，不能假设现在的绿灯还适用。

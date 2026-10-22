@@ -1,0 +1,47 @@
+services:
+  source:
+    image: ${UNIPO_R03_MYSQL_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R03_SOURCE_CONTAINER:?source container name is required}
+    labels:
+      com.unipo.fixture: r03-mysql-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${UNIPO_R03_SOURCE_ROOT_PASSWORD:?source root password is required}
+      MYSQL_DATABASE: ${UNIPO_R03_SCHEMA:?source schema is required}
+      MYSQL_USER: unipo_fixture
+      MYSQL_PASSWORD: ${UNIPO_R03_SOURCE_PASSWORD:?source password is required}
+      TZ: Asia/Shanghai
+    # Same character set flags as the production compose file; the rest only keeps the fixture small.
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=64M
+      - --innodb-redo-log-capacity=64M
+      - --max-connections=30
+      - --performance-schema=OFF
+      - --mysqlx=OFF
+    ports:
+      - "127.0.0.1:22316:3306"
+    tmpfs:
+      - /var/lib/mysql
+
+  target:
+    image: ${UNIPO_R03_MYSQL_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R03_TARGET_CONTAINER:?target container name is required}
+    labels:
+      com.unipo.fixture: r03-mysql-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    # No MYSQL_DATABASE: the restore script has to create the target schema itself. No published port either.
+    environment:
+      MYSQL_ROOT_PASSWORD: ${UNIPO_R03_TARGET_ROOT_PASSWORD:?target root password is required}
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb-buffer-pool-size=64M
+      - --innodb-redo-log-capacity=64M
+      - --max-connections=30
+      - --performance-schema=OFF
+      - --mysqlx=OFF
+    tmpfs:
+      - /var/lib/mysql
