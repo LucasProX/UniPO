@@ -266,6 +266,13 @@ public class SocialService implements BlockQueryApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public boolean isBlockedInLockedPair(Long a, Long b) {
+        requireRelationshipTransaction(a, b);
+        return blockMapper.existsEitherWayForShare(a, b);
+    }
+
+    @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Set<Long> blockedUserIds(Long viewerId) {
         if (viewerId == null) return Set.of();
@@ -300,13 +307,17 @@ public class SocialService implements BlockQueryApi {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void lockPair(Long firstUserId, Long secondUserId) {
+        requireRelationshipTransaction(firstUserId, secondUserId);
+        lockRelationshipPair(firstUserId, secondUserId);
+    }
+
+    private void requireRelationshipTransaction(Long firstUserId, Long secondUserId) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("用户关系锁需要数据库事务");
         }
         if (firstUserId == null || secondUserId == null || firstUserId.equals(secondUserId)) {
             throw new IllegalArgumentException("用户关系锁参数不合法");
         }
-        lockRelationshipPair(firstUserId, secondUserId);
     }
 
     private boolean blockedEitherWayForUpdate(Long a, Long b) {

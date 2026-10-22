@@ -80,6 +80,7 @@ import static org.mockito.Mockito.mock;
 @Timeout(30)
 class PostInteractionMySqlIntegrationTest {
     private static final AtomicInteger PUBLIC_UID = new AtomicInteger(71_000_000);
+    private static final AtomicInteger CONNECTION_OPENS = new AtomicInteger();
     private static final AtomicReference<StatusReadGate> STATUS_READ_GATE = new AtomicReference<>();
     private static final AtomicReference<RelationshipReadGate> RELATIONSHIP_READ_GATE = new AtomicReference<>();
     private static AnnotationConfigApplicationContext context;
@@ -109,7 +110,14 @@ class PostInteractionMySqlIntegrationTest {
         assertNotNull(password, "A generated fixture password is required");
         assertTrue(password.matches("[0-9a-f]{48}"), "Invalid generated fixture password");
 
-        DriverManagerDataSource dataSource = new DriverManagerDataSource();
+        DriverManagerDataSource dataSource = new DriverManagerDataSource() {
+            @Override
+            public java.sql.Connection getConnection() throws java.sql.SQLException {
+                java.sql.Connection connection = super.getConnection();
+                CONNECTION_OPENS.incrementAndGet();
+                return connection;
+            }
+        };
         dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
         dataSource.setUrl("jdbc:mysql://127.0.0.1:22306/" + schema
                 + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
@@ -760,6 +768,18 @@ class PostInteractionMySqlIntegrationTest {
                 assertFalse(social.isBlockedEitherWay(actor.id(), target.id()),
                         "Previously cached true must not hide a committed unblock");
                 assertTrue(social.blockedUserIds(actor.id()).isEmpty());
+
+                awaitWorker(worker.submit(() -> social.block(targetUid, actor)));
+                assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ?",
+                        Integer.class, actor.id()), "The caller still holds its original empty snapshot");
+                social.lockPair(actor.id(), target.id());
+                int connectionsBeforeLockedRead = CONNECTION_OPENS.get();
+                assertTrue(social.isBlockedInLockedPair(actor.id(), target.id()),
+                        "The locked-pair read must see committed facts beyond an old snapshot");
+                assertTrue(social.isBlockedInLockedPair(target.id(), actor.id()),
+                        "A single committed direction must block reads in both participant orders");
+                assertEquals(connectionsBeforeLockedRead, CONNECTION_OPENS.get(),
+                        "Holding a pair lock must not require borrowing an additional connection");
             });
         } finally {
             stopWorkers(worker);
@@ -772,9 +792,25 @@ class PostInteractionMySqlIntegrationTest {
         CurrentUser target = newUser();
         assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,
                 () -> social.lockPair(actor.id(), target.id()));
+        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,
+                () -> social.isBlockedInLockedPair(actor.id(), target.id()));
         assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM social_relationship_pair_locks "
                 + "WHERE user_low_id = ? AND user_high_id = ?", Integer.class,
                 Math.min(actor.id(), target.id()), Math.max(actor.id(), target.id())));
+
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        transaction.executeWithoutResult(status -> {
+            social.lockPair(actor.id(), target.id());
+            int connectionsBeforeLockedRead = CONNECTION_OPENS.get();
+            assertFalse(social.isBlockedInLockedPair(actor.id(), target.id()));
+            // JDBC setup deliberately does not flush MyBatis' local cache.
+            jdbc.update("INSERT INTO user_blocks (blocker_id, blocked_id, created_at) VALUES (?, ?, NOW())",
+                    target.id(), actor.id());
+            assertTrue(social.isBlockedInLockedPair(actor.id(), target.id()),
+                    "A prior false must not survive a new relationship fact in the same transaction");
+            assertEquals(connectionsBeforeLockedRead, CONNECTION_OPENS.get(),
+                    "Locked relationship queries must stay on the existing transaction connection");
+        });
     }
 
     @Test

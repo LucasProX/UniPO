@@ -16,6 +16,6 @@ public class LoggingPushService implements PushService {
 
     @Override
     public void send(long userId, String title, String body, Map<String, String> data) {
-        log.info("push(mock) user={} title={} body={} data={}", userId, title, body, data);
+        log.debug("Push provider disabled; notification attempt completed without external delivery");
     }
 }

@@ -191,3 +191,17 @@ Redis 夹具证明 R06 存储撤销与 TTL，MySQL 夹具证明设备身份领�
 2026-10-22 在独立 run `ae388004c979bcc3` 再跑当前源码，**20/20 通过、0 跳过**，V1–V21 全量迁移成功，产物保存在 `.logs/dp02/sms-ae388004c979bcc3/`。新增的非 mock challenge 用例覆盖“验证码已验证并读到旧账号版本后，logout-all 先提交”的交错：登录被拒绝，challenge 消费与登录写入一起回滚。
 
 最终 V21 迁移后又在全新 run `d27500773c1624de` 重跑 **20/20 通过、0 跳过**，产物保存在 `.logs/dp02/sms-d27500773c1624de/`。新增迁移及该轮专项均成功；它仍只证明隔离数据库中的登录事务和验证码存储行为，不代表真实短信供应商、生产部署或 DP02 整体验收完成。
+
+## DP14 持久通知与设备进度
+
+`bash scripts/integration/outbox-delivery.sh` 运行 18 项真实 MySQL 用例，`bash scripts/integration/push-delivery.sh` 运行 11 项设备进度用例。两者都复用新建 22306 fixture，核对 marker/schema，完整 Flyway，运行完仅清理本轮资源；不读根 `.env`，不访问远端或 Apple。不要与其他使用 22306 的专项并行。
+
+当前 V24 的 Outbox run `90d720d47dcd2880` **18/18**，设备 run `21bbda7d3d05c18c` **11/11**，均零失败/错误/跳过。前者包括独立 JVM 进入 transport 后 abrupt halt、新 worker 重领、旧 owner CAS、Hikari 最大连接数 1、通道分离与下页零等待；后者包括 64 设备上限、部分接受后重建继续、换绑最终检查、固定设备 ID 快照与持久轮转。
+
+最终社交与私信分别为 `8ee3da02a07e172f` 的 34 项、`7cd50ba26df6e411` 的 15 项；V1 至 V24 完整迁移成功。原始报告分别位于 `.logs/dp14/mysql-{run}/`、`.logs/dp14/push-{run}/`、`.logs/dp17/mysql-{run}/` 和 `.logs/dp03/message-{run}/`。Runner 对实际项数与零跳过都有固定断言，普通 `mvn test` 的条件跳过不代替显式执行。
+
+网络通道使用探针/ApnsClient 替身，提供商接受但 receipt 未落库的退出窗口仍可能重复；不据此声明 Apple 真通道、远端 WebSocket 或 iOS UI 已通过。完整边界见 [DP14 验收记录](../../docs/DP14-VERIFICATION.md)。
+
+自动调度与指标可用 `UNIPO_DP14_SCHEDULE_SMOKE=1 UNIPO_DP02_SMOKE=1 bash scripts/integration/identity-e2e.sh` 检查；Redis/MySQL 镜像按本机已有缓存指定。原 42 项不变，之后独立读取归属 marker，并只聚合本轮专用 peer 的消息，在 20 秒内等待两通道自然完成；最后检查两台 Boot 的十项 Prometheus 名称和 TYPE。默认不启用该额外 gate，以保持旧包冒烟入口。
+
+最终 run `e5d04e2f8d779cdf`：42/42，上传开启，1 条本轮消息、2 条意图全部自动 DELIVERED，其余状态为 0，两端指标通过。JSON 的 `scheduled_outbox.complete`、`owned_peer_only`、`metrics_a_ok`、`metrics_b_ok` 和 `cleanup_complete` 均 true；凭据未记录，未调用 manual drain。APNs 关闭，只证明服务端通道处理结束。产物在 `.logs/dp02/smoke-e5d04e2f8d779cdf/`。

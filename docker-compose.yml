@@ -134,6 +134,8 @@ services:
       # 起多副本（或加网关后要多实例）必须换成 redis，否则各实例状态不共享（ISSUES Q-4）。
       # 换 redis 时记得同时带上 --profile redis 把上面的 redis 服务拉起来。
       STATE_BACKEND: ${STATE_BACKEND:-memory}
+      MESSAGE_OUTBOX_ENABLED: ${MESSAGE_OUTBOX_ENABLED:-true}
+      MESSAGE_OUTBOX_POLL_INTERVAL_MS: ${MESSAGE_OUTBOX_POLL_INTERVAL_MS:-1000}
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

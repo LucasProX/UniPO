@@ -14,12 +14,14 @@
 4. **状态外部化**：会话、限流、在线态、撤销名单、实时广播都进 Redis；对象存储进 MinIO/S3；
    应用实例保持无状态 —— 这是「一台机器能跑、十台也能跑」的前提。
 
-实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）。目标可靠投递采用 Outbox；当前私信已移到提交后通知，但持久 Outbox 尚未交付。私信不进入通用 Redis Stream 重放，断线恢复走消息 HTTP 接口。
+实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）。V23 的消息 Outbox 与消息同事务保存，独立 worker 持租约投递，V24 记录分设备推送进度。私信不进入通用 Redis Stream 重放，断线恢复走消息 HTTP 接口。可靠性与部署边界见 DP14 验收记录。
 详见 ADR-0001。
 
 ### 2026 年 10 月 22 日增量
 
 V20 的身份版本与设备记录由 MySQL 作为权威，access、refresh、Cookie 和实时连接统一校验，详见 ADR-0003。V21 加入互动幂等；V22 以用户对锁串行关注、拉黑和私信操作，详见 ADR-0004。独立 MySQL/Redis 验证与客户端边界分别记录在 DP02、DP03 验收文档。下方旧快照不能用于推断这些增量尚未实现或已经部署。
+
+后续 V23/V24 的持久投递与小连接池取舍见 ADR-0005。message.internal 拥有队列与 worker；push.internal 拥有设备快照和处理进度，跨模块只走 PushService。调度进程可重建，任务、租约与进度不依赖进程内集合。
 
 ### 落地进度（2026-10-20）
 
@@ -114,6 +116,8 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 
 ### 4.3 消息域
 `conversations`（两人会话，`user_one_id < user_two_id` 去重）、`messages`（`read_flag` 布尔）。
+
+`message_delivery_outbox`（V23）：每消息/通道唯一，稳定 eventId、状态、DB UTC 租约、重试和完成元数据；不复制正文。PENDING/SENDING 为待办，FAILED 保留永久失败，SUPPRESSED 表示投递时权限已不可见。已完成状态不等同于设备送达。
 
 ### 4.4 媒体域
 `media_objects`：`bucket` / `object_key` / `url` / `content_type` / `size_bytes` / `purpose`。

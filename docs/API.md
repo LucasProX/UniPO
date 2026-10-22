@@ -317,7 +317,11 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 
 会话列表在预览与未读数据组装之后批量重查权威关系，未读统计也在聚合后执行同样的检查。该检查之前已提交的拉黑必须过滤；检查之后已在途的 HTTP 响应不能撤回。查询失败返回失败，不把已准备的数据直接返回。跨模块查询不沿用业务事务旧快照或 MyBatis 缓存。
 
-WebSocket 与 APNs 仅在消息事务提交后调度，回滚不投递。当前提交后回调没有持久重试，进程在提交后、投递前退出可能漏掉实时提醒；消息事实仍从 HTTP 接口同步。持久 Outbox 仍在 DP14，不能将现状描述为可靠通知已全部交付。
+消息与 WebSocket/APNs 两条 Outbox 任务在同一数据库事务提交；HTTP 和 after-commit 不投递。独立 worker 在短事务领取并释放连接后才访问网络，失败退避重试，过期租约可由新 worker 领取。任务按事件 ID 与消息 ID 保持身份；过期 owner 的完成请求不改变新租约。持 pair 锁的消息事务使用当前连接检查关系，避免再借连接。
+
+WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId / message` 保留。iOS 在当前连接内保存最多 1024 个 ID 去重；断开清空并拒绝旧连接迟到帧。缺少该字段的旧服务保持兼容，消息记录仍以 message.id 去重和同步。
+
+推送按事件固定设备注册 ID 快照，每次最多处理 64 个设备，明确接受或永久无效的目标持久记进度，后续重试跳过。每次外部提交前重查设备归属；新增注册不追补旧快照。临时失败与永久失败分开保存，供应商等待要求参与重试计划。`DELIVERED` 不是用户设备收到或已读回执；无可用设备或关闭真实推送时同样可能处理结束。外部已接受但进度尚未保存时进程退出仍可能重试，不能承诺系统提醒恰好一次。
 
 这些规则必须在服务端执行，不能依赖 iOS 隐藏按钮或本地过滤。post/message 模块通过 social 的公开 facade 获取关系及用户对锁，禁止直接依赖 `UserBlockMapper`。对应实现和验证状态见 [DP03 验收记录](DP03-VERIFICATION.md)。
 
@@ -421,7 +425,7 @@ WebSocket 与 APNs 仅在消息事务提交后调度，回滚不投递。当前�
 | DELETE | `/api/push/tokens?token=...` | 注销 token（退出/换设备时可选） |
 
 - token 存 `device_tokens`，同一 token 只保留一条（换账号会覆盖）；
-- 私信发送后会异步推送给收件人，推送失败不影响发消息；
+- 私信提交后由持久 worker 向收件人投递；失败保留重试或失败记录，不改变消息已保存的结果；
 - `app.push.apns.enabled=false` 时用 `LoggingPushService`，只打日志；
 - 打开后需要 `APNS_KEY_PATH` / `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_TOPIC`。
 

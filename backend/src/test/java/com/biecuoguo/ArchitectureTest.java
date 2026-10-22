@@ -108,6 +108,14 @@ class ArchitectureTest {
     }
 
     @Test
+    void pushInternalsAreNotAccessedFromOutside() {
+        noClasses().that().resideOutsideOfPackage("com.biecuoguo.push..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.push.internal..")
+                .because("推送进度与设备凭据只经 push.api 访问")
+                .check(CLASSES);
+    }
+
+    @Test
     void taxonomyInternalsAreNotAccessedFromOutside() {
         ArchRule rule = noClasses()
                 .that().resideOutsideOfPackage("com.biecuoguo.taxonomy..")

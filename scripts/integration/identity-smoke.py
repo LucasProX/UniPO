@@ -44,6 +44,41 @@ OWNER_FORMAT = (
     '"owner":{{json (index .Config.Labels "com.unipo.fixture.owner")}},"image":{{json .Image}},'
     '"running":{{json .State.Running}},"ports":{{json .HostConfig.PortBindings}}}'
 )
+SCHEDULE_SQL = {
+    "ownership": "SELECT DATABASE(), LOWER(HEX(run_id)) FROM dp02_fixture_marker",
+    "counts": """
+        SELECT COUNT(*), COALESCE(SUM(intent_count), 0), COALESCE(SUM(delivered_count), 0),
+               COALESCE(SUM(pending_count), 0), COALESCE(SUM(sending_count), 0),
+               COALESCE(SUM(failed_count), 0), COALESCE(SUM(suppressed_count), 0),
+               COALESCE(SUM(CASE WHEN intent_count = 2 AND delivered_count = 2
+                                 AND realtime_count = 1 AND push_count = 1 THEN 0 ELSE 1 END), 0)
+        FROM (
+            SELECT m.id, COUNT(o.id) AS intent_count,
+                   SUM(o.state = 'DELIVERED') AS delivered_count,
+                   SUM(o.state = 'PENDING') AS pending_count,
+                   SUM(o.state = 'SENDING') AS sending_count,
+                   SUM(o.state = 'FAILED') AS failed_count,
+                   SUM(o.state = 'SUPPRESSED') AS suppressed_count,
+                   SUM(o.channel = 'REALTIME') AS realtime_count,
+                   SUM(o.channel = 'PUSH') AS push_count
+            FROM messages m LEFT JOIN message_delivery_outbox o ON o.message_id = m.id
+            WHERE m.receiver_id = {receiver_id}
+            GROUP BY m.id
+        ) AS delivery_counts
+    """,
+}
+SCHEDULE_METRIC_TYPES = {
+    "unipo_message_outbox_failed_total": "counter",
+    "unipo_message_outbox_failed_current": "gauge",
+    "unipo_message_outbox_pending": "gauge",
+    "unipo_message_outbox_sending": "gauge",
+    "unipo_message_outbox_oldest_age_seconds": "gauge",
+    "unipo_message_outbox_delivered_total": "counter",
+    "unipo_message_outbox_suppressed_total": "counter",
+    "unipo_message_outbox_retried_total": "counter",
+    "unipo_message_outbox_continued_total": "counter",
+    "unipo_message_outbox_lease_lost_total": "counter",
+}
 
 
 class SmokeFixture:
@@ -92,6 +127,18 @@ class SmokeFixture:
         self.failure_names: set[str] = set()
         self.skipped = False
         self.smoke_returncode: int | None = None
+        self.schedule_peer_id: int | None = None
+        schedule_mode = os.environ.get("UNIPO_DP14_SCHEDULE_SMOKE", "0")
+        if schedule_mode not in {"0", "1"}:
+            raise BASE.CheckFailure("SETUP: scheduled outbox observation must be explicitly enabled or disabled")
+        self.scheduled_outbox: dict[str, bool | int] = {
+            "enabled": schedule_mode == "1", "ownership_verified": False, "apns_disabled": False,
+            "owned_peer_only": False,
+            "messages": 0, "intents": 0, "delivered": 0, "pending": 0, "sending": 0,
+            "failed": 0, "suppressed": 0, "incomplete_messages": 0, "poll_attempts": 0,
+            "all_messages_delivered": False, "metrics_a_ok": False, "metrics_b_ok": False,
+            "complete": False,
+        }
 
     def docker(self, arguments: list[str], *, env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess:
         result = subprocess.run(["docker", "--context", self.docker_context, *arguments], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -185,6 +232,7 @@ class SmokeFixture:
 
     def run_smoke(self) -> None:
         peer, _ = self.suite.new_user(self.suite.a, "SMOKE.peer")
+        self.schedule_peer_id = peer.user_id
         self.suite.login(peer, self.suite.a, "SMOKE.peer-login")
         environment = os.environ.copy()
         environment["ADMIN_UID"] = peer.public_uid
@@ -228,6 +276,112 @@ class SmokeFixture:
                 or any(count != 1 for count in self.check_counts.values())):
             raise BASE.CheckFailure("SMOKE: all 42 checks including upload must pass exactly once without skips")
 
+    def schedule_mysql(self, query_name: str, timeout: float) -> str:
+        # Every query is a fixed SELECT. The generated password is passed only in the child's environment.
+        if query_name not in SCHEDULE_SQL:
+            raise BASE.CheckFailure("SCHEDULE: unknown read-only fixture observation")
+        query = SCHEDULE_SQL[query_name]
+        if query_name == "counts":
+            if type(self.schedule_peer_id) is not int or self.schedule_peer_id <= 0:
+                raise BASE.CheckFailure("SCHEDULE: the owned smoke peer scope is invalid")
+            # Only the positive numeric ID from this run's newly created peer fills this fixed SELECT.
+            query = query.format(receiver_id=self.schedule_peer_id)
+        environment = os.environ.copy()
+        environment["MYSQL_PWD"] = environment["UNIPO_DP02_MYSQL_PASSWORD"]
+        try:
+            result = subprocess.run([
+                "mysql", "--no-defaults", "--protocol=TCP", "--host=127.0.0.1", "--port=22306",
+                "--user=unipo_fixture", "--database=" + environment["UNIPO_DP02_MYSQL_SCHEMA"],
+                "--connect-timeout=2", "--batch", "--raw", "--skip-column-names",
+                "--execute=" + query,
+            ], env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired):
+            raise BASE.CheckFailure("SCHEDULE: the bounded fixture SELECT could not complete") from None
+        if result.returncode != 0:
+            raise BASE.CheckFailure("SCHEDULE: the read-only fixture SELECT failed")
+        return result.stdout.strip()
+
+    def observe_schedule_metrics(self, port: int) -> None:
+        if port not in {28080, 28081}:
+            raise BASE.CheckFailure("SCHEDULE: metric observation must use an owned loopback application")
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+        try:
+            connection.request("GET", "/actuator/prometheus")
+            response = connection.getresponse()
+            raw = response.read(BASE.MAX_RESPONSE_BYTES + 1)
+            if response.status != 200 or len(raw) > BASE.MAX_RESPONSE_BYTES:
+                raise BASE.CheckFailure("SCHEDULE: Prometheus must be bounded and return HTTP 200")
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                raise BASE.CheckFailure("SCHEDULE: Prometheus response encoding is invalid") from None
+        except (OSError, http.client.HTTPException):
+            raise BASE.CheckFailure("SCHEDULE: the loopback Prometheus observation failed") from None
+        finally:
+            connection.close()
+
+        # Retain only booleans. Raw JVM/HTTP/provider metric samples are never saved to artifacts.
+        families: dict[str, str] = {}
+        for name, kind in re.findall(r"^# TYPE ([a-zA-Z_:][a-zA-Z0-9_:]*) ([a-zA-Z]+)\s*$", text, re.MULTILINE):
+            if name in families:
+                raise BASE.CheckFailure("SCHEDULE: Prometheus contains a duplicate TYPE family")
+            families[name] = kind
+        for name, kind in SCHEDULE_METRIC_TYPES.items():
+            if families.get(name) != kind or not re.search(
+                    r"^" + re.escape(name) + r"(?:\{[^\n]*\})?\s+\S+", text, re.MULTILINE):
+                raise BASE.CheckFailure("SCHEDULE: an expected Outbox metric name or type is missing")
+
+    def run_scheduled_outbox(self) -> None:
+        if not self.scheduled_outbox["enabled"]:
+            return
+        if not shutil.which("mysql"):
+            raise BASE.CheckFailure("SCHEDULE: the MySQL fixture client is unavailable")
+        if (os.environ.get("UNIPO_DP02_MYSQL_HOST") != "127.0.0.1"
+                or os.environ.get("UNIPO_DP02_MYSQL_PORT") != "22306"
+                or os.environ.get("UNIPO_DP02_MYSQL_USER") != "unipo_fixture"
+                or os.environ.get("UNIPO_DP02_MYSQL_SCHEMA") != "unipo_dp02_" + self.run_marker
+                or not re.fullmatch(r"[0-9a-f]{48}", os.environ.get("UNIPO_DP02_MYSQL_PASSWORD", ""))):
+            raise BASE.CheckFailure("SCHEDULE: refusing a database outside the owning fresh fixture")
+        self.scheduled_outbox["apns_disabled"] = os.environ.get("APNS_ENABLED") == "false"
+        if not self.scheduled_outbox["apns_disabled"]:
+            raise BASE.CheckFailure("SCHEDULE: this observation requires the fixture's disabled APNs provider")
+        owner = self.schedule_mysql("ownership", 3).split("\t")
+        if owner != ["unipo_dp02_" + self.run_marker, self.run_marker]:
+            raise BASE.CheckFailure("SCHEDULE: the database ownership marker did not match")
+        self.scheduled_outbox["ownership_verified"] = True
+        if type(self.schedule_peer_id) is not int or self.schedule_peer_id <= 0:
+            raise BASE.CheckFailure("SCHEDULE: the original smoke's owned peer is unavailable")
+        self.scheduled_outbox["owned_peer_only"] = True
+
+        deadline = time.monotonic() + 20
+        names = ("messages", "intents", "delivered", "pending", "sending", "failed", "suppressed", "incomplete_messages")
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            values = self.schedule_mysql("counts", min(3, remaining)).split("\t")
+            if len(values) != len(names) or any(not re.fullmatch(r"[0-9]+", value) for value in values):
+                raise BASE.CheckFailure("SCHEDULE: aggregate fixture counts are invalid")
+            self.scheduled_outbox.update(zip(names, map(int, values)))
+            self.scheduled_outbox["poll_attempts"] += 1
+            if self.scheduled_outbox["failed"] or self.scheduled_outbox["suppressed"]:
+                raise BASE.CheckFailure("SCHEDULE: an original smoke message was failed or suppressed")
+            self.scheduled_outbox["all_messages_delivered"] = (
+                self.scheduled_outbox["messages"] >= 1
+                and self.scheduled_outbox["intents"] == self.scheduled_outbox["messages"] * 2
+                and self.scheduled_outbox["delivered"] == self.scheduled_outbox["intents"]
+                and not any(self.scheduled_outbox[name] for name in ("pending", "sending", "failed", "suppressed", "incomplete_messages"))
+            )
+            if self.scheduled_outbox["all_messages_delivered"]:
+                break
+            time.sleep(min(0.25, max(0, deadline - time.monotonic())))
+        if not self.scheduled_outbox["all_messages_delivered"]:
+            raise BASE.CheckFailure("SCHEDULE: original smoke messages did not finish both channels within twenty seconds")
+        for port, key in ((28080, "metrics_a_ok"), (28081, "metrics_b_ok")):
+            self.observe_schedule_metrics(port)
+            self.scheduled_outbox[key] = True
+        self.scheduled_outbox["complete"] = True
+
     def cleanup(self) -> None:
         if not self.creation_attempted:
             self.cleanup_complete = True
@@ -252,6 +406,7 @@ class SmokeFixture:
             "original_smoke_exit": self.smoke_returncode, "upload_enabled": True,
             "cached_image_id": self.image_id, "owned_container_id": self.container_id,
             "cleanup_complete": self.cleanup_complete, "credentials_recorded": False,
+            "scheduled_outbox": self.scheduled_outbox,
             **({"reason": reason} if reason else {}),
         })
         summary = self.suite.artifacts / "identity-smoke-summary.txt"
@@ -275,6 +430,7 @@ def main() -> int:
         fixture = SmokeFixture()
         fixture.start_minio()
         fixture.run_smoke()
+        fixture.run_scheduled_outbox()
         status = "PASS"
     except BASE.CheckFailure as failure:
         reason = str(failure)

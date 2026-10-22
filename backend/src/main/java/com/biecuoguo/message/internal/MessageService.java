@@ -7,16 +7,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.message.api.MessageDtos;
 import com.biecuoguo.post.api.PostDtos;
-import com.biecuoguo.push.api.PushService;
 import com.biecuoguo.mapper.UserMapper;
-import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.social.api.BlockQueryApi;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Propagation;
@@ -31,25 +25,20 @@ import java.util.stream.Collectors;
 
 @Service
 public class MessageService {
-    private static final Logger log = LoggerFactory.getLogger(MessageService.class);
-
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
     private final PresenceService presenceService;
-    private final RealtimeHub realtimeHub;
-    private final PushService pushService;
+    private final MessageOutboxStore outbox;
     private final BlockQueryApi blockQueryApi;
 
     public MessageService(ConversationMapper conversationMapper, MessageMapper messageMapper, UserMapper userMapper,
-                          PresenceService presenceService, RealtimeHub realtimeHub, PushService pushService,
-                          BlockQueryApi blockQueryApi) {
+                          PresenceService presenceService, MessageOutboxStore outbox, BlockQueryApi blockQueryApi) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.userMapper = userMapper;
         this.presenceService = presenceService;
-        this.realtimeHub = realtimeHub;
-        this.pushService = pushService;
+        this.outbox = outbox;
         this.blockQueryApi = blockQueryApi;
     }
 
@@ -170,39 +159,8 @@ public class MessageService {
         conversation.setLastMessageAt(now);
         conversation.setUpdatedAt(now);
         conversationMapper.updateById(conversation);
-        MessageDtos.MessageView view = messageView(message);
-        String preview = message.getContent().length() > 60
-                ? message.getContent().substring(0, 60) + "…"
-                : message.getContent();
-        publishAfterCommit(receiverId, conversation.getId(), currentUser.id(), view, preview);
-        return view;
-    }
-
-    private void publishAfterCommit(long receiverId, long conversationId, long senderId,
-                                    MessageDtos.MessageView view, String preview) {
-        Runnable publish = () -> {
-            try {
-                realtimeHub.publish(receiverId, "message", Map.of("conversationId", conversationId, "message", view));
-            } catch (RuntimeException failure) {
-                log.warn("Committed private message realtime delivery failed conversation={}", conversationId, failure);
-            }
-            try {
-                Thread.startVirtualThread(() -> sendPushIfVisible(senderId, receiverId, preview,
-                        Map.of("conversationId", String.valueOf(conversationId))));
-            } catch (RuntimeException failure) {
-                log.warn("Committed private message push scheduling failed conversation={}", conversationId, failure);
-            }
-        };
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    publish.run();
-                }
-            });
-        } else {
-            publish.run();
-        }
+        outbox.enqueue(message.getId());
+        return messageView(message);
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -230,18 +188,8 @@ public class MessageService {
     }
 
     private void requireNotBlocked(Long firstUserId, Long secondUserId) {
-        if (blockQueryApi.isBlockedEitherWay(firstUserId, secondUserId)) {
+        if (blockQueryApi.isBlockedInLockedPair(firstUserId, secondUserId)) {
             throw new NoSuchElementException("conversation not found");
-        }
-    }
-
-    private void sendPushIfVisible(Long senderId, Long receiverId, String preview, Map<String, String> data) {
-        try {
-            if (!blockQueryApi.isBlockedEitherWay(senderId, receiverId)) {
-                pushService.send(receiverId, "新私信", preview, data);
-            }
-        } catch (RuntimeException ignored) {
-            // Relationship state is authoritative; if it cannot be checked, do not notify.
         }
     }
 

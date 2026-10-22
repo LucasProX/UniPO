@@ -95,6 +95,10 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  message:
+    outbox:
+      enabled: ${MESSAGE_OUTBOX_ENABLED:true}
+      poll-interval-ms: ${MESSAGE_OUTBOX_POLL_INTERVAL_MS:1000}
   auth:
     # Web 端登录态：Cookie 里只放不透明 session id，服务端（Redis）存 userId/role/csrfToken。
     # 这和 App 的 Bearer token 是两套载体，共用同一个用户身份；见 ADR-0001 D3。

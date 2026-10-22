@@ -6,8 +6,6 @@ import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.message.api.MessageDtos;
-import com.biecuoguo.push.api.PushService;
-import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.service.PresenceService;
 import com.biecuoguo.social.api.BlockQueryApi;
@@ -15,8 +13,6 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -27,12 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
@@ -45,8 +40,7 @@ class MessageServiceBlockTest {
     private final MessageMapper messages = mock(MessageMapper.class);
     private final UserMapper users = mock(UserMapper.class);
     private final PresenceService presence = mock(PresenceService.class);
-    private final RealtimeHub realtime = mock(RealtimeHub.class);
-    private final PushService push = mock(PushService.class);
+    private final MessageOutboxStore outbox = mock(MessageOutboxStore.class);
     private final BlockQueryApi blocks = mock(BlockQueryApi.class);
     private MessageService service;
 
@@ -62,7 +56,12 @@ class MessageServiceBlockTest {
 
     @BeforeEach
     void createService() {
-        service = new MessageService(conversations, messages, users, presence, realtime, push, blocks);
+        service = new MessageService(conversations, messages, users, presence, outbox, blocks);
+        when(messages.insert(any(Message.class))).thenAnswer(invocation -> {
+            Message message = invocation.getArgument(0);
+            message.setId(99L);
+            return 1;
+        });
     }
 
     @Test
@@ -70,75 +69,56 @@ class MessageServiceBlockTest {
         User peer = new User();
         peer.setId(PEER_ID);
         when(users.selectById(PEER_ID)).thenReturn(peer);
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(true);
+        when(blocks.isBlockedInLockedPair(VIEWER.id(), PEER_ID)).thenReturn(true);
 
         assertThrows(NoSuchElementException.class, () -> service.create(
                 new MessageDtos.CreateConversationRequest(null, PEER_ID), VIEWER));
 
-        verifyNoInteractions(conversations, messages, realtime, push);
+        verifyNoInteractions(conversations, messages, outbox);
     }
 
     @Test
     void messagesRejectsBlockedPeerBeforeReadingOrMarkingAnythingRead() {
         when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(true);
+        when(blocks.isBlockedInLockedPair(VIEWER.id(), PEER_ID)).thenReturn(true);
 
         assertThrows(NoSuchElementException.class, () -> service.messages(5L, VIEWER));
 
-        verifyNoInteractions(messages, realtime, push);
+        verifyNoInteractions(messages, outbox);
     }
 
     @Test
     void sendRejectsBlockedPeerBeforeWritingOrPublishing() {
         when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(true);
+        when(blocks.isBlockedInLockedPair(VIEWER.id(), PEER_ID)).thenReturn(true);
 
         assertThrows(NoSuchElementException.class, () -> service.send(5L,
                 new MessageDtos.SendMessageRequest("hello"), VIEWER));
 
         verify(messages, never()).insert(any(Message.class));
         verify(conversations, never()).updateById(any(Conversation.class));
-        verifyNoInteractions(realtime, push);
+        verifyNoInteractions(outbox);
     }
 
     @Test
-    void sendPublishesOnlyAfterTransactionCommit() {
+    void sendSavesOneDurableIntentForItsNewMessage() {
         when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(false);
-        TransactionSynchronizationManager.initSynchronization();
-        TransactionSynchronizationManager.setActualTransactionActive(true);
-        try {
-            service.send(5L, new MessageDtos.SendMessageRequest("hello"), VIEWER);
+        MessageDtos.MessageView result = service.send(5L, new MessageDtos.SendMessageRequest("hello"), VIEWER);
 
-            verifyNoInteractions(realtime, push);
-            var synchronizations = TransactionSynchronizationManager.getSynchronizations();
-            assertEquals(1, synchronizations.size());
-            synchronizations.forEach(TransactionSynchronization::afterCommit);
-
-            verify(realtime).publish(eq(PEER_ID), eq("message"), any());
-            verify(push, timeout(2_000)).send(PEER_ID, "新私信", "hello", java.util.Map.of("conversationId", "5"));
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-            TransactionSynchronizationManager.setActualTransactionActive(false);
-        }
+        assertEquals(99L, result.id());
+        verify(outbox).enqueue(99L);
+        verify(blocks).isBlockedInLockedPair(VIEWER.id(), PEER_ID);
+        verify(blocks, never()).isBlockedEitherWay(any(), any());
     }
 
     @Test
-    void rolledBackMessageDoesNotPublishOrPush() {
+    void outboxFailurePropagatesToTheMessageTransaction() {
         when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(false);
-        TransactionSynchronizationManager.initSynchronization();
-        TransactionSynchronizationManager.setActualTransactionActive(true);
-        try {
-            service.send(5L, new MessageDtos.SendMessageRequest("hello"), VIEWER);
+        doThrow(new IllegalStateException("outbox unavailable")).when(outbox).enqueue(99L);
 
-            TransactionSynchronizationManager.getSynchronizations().forEach(
-                    synchronization -> synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
-            verifyNoInteractions(realtime, push);
-        } finally {
-            TransactionSynchronizationManager.clearSynchronization();
-            TransactionSynchronizationManager.setActualTransactionActive(false);
-        }
+        assertThrows(IllegalStateException.class, () -> service.send(5L,
+                new MessageDtos.SendMessageRequest("hello"), VIEWER));
+        verify(outbox).enqueue(99L);
     }
 
     @Test
@@ -157,7 +137,7 @@ class MessageServiceBlockTest {
         String predicate = sql.get().toLowerCase();
         assertTrue(predicate.contains("user_one_id") && predicate.contains("user_two_id")
                 && count(predicate, "not in") == 2, "Both participant columns must exclude the blocked peer");
-        verifyNoInteractions(messages, realtime, push);
+        verifyNoInteractions(messages, outbox);
     }
 
     @Test
@@ -213,14 +193,14 @@ class MessageServiceBlockTest {
     @Test
     void relationshipLookupFailureFailsClosedBeforeMessageReadOrWrite() {
         when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
-        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID))
+        when(blocks.isBlockedInLockedPair(VIEWER.id(), PEER_ID))
                 .thenThrow(new IllegalStateException("relationship store unavailable"));
 
         assertThrows(IllegalStateException.class, () -> service.messages(5L, VIEWER));
         assertThrows(IllegalStateException.class, () -> service.send(5L,
                 new MessageDtos.SendMessageRequest("hello"), VIEWER));
 
-        verifyNoInteractions(messages, realtime, push);
+        verifyNoInteractions(messages, outbox);
     }
 
     @Test
@@ -230,7 +210,7 @@ class MessageServiceBlockTest {
         assertThrows(IllegalStateException.class, () -> service.conversations(VIEWER));
         assertThrows(IllegalStateException.class, () -> service.unreadCount(VIEWER));
 
-        verifyNoInteractions(conversations, messages, realtime, push);
+        verifyNoInteractions(conversations, messages, outbox);
     }
 
     private void setupVisibleCandidates() {

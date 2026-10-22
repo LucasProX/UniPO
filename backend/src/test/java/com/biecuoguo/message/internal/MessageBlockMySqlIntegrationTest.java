@@ -84,6 +84,7 @@ class MessageBlockMySqlIntegrationTest {
     private static JdbcTemplate jdbc;
     private static DataSourceTransactionManager transactionManager;
     private static MessageService messages;
+    private static MessageOutboxWorker outboxWorker;
     private static SocialService social;
     private static GatedBlocks gatedBlocks;
     private static DeliveryProbe deliveries;
@@ -123,13 +124,14 @@ class MessageBlockMySqlIntegrationTest {
         assertEquals(0, flyway.info().pending().length);
         assertTrue(flyway.validateWithResult().validationSuccessful);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history "
-                + "WHERE version = '22' AND success = 1", Integer.class));
+                + "WHERE version = '23' AND success = 1", Integer.class));
         context = new AnnotationConfigApplicationContext();
         context.registerBean(DataSource.class, () -> source);
         context.register(FixtureConfiguration.class);
         context.refresh();
         transactionManager = context.getBean(DataSourceTransactionManager.class);
         messages = context.getBean(MessageService.class);
+        outboxWorker = context.getBean(MessageOutboxWorker.class);
         social = context.getBean(SocialService.class);
         gatedBlocks = context.getBean(GatedBlocks.class);
         deliveries = context.getBean(DeliveryProbe.class);
@@ -335,7 +337,7 @@ class MessageBlockMySqlIntegrationTest {
     }
 
     @Test
-    void rolledBackSendLeavesNoMessagePreviewRealtimeEventOrPush() {
+    void rolledBackSendLeavesNoMessagePreviewOutboxEventOrPush() {
         CurrentUser sender = newUser();
         CurrentUser receiver = newUser();
         long conversation = seedConversation(sender, receiver);
@@ -346,13 +348,15 @@ class MessageBlockMySqlIntegrationTest {
             status.setRollbackOnly();
         });
         assertEquals(0, messageCount(conversation));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM message_delivery_outbox", Integer.class));
+        assertEquals(0, outboxWorker.drainOnce());
         assertEquals("", messages.conversations(receiver).getFirst().lastMessage());
         assertEquals(0, deliveries.forConversation(conversation));
         assertEquals(0, deliveries.pushForConversation(conversation));
     }
 
     @Test
-    void realtimePublicationCanReadTheMessageFromAnIndependentCommittedConnection() {
+    void workerPublicationCanReadTheMessageFromAnIndependentCommittedConnection() {
         CurrentUser sender = newUser();
         CurrentUser receiver = newUser();
         long conversation = seedConversation(sender, receiver);
@@ -361,12 +365,14 @@ class MessageBlockMySqlIntegrationTest {
             assertEquals(0, deliveries.forConversation(conversation));
             assertEquals(0, independentMessageCount(conversation));
         });
+        assertEquals(0, deliveries.forConversation(conversation), "Message commit only makes its outbox intents available");
+        assertEquals(2, outboxWorker.drainOnce());
         assertEquals(1, deliveries.forConversation(conversation));
         assertEquals(1, deliveries.committedCountAtPublication(conversation));
     }
 
     @Test
-    void aBlockCommittedDuringTheFirstAfterCommitSinkStopsTheNextConnection() {
+    void aBlockCommittedDuringTheFirstWorkerSinkStopsTheNextConnection() {
         CurrentUser sender = newUser();
         CurrentUser receiver = newUser();
         long conversation = seedConversation(sender, receiver);
@@ -395,6 +401,8 @@ class MessageBlockMySqlIntegrationTest {
         deliveries.forward.set(hub);
         try {
             messages.send(conversation, new MessageDtos.SendMessageRequest("check every local connection"), sender);
+            assertEquals(0, acceptedFrames.get());
+            assertEquals(2, outboxWorker.drainOnce());
 
             if (sinkFailure.get() != null) { throw new AssertionError("Block must commit within the first sink", sinkFailure.get()); }
             assertEquals(1, acceptedFrames.get(), "The second connection must recheck the newly committed relationship");
@@ -637,6 +645,11 @@ class MessageBlockMySqlIntegrationTest {
             return delegate.isBlockedEitherWay(firstUserId, secondUserId);
         }
 
+        @Override
+        public boolean isBlockedInLockedPair(Long firstUserId, Long secondUserId) {
+            return delegate.isBlockedInLockedPair(firstUserId, secondUserId);
+        }
+
         void reset() {
             CandidateGate old = candidateGate.getAndSet(null);
             if (old != null) { old.proceed.countDown(); }
@@ -671,7 +684,7 @@ class MessageBlockMySqlIntegrationTest {
             MybatisConfiguration configuration = new MybatisConfiguration();
             configuration.setMapUnderscoreToCamelCase(true);
             configuration.setDefaultStatementTimeout(5);
-            for (Class<?> mapper : List.of(ConversationMapper.class, MessageMapper.class, UserMapper.class,
+            for (Class<?> mapper : List.of(ConversationMapper.class, MessageMapper.class, MessageOutboxMapper.class, UserMapper.class,
                     UserFollowMapper.class, UserBlockMapper.class, UserReportMapper.class, SocialRelationshipLockMapper.class)) {
                 configuration.addMapper(mapper);
             }
@@ -701,7 +714,19 @@ class MessageBlockMySqlIntegrationTest {
         DeliveryProbe deliveryProbe() { return new DeliveryProbe(); }
 
         @Bean
-        MessageService messageService(SqlSessionTemplate template, GatedBlocks blocks, DeliveryProbe probe) {
+        MessageOutboxStore outboxStore(SqlSessionTemplate template, DataSourceTransactionManager manager) {
+            return new MessageOutboxStore(template.getMapper(MessageOutboxMapper.class), manager);
+        }
+
+        @Bean
+        MessageService messageService(SqlSessionTemplate template, GatedBlocks blocks, MessageOutboxStore outbox) {
+            return new MessageService(template.getMapper(ConversationMapper.class), template.getMapper(MessageMapper.class),
+                    template.getMapper(UserMapper.class), new PresenceService(new MemoryPresenceStore()), outbox, blocks);
+        }
+
+        @Bean
+        MessageOutboxWorker outboxWorker(SqlSessionTemplate template, GatedBlocks blocks,
+                                        DeliveryProbe probe, MessageOutboxStore outbox) {
             RealtimeHub realtime = mock(RealtimeHub.class);
             doAnswer(invocation -> {
                 java.util.Map<?, ?> payload = invocation.getArgument(2);
@@ -712,8 +737,8 @@ class MessageBlockMySqlIntegrationTest {
                 return null;
             }).when(realtime).publish(any(Long.class), eq("message"), any());
             PushService push = (receiver, title, body, payload) -> probe.push.add(Long.parseLong(payload.get("conversationId")));
-            return new MessageService(template.getMapper(ConversationMapper.class), template.getMapper(MessageMapper.class),
-                    template.getMapper(UserMapper.class), new PresenceService(new MemoryPresenceStore()), realtime, push, blocks);
+            return new MessageOutboxWorker(outbox, template.getMapper(MessageMapper.class), template.getMapper(UserMapper.class),
+                    blocks, realtime, push, new SimpleMeterRegistry());
         }
     }
 }
