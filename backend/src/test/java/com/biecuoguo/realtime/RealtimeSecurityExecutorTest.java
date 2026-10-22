@@ -1,6 +1,7 @@
 package com.biecuoguo.realtime;
 
 import com.biecuoguo.security.AuthenticationStateService;
+import com.biecuoguo.social.api.BlockQueryApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ class RealtimeSecurityExecutorTest {
         RealtimeSecurityExecutor security = new RealtimeSecurityExecutor(authentication);
         RealtimeTestSupport.MutableClock clock = new RealtimeTestSupport.MutableClock();
         RealtimeHub hub = new RealtimeHub(new LocalRealtimeBroker(), new MemoryRealtimeStore(),
-                new ObjectMapper(), new SimpleMeterRegistry(), security, clock::nanoTime);
+                new ObjectMapper(), new SimpleMeterRegistry(), security, mock(BlockQueryApi.class), clock::nanoTime);
         List<RealtimeHub.RealtimeConnection> connections = new ArrayList<>();
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch checked = new CountDownLatch(300);

@@ -83,6 +83,7 @@ export function openRealtimeStream(options: RealtimeStreamOptions = {}): () => v
         emitState('open');
         break;
       case 'event': {
+        // Live-only private messages omit seq so they cannot advance the replay cursor.
         if (typeof frame.seq === 'number' && frame.seq > lastSeq) {
           lastSeq = frame.seq;
         }

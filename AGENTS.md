@@ -35,7 +35,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V20，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V21，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -85,11 +85,11 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动建表 V1–V11）：
+后端（Flyway 自动执行 V1–V21）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
-mvn test                                 # 22 个单测（不碰数据库：JWT / 文件头识别 / 时区 / 限流 / 内存 store）
+mvn test                                 # 常规单元测试；隔离 MySQL/Redis 专项默认跳过，按 scripts/integration 文档显式运行
 mvn -DskipTests spring-boot:run -Dspring-boot.run.profiles=local
 # 自动读仓库根的 .env（application.yml:6 的 spring.config.import）
 ```
@@ -188,7 +188,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V20 只增不改，下一次迁移按实际最高版本递增（当前应为 `V21__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V21 只增不改，下一次迁移按实际最高版本递增（当前应为 `V22__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -263,7 +263,7 @@ xcrun simctl launch booted com.unipo.app
 - **匿名访客的 feed 曾经是随机的**（D-3，2026-10-20 已修，别再改回去）：`PostService.defaultViewer()` 以前会随便挑一个 active 用户借人家的 `school_id`，`baseVisibleWrapper()` 再用硬编码 `1L` 兜底——同一个匿名请求两次可能返回不同内容，那个随机用户被禁用后 feed 还会突然变样。现在访客就是 `viewer = null`，学校隔离统一走 `app.default-school-id`；同一个值也用于新注册用户和演示账号的初始学校（以前 `AuthService` 里四处各写一遍 `1L`）。**这个值必须指向 `schools` 表里真实存在的行**，否则建号会撞 `fk_users_school` 外键、启动直接失败。
 - `GET /api/posts/interaction-notices` 命中 `SecurityConfig` 的 `GET /api/posts/**` 白名单，但方法内部要求登录 -> 未登录得到 401 而不是 403。
 - **消息走 WebSocket，不是轮询（2026-10-20，D-6→ADR-0001 D4）**：`WS /api/v1/realtime/ws`（`realtime/RealtimeWebSocketHandler.java`），
-  事件带全局 `seq`，重连带 `lastEventId` 从 `RealtimeStore` 补最近 100 条；浏览器用 httpOnly Cookie 握手鉴权，
+  可重放事件带全局 `seq`，重连带 `lastEventId` 从 `RealtimeStore` 补最近 100 条；私信只在线投递、不带 replay 序号，断线恢复走受鉴权的消息 HTTP 接口。浏览器用 httpOnly Cookie 握手鉴权，
   App 连上后发 `auth` 帧带 Bearer —— **别把 token 塞 query**（会进日志/历史/Referer）。
   单机 `LocalRealtimeBroker` 直接回调，多实例 `RedisRealtimeBroker` 走 Pub/Sub + Stream，切换只由 `STATE_BACKEND` 决定。
   会话列表 3s / 当前会话 1.8s 的轮询**还在**，只是 WS 连着时直接 return，当兜底用（`stores/messages.ts` 的 `realtimeOpen`）。

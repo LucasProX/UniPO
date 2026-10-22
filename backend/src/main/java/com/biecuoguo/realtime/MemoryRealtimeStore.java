@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Comparator;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -45,17 +46,17 @@ public class MemoryRealtimeStore implements RealtimeStore {
         if (deque == null) {
             return List.of();
         }
+        if (limit <= 0) {
+            return List.of();
+        }
         List<RealtimeEvent> result = new ArrayList<>();
         synchronized (deque) {
             for (RealtimeEvent event : deque) {
                 if (event.seq() > afterSeq) {
                     result.add(event);
-                    if (result.size() >= limit) {
-                        break;
-                    }
                 }
             }
         }
-        return result;
+        return result.stream().sorted(Comparator.comparingLong(RealtimeEvent::seq)).limit(limit).toList();
     }
 }

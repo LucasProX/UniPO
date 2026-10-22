@@ -3,6 +3,8 @@ package com.biecuoguo.post.internal;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -30,10 +32,10 @@ public class Post {
     private String missConsequence;
     private String nextAction;
     private String tags;
-    private Integer likeCount;
-    private Integer commentCount;
-    private Integer favoriteCount;
-    private Integer shareCount;
+    @TableField(updateStrategy = FieldStrategy.NEVER) private Integer likeCount;
+    @TableField(updateStrategy = FieldStrategy.NEVER) private Integer commentCount;
+    @TableField(updateStrategy = FieldStrategy.NEVER) private Integer favoriteCount;
+    @TableField(updateStrategy = FieldStrategy.NEVER) private Integer shareCount;
     private String status;
     private LocalDateTime publishedAt;
     private LocalDateTime createdAt;

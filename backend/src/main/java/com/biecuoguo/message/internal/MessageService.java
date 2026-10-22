@@ -11,6 +11,7 @@ import com.biecuoguo.push.api.PushService;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
+import com.biecuoguo.social.api.BlockQueryApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,21 +31,22 @@ public class MessageService {
     private final PresenceService presenceService;
     private final RealtimeHub realtimeHub;
     private final PushService pushService;
+    private final BlockQueryApi blockQueryApi;
 
     public MessageService(ConversationMapper conversationMapper, MessageMapper messageMapper, UserMapper userMapper,
-                          PresenceService presenceService, RealtimeHub realtimeHub, PushService pushService) {
+                          PresenceService presenceService, RealtimeHub realtimeHub, PushService pushService,
+                          BlockQueryApi blockQueryApi) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.userMapper = userMapper;
         this.presenceService = presenceService;
         this.realtimeHub = realtimeHub;
         this.pushService = pushService;
+        this.blockQueryApi = blockQueryApi;
     }
 
     public List<MessageDtos.ConversationView> conversations(CurrentUser currentUser) {
-        List<Conversation> conversationList = conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
-                        .and(w -> w.eq(Conversation::getUserOneId, currentUser.id()).or().eq(Conversation::getUserTwoId, currentUser.id()))
-                        .orderByDesc(Conversation::getLastMessageAt));
+        List<Conversation> conversationList = visibleConversations(currentUser.id());
         if (conversationList.isEmpty()) {
             return List.of();
         }
@@ -108,12 +110,14 @@ public class MessageService {
         if (peer.getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("不能给自己发私信");
         }
+        requireNotBlocked(currentUser.id(), peer.getId());
         Conversation conversation = findOrCreate(currentUser.id(), peer.getId());
         return toView(conversation, currentUser.id());
     }
 
     public List<MessageDtos.MessageView> messages(Long conversationId, CurrentUser currentUser) {
         Conversation conversation = requireConversation(conversationId, currentUser.id());
+        requireNotBlocked(currentUser.id(), peerIdOf(conversation, currentUser.id()));
         List<Message> messages = messageMapper.selectList(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, conversation.getId())
                 .orderByAsc(Message::getCreatedAt));
@@ -134,6 +138,7 @@ public class MessageService {
     public MessageDtos.MessageView send(Long conversationId, MessageDtos.SendMessageRequest request, CurrentUser currentUser) {
         Conversation conversation = requireConversation(conversationId, currentUser.id());
         Long receiverId = conversation.getUserOneId().equals(currentUser.id()) ? conversation.getUserTwoId() : conversation.getUserOneId();
+        requireNotBlocked(currentUser.id(), receiverId);
         LocalDateTime now = LocalDateTime.now();
         Message message = new Message();
         message.setConversationId(conversation.getId());
@@ -153,15 +158,43 @@ public class MessageService {
         String preview = message.getContent().length() > 60
                 ? message.getContent().substring(0, 60) + "…"
                 : message.getContent();
-        Thread.startVirtualThread(() -> pushService.send(
-                receiverId, "新私信", preview, Map.of("conversationId", String.valueOf(conversation.getId()))));
+        Thread.startVirtualThread(() -> sendPushIfVisible(currentUser.id(), receiverId, preview,
+                Map.of("conversationId", String.valueOf(conversation.getId()))));
         return view;
     }
 
     public long unreadCount(CurrentUser currentUser) {
+        List<Long> visibleIds = visibleConversations(currentUser.id()).stream().map(Conversation::getId).toList();
+        if (visibleIds.isEmpty()) { return 0; }
         return messageMapper.selectCount(new LambdaQueryWrapper<Message>()
+                .in(Message::getConversationId, visibleIds)
                 .eq(Message::getReceiverId, currentUser.id())
                 .eq(Message::getReadFlag, false));
+    }
+
+    private List<Conversation> visibleConversations(Long userId) {
+        Set<Long> blockedUserIds = blockQueryApi.blockedUserIds(userId);
+        return conversationMapper.selectList(new LambdaQueryWrapper<Conversation>()
+                .and(w -> w.eq(Conversation::getUserOneId, userId).or().eq(Conversation::getUserTwoId, userId))
+                .notIn(!blockedUserIds.isEmpty(), Conversation::getUserOneId, blockedUserIds)
+                .notIn(!blockedUserIds.isEmpty(), Conversation::getUserTwoId, blockedUserIds)
+                .orderByDesc(Conversation::getLastMessageAt));
+    }
+
+    private void requireNotBlocked(Long firstUserId, Long secondUserId) {
+        if (blockQueryApi.isBlockedEitherWay(firstUserId, secondUserId)) {
+            throw new NoSuchElementException("conversation not found");
+        }
+    }
+
+    private void sendPushIfVisible(Long senderId, Long receiverId, String preview, Map<String, String> data) {
+        try {
+            if (!blockQueryApi.isBlockedEitherWay(senderId, receiverId)) {
+                pushService.send(receiverId, "新私信", preview, data);
+            }
+        } catch (RuntimeException ignored) {
+            // Relationship state is authoritative; if it cannot be checked, do not notify.
+        }
     }
 
     private Conversation findOrCreate(Long userId, Long peerId) {

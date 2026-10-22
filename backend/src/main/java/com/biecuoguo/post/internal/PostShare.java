@@ -15,5 +15,7 @@ public class PostShare {
     private Long userId;
     private Long postId;
     private String channel;
+    private String requestKey;
+    private Integer resultShareCount;
     private LocalDateTime createdAt;
 }

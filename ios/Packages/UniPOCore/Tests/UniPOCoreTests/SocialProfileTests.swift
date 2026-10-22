@@ -27,7 +27,38 @@ final class SocialProfileTests: XCTestCase {
         XCTAssertEqual(result.profile.status, "active")
     }
 
-    private func decode(followedBy: Bool?, background: String?) throws -> PublicUserProfile {
+    func testBlockDirectionsAreDecodedIndependently() throws {
+        let myBlock = try decode(followedBy: nil, background: nil, blocked: true, blockedBy: false)
+        XCTAssertTrue(myBlock.blocked)
+        XCTAssertFalse(myBlock.blockedBy)
+
+        let theirBlock = try decode(followedBy: nil, background: nil, blocked: false, blockedBy: true)
+        XCTAssertFalse(theirBlock.blocked)
+        XCTAssertTrue(theirBlock.blockedBy)
+    }
+
+    func testBlockMutationAppliesReturnedDirectionsAndKeepsRestrictionsUntilBothSidesUnblock() throws {
+        let profile = try decode(followedBy: nil, background: nil)
+        let blocked = profile.applying(blockStatus: BlockStatusView(blocked: true, blockedBy: false))
+        XCTAssertTrue(blocked.isBlockedEitherWay)
+        XCTAssertTrue(blocked.canManageBlock)
+
+        let stillBlocked = blocked.applying(blockStatus: BlockStatusView(blocked: false, blockedBy: true))
+        XCTAssertTrue(stillBlocked.isBlockedEitherWay)
+        XCTAssertFalse(stillBlocked.canManageBlock)
+
+        let unblocked = stillBlocked.applying(blockStatus: BlockStatusView(blocked: false, blockedBy: false))
+        XCTAssertFalse(unblocked.isBlockedEitherWay)
+        XCTAssertTrue(unblocked.canManageBlock)
+    }
+
+    func testBlockedByOnlyProfileHasNoBlockManagementAction() throws {
+        let profile = try decode(followedBy: nil, background: nil, blocked: false, blockedBy: true)
+        XCTAssertTrue(profile.isBlockedEitherWay)
+        XCTAssertFalse(profile.canManageBlock)
+    }
+
+    private func decode(followedBy: Bool?, background: String?, blocked: Bool = false, blockedBy: Bool = false) throws -> PublicUserProfile {
         var profile: [String: Any] = [
             "id": 7, "publicUid": "profile-fixture", "nickname": "同学", "role": "USER", "level": 1, "status": "active"
         ]
@@ -35,7 +66,7 @@ final class SocialProfileTests: XCTestCase {
         let keys = ["favorites", "likedPosts", "sharedPosts", "completed", "comments", "upcoming", "avoidedRisks", "following", "followers", "posts"]
         var body: [String: Any] = [
             "profile": profile, "stats": Dictionary(uniqueKeysWithValues: keys.map { ($0, 0) }),
-            "following": true, "mine": false, "blocked": false, "blockedBy": false
+            "following": true, "mine": false, "blocked": blocked, "blockedBy": blockedBy
         ]
         if let followedBy { body["followedBy"] = followedBy }
         return try JSONDecoder().decode(PublicUserProfile.self, from: JSONSerialization.data(withJSONObject: body))

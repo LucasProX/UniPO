@@ -131,3 +131,45 @@ Redis 夹具证明 R06 存储撤销与 TTL，MySQL 夹具证明设备身份领�
 `UNIPO_DP02_SMOKE=1 bash scripts/integration/identity-e2e.sh` 固定执行 `identity-smoke.py`。它在同一新 MySQL/Redis/双应用夹具中，再新建仅本轮拥有的 MinIO（缓存 `bitnamilegacy/minio:latest` 的精确 image ID、`--pull=never`、loopback 29000、临时 data tmpfs、随机凭据仅经环境传递）。先创建合成私信对象，再原样执行仓库 `scripts/smoke.sh`，不改原脚本、不跳过上传。客户端仅保存固定检查名称及脱敏状态，不保存原始动态响应。
 
 2026-10-22 的实际结果是 **42/42 通过、上传启用、零跳过、原冒烟退出码 0**，产物在 `.logs/dp02/smoke-1542ccc7171c3582/identity-smoke-results.json`，固定检查摘要为同目录 `identity-smoke-summary.txt`。MinIO 的 `cleanup_complete=true`；终态核对 22306、26379、28080、28081、29000 均无监听，全部带本夹具标签的容器和卷已移除，没有夹具 Java/Python 进程遗留。
+
+## DP17 互动幂等与计数并发专项
+
+从仓库根执行 `bash scripts/integration/post-interactions.sh`。脚本复用独立 MySQL fixture 生命周期，只运行 `PostInteractionMySqlIntegrationTest`，验证数据库 marker 后从 V1 完整应用 migration；不启动 Boot、不读取仓库 `.env`，也不连接 Redis 或远端服务。测试通过真实 MySQL、MyBatis 与 Spring 事务代理检查帖子互动记录和冗余计数在并发、重复请求、旧事务快照及帖子删除/审核状态下保持一致，同时覆盖评论与分享幂等键、每日统计和统一经验更新。
+
+2026-10-22 V21 索引调整后的基线 run `9aa2f8bb82891860` **25/25 通过、0 跳过**。随后 DP03 加入双向拉黑下回复评论的数据库行为用例，专项脚本也固定要求 26 项，避免旧报告误报成功。最新独立 run `c493246b3cb17bbb` 从 V1 全量迁移到 V21，**26/26 通过、0 失败、0 跳过**；日志与 JUnit XML 位于 `.logs/dp17/mysql-c493246b3cb17bbb/`，容器和网络均由 fixture 清理。新增用例以 `BlockQueryApi` 内存 stub 提供两种方向的拉黑关系，真实 MySQL 验证拒绝回复时评论数、回复数、经验均无副作用；它不是对 `user_blocks`/SocialService 的完整集成。结果不包含热帖竞争吞吐；单帖锁等待与容量仍由 DP23 压测验收，也不替代真实拉黑存储、Redis replay 集成和 iOS 登录后验收。
+
+## SMS 登录并发专项
+
+从仓库根执行 `bash scripts/integration/sms-login.sh`。它只在全新 MySQL 22306/schema/marker 生命周期内运行 `SmsLoginMySqlIntegrationTest`，不启动 Boot，不读真实 `.env`，不连接 Redis、短信 provider、服务器 test/prod。普通 `mvn test` 默认跳过该类；显式专项不会把跳过当通过。runner 只打印 gate、动作、布尔结果与异常类型，不输出合成手机号、验证码、hash 或 token。
+
+测试使用真实 AuthService、AdminService、SessionService 和 MySQL/MyBatis 事务，SmsService 的真实 mock 模式格式校验由 spy 包住；UserMapper 和 AccountSecurityApi 只在指定位置加可控 latch/barrier，实际查询和条件建会话仍使用生产实现。线性化断言为：
+
+| 固定 gate | logout-all/角色变更提交后继续 | 封禁提交后继续 |
+| --- | --- | --- |
+| 验证验证码之前 | 后续首次读账号可捕获新版本，允许作为新登录 | 拒绝 |
+| 验证返回后、首次账号读取之前 | 同上，角色使用数据库最新值 | 拒绝 |
+| 已读旧 User、尚未写登录时间 | 不能把已捕获旧版本升级成新版本；条件建会话拒绝 | 拒绝 |
+| 已写登录时间、createSession 前 | 登录已持 users 行写锁，可先完成；之后撤销提交，刚签出的凭据也必须失效 | 同样按提交先后串行，不把重叠请求一概要求失败 |
+
+真实非 mock 验证会先读短信 challenge，可能更早建立 Repeatable Read 快照；本组不把 mock 无数据库读取的“可捕获新版本”推断成所有 provider 模式的可用性保证。读到旧快照后条件建会话拒绝属于保守拒绝。实际短信发送 provider 仍未接通；后述真实验证码测试通过本地合成 challenge 验证存储消费链路，不调用发送接口。
+
+2026-10-22 在独立 run `4eb1863dbc9dd4fa` 实跑 **15 项：13 通过、2 失败、0 错误、0 跳过**。12 个身份安全交错及正常手机号登录全部通过；两条实际红灯为：
+
+1. `email == phone` 兼容账号成功登录，但原始数据库查询确认 phone 仍为空；setPhone 没有被仅写登录时间的更新持久化。
+2. 相同新手机号的两个合法请求在 UserMapper.insert 前 barrier 同时放行；唯一约束保住一个 users、一份偏好及成功请求的一条设备记录，但另一请求以 DuplicateKeyException 结束。该红灯是并发首登未收敛为同一账号的可用性问题，不是重复账号或旧身份越权。
+
+原红测日志及独立 Surefire XML 保存在 `.logs/dp02/sms-4eb1863dbc9dd4fa/`。后续修复保持这两条原行为期望，没有降低断言：phone 绑定用 id/version/active 条件的显式列更新；SMS 登录以 REQUIRES_NEW TransactionTemplate 在完整验证码/账号/偏好/设备事务外最多重试三次，仅重试 DuplicateKeyException 或 TransientDataAccessException，失败尝试先完整回滚，下一次从新快照重新验证。校验/认证失败、其他永久数据故障不重试。真实验证码消费改为未消费且未过期的条件 UPDATE，影响行必须恰为一。
+
+2026-10-22 修复后在全新 run `26cbe31b8868a383` 实跑 **19/19 通过、0 跳过**，V1–V21 全量迁移成功，产物在 `.logs/dp02/sms-26cbe31b8868a383/`。原两条红灯转绿，并新增：
+
+- 同手机号两次首登都成功，只有一用户/一份偏好，分别得到两个独立有效设备；insert barrier 只阻塞首轮，重试不会等待已完成请求。
+- fallback 已捕获旧版本时，撤销提交后不能绑定手机号或创建设备。
+- 两个真实 MySQL 事务先读同一条合成验证码再并发消费，仅一个成功、另一个明确拒绝，数据库只有一条已消费记录。
+- 读取后验证码在数据库已过期，CAS 不能继续消费。
+- 在完整登录的第一次设备写入前注入唯一冲突，验证码消费、新用户及偏好一起回滚；下一独立事务重新验证后成功，只留一组正式记录。
+
+同轮 `AuthServiceSmsRetryTest` 七项与 `SmsServiceTest` 十项共 **17/17 通过**，验证事务传播、新事务句柄、回滚/提交顺序、重试分类与三次上限，以及 CAS 条件与失败语义。没有修改 pom；MySQL 容器及网络已清理，Maven/22306 已交给下一专项。以上是本地隔离短信登录/验证码存储验收，不代表真实短信 provider、正式部署或整包 DP02 已完成。
+
+2026-10-22 在独立 run `ae388004c979bcc3` 再跑当前源码，**20/20 通过、0 跳过**，V1–V21 全量迁移成功，产物保存在 `.logs/dp02/sms-ae388004c979bcc3/`。新增的非 mock challenge 用例覆盖“验证码已验证并读到旧账号版本后，logout-all 先提交”的交错：登录被拒绝，challenge 消费与登录写入一起回滚。
+
+最终 V21 迁移后又在全新 run `d27500773c1624de` 重跑 **20/20 通过、0 跳过**，产物保存在 `.logs/dp02/sms-d27500773c1624de/`。新增迁移及该轮专项均成功；它仍只证明隔离数据库中的登录事务和验证码存储行为，不代表真实短信供应商、生产部署或 DP02 整体验收完成。

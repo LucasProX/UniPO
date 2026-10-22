@@ -3,6 +3,7 @@ package com.biecuoguo.realtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.biecuoguo.security.AuthenticationContext;
 import com.biecuoguo.security.AuthenticationStateService;
+import com.biecuoguo.social.api.BlockQueryApi;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,16 +41,20 @@ class RealtimeHubTest {
     private final RealtimeTestSupport.ControlledExecutor closes = new RealtimeTestSupport.ControlledExecutor();
     private final RealtimeSecurityExecutor security = new RealtimeSecurityExecutor(authentication, verification, closes, Duration.ofSeconds(1));
     private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
-    private final RealtimeHub hub = new RealtimeHub(broker, store, new ObjectMapper(), metrics, security, clock::nanoTime);
+    private final BlockQueryApi blocks = mock(BlockQueryApi.class);
+    private final RealtimeHub hub = new RealtimeHub(broker, store, new ObjectMapper(), metrics, security, blocks, clock::nanoTime);
 
     @BeforeEach
     void validByDefault() { when(authentication.isValid(any())).thenReturn(true); }
 
     @Test
-    void publishWithoutConnectionIsNoopAndStillStored() {
-        hub.publish(1L, "message", java.util.Map.of("x", 1));
+    void messagesAreLiveOnlyAndDoNotAdvanceReplaySequence() {
+        hub.publish(1L, "message", messagePayload(2L));
+        hub.publish(1L, "profile-update", java.util.Map.of("x", 1));
+
         assertEquals(0, hub.connectionCount());
-        assertEquals(1, store.after(1L, 0L, 10).size(), "没有连接也要落续传缓存");
+        assertEquals(1, store.after(1L, 0L, 10).size());
+        assertEquals(1L, store.after(1L, 0L, 10).get(0).seq(), "私信不能消耗可重放事件序号");
     }
 
     @Test
@@ -61,7 +66,7 @@ class RealtimeHubTest {
         hub.register(identity(7L, "laptop"), laptop::add, () -> {});
         hub.register(identity(8L, "other"), other::add, () -> {});
 
-        hub.publish(7L, "message", java.util.Map.of("conversationId", 3));
+        hub.publish(7L, "message", messagePayload(8L));
 
         assertEquals(1, phone.size());
         assertEquals(1, laptop.size());
@@ -72,9 +77,9 @@ class RealtimeHubTest {
 
     @Test
     void replaySendsOnlyEventsAfterCursor() {
-        hub.publish(9L, "message", java.util.Map.of("n", 1));
-        hub.publish(9L, "message", java.util.Map.of("n", 2));
-        hub.publish(9L, "message", java.util.Map.of("n", 3));
+        hub.publish(9L, "profile-update", java.util.Map.of("n", 1));
+        hub.publish(9L, "profile-update", java.util.Map.of("n", 2));
+        hub.publish(9L, "profile-update", java.util.Map.of("n", 3));
 
         List<String> frames = new ArrayList<>();
         var connection = hub.register(identity(9L, "phone"), frames::add, () -> {});
@@ -86,12 +91,36 @@ class RealtimeHubTest {
     }
 
     @Test
+    void oldCachedMessagesAreSkippedDuringReplay() {
+        store.append(9L, new RealtimeEvent(1L, "message", 1L, messagePayload(7L)));
+        List<String> frames = new ArrayList<>();
+        var connection = hub.register(identity(9L, "phone"), frames::add, () -> {});
+
+        assertEquals(0, hub.replay(connection, 0L));
+        assertTrue(frames.isEmpty());
+    }
+
+    @Test
+    void blockedOrUnverifiableLiveMessagesAreNotDelivered() {
+        List<String> frames = new ArrayList<>();
+        hub.register(identity(9L, "phone"), frames::add, () -> {});
+        when(blocks.isBlockedEitherWay(7L, 9L)).thenReturn(true);
+
+        hub.publish(9L, "message", messagePayload(7L));
+        assertTrue(frames.isEmpty());
+
+        when(blocks.isBlockedEitherWay(8L, 9L)).thenThrow(new IllegalStateException("fixture unavailable"));
+        hub.publish(9L, "message", messagePayload(8L));
+        assertTrue(frames.isEmpty(), "Relationship lookup failures must fail closed");
+    }
+
+    @Test
     void closedConnectionStopsReceiving() {
         List<String> frames = new ArrayList<>();
         RealtimeHub.RealtimeConnection connection = hub.register(identity(11L, "phone"), frames::add, () -> {});
-        hub.publish(11L, "message", java.util.Map.of("n", 1));
+        hub.publish(11L, "message", messagePayload(12L));
         connection.close();
-        hub.publish(11L, "message", java.util.Map.of("n", 2));
+        hub.publish(11L, "message", messagePayload(12L));
 
         assertEquals(1, frames.size());
         assertEquals(0, hub.connectionCount());
@@ -123,7 +152,7 @@ class RealtimeHubTest {
         AtomicBoolean valid = new AtomicBoolean(true);
         when(authentication.isValid(any())).thenAnswer(call -> valid.get());
         RealtimeHub second = new RealtimeHub(new LocalRealtimeBroker(), store, new ObjectMapper(),
-                new SimpleMeterRegistry(), security, clock::nanoTime);
+                new SimpleMeterRegistry(), security, blocks, clock::nanoTime);
         List<String> frames = new ArrayList<>();
         AtomicInteger closed = new AtomicInteger();
         second.register(identity(7L, "second-node"), frames::add, closed::incrementAndGet);
@@ -306,5 +335,9 @@ class RealtimeHubTest {
                 current.close();
             }
         }
+    }
+
+    private static java.util.Map<String, Object> messagePayload(long senderId) {
+        return java.util.Map.of("message", java.util.Map.of("senderId", senderId));
     }
 }

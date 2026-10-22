@@ -2,6 +2,7 @@ package com.biecuoguo.realtime;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.biecuoguo.security.AuthenticationContext;
+import com.biecuoguo.social.api.BlockQueryApi;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,20 +44,24 @@ public class RealtimeHub {
     private final Counter deliveredCounter;
     private final Counter failedCounter;
     private final RealtimeSecurityExecutor security;
+    private final BlockQueryApi blockQueryApi;
     private final LongSupplier ticker;
 
     @Autowired
     public RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper,
-                       MeterRegistry meterRegistry, RealtimeSecurityExecutor security) {
-        this(broker, store, objectMapper, meterRegistry, security, System::nanoTime);
+                       MeterRegistry meterRegistry, RealtimeSecurityExecutor security,
+                       BlockQueryApi blockQueryApi) {
+        this(broker, store, objectMapper, meterRegistry, security, blockQueryApi, System::nanoTime);
     }
 
     RealtimeHub(RealtimeBroker broker, RealtimeStore store, ObjectMapper objectMapper,
-                MeterRegistry meterRegistry, RealtimeSecurityExecutor security, LongSupplier ticker) {
+                MeterRegistry meterRegistry, RealtimeSecurityExecutor security,
+                BlockQueryApi blockQueryApi, LongSupplier ticker) {
         this.broker = broker;
         this.store = store;
         this.objectMapper = objectMapper;
         this.security = security;
+        this.blockQueryApi = Objects.requireNonNull(blockQueryApi, "blockQueryApi");
         this.ticker = ticker;
         this.publishedCounter = meterRegistry.counter("unipo.realtime.events.published");
         this.deliveredCounter = meterRegistry.counter("unipo.realtime.events.delivered");
@@ -82,11 +88,12 @@ public class RealtimeHub {
         return connection;
     }
 
-    /** 业务侧统一入口：落一份续传缓存，然后广播（单机=本地回调，多实例=Redis 频道）。 */
+    /** 业务侧统一入口：广播事件；私信只 live 投递，不进入通用断线续传缓存。 */
     public void publish(Long userId, String event, Object payload) {
-        long seq = store.nextSeq();
+        boolean replayable = !"message".equals(event);
+        long seq = replayable ? store.nextSeq() : 0L;
         RealtimeEvent realtimeEvent = new RealtimeEvent(seq, event, System.currentTimeMillis(), payload);
-        store.append(userId, realtimeEvent);
+        if (replayable) { store.append(userId, realtimeEvent); }
         publishedCounter.increment();
         broker.publish(new RealtimeBroker.BrokerMessage(userId, realtimeEvent));
     }
@@ -97,6 +104,7 @@ public class RealtimeHub {
         var missed = store.after(connection.userId(), afterSeq, REPLAY_LIMIT);
         int delivered = 0;
         for (RealtimeEvent event : missed) {
+            if ("message".equals(event.event())) { continue; }
             try {
                 if (!connection.send(toJson(event))) { break; }
                 delivered++;
@@ -118,6 +126,9 @@ public class RealtimeHub {
         String json = toJson(message.event());
         for (RealtimeConnection connection : targets) {
             try {
+                if ("message".equals(message.event().event()) && !messageVisibleTo(message, connection.userId())) {
+                    continue;
+                }
                 if (connection.send(json)) { deliveredCounter.increment(); }
             } catch (RuntimeException error) {
                 // 客户端断开是常态，摘掉即可，别让它污染别的连接
@@ -125,6 +136,16 @@ public class RealtimeHub {
                 connection.close();
                 log.debug("realtime delivery drop user={}", message.userId());
             }
+        }
+    }
+
+    private boolean messageVisibleTo(RealtimeBroker.BrokerMessage brokerMessage, Long recipientId) {
+        try {
+            var payload = objectMapper.valueToTree(brokerMessage.event().payload());
+            long senderId = payload.path("message").path("senderId").asLong(0L);
+            return senderId > 0 && !blockQueryApi.isBlockedEitherWay(senderId, recipientId);
+        } catch (RuntimeException failure) {
+            return false;
         }
     }
 
@@ -151,7 +172,7 @@ public class RealtimeHub {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("type", "event");
         envelope.put("event", event.event());
-        envelope.put("seq", event.seq());
+        if (event.seq() > 0) { envelope.put("seq", event.seq()); }
         envelope.put("ts", event.ts());
         envelope.put("payload", event.payload());
         try {

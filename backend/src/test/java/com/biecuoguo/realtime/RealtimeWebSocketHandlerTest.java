@@ -2,6 +2,7 @@ package com.biecuoguo.realtime;
 
 import com.biecuoguo.security.AuthenticationContext;
 import com.biecuoguo.security.AuthenticationStateService;
+import com.biecuoguo.social.api.BlockQueryApi;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +34,7 @@ class RealtimeWebSocketHandlerTest {
             new RealtimeTestSupport.ControlledExecutor(), new RealtimeTestSupport.ControlledExecutor(), Duration.ofSeconds(1));
     private final ObjectMapper mapper = new ObjectMapper();
     private final RealtimeHub hub = new RealtimeHub(new LocalRealtimeBroker(), new MemoryRealtimeStore(),
-            mapper, new SimpleMeterRegistry(), security, clock::nanoTime);
+            mapper, new SimpleMeterRegistry(), security, mock(BlockQueryApi.class), clock::nanoTime);
     private final RealtimeWebSocketHandler handler = new RealtimeWebSocketHandler(hub, security, mapper, clock, clock::nanoTime);
     private final AtomicBoolean valid = new AtomicBoolean(true);
     private final AuthenticationContext identity = identity(7L, "cookie-fixture");

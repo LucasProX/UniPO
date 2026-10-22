@@ -1,6 +1,8 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.SmsCode;
 import com.biecuoguo.mapper.SmsCodeMapper;
 import org.slf4j.Logger;
@@ -9,8 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
 
 /**
  * 短信验证码。
@@ -64,14 +64,20 @@ public class SmsService {
                 .eq(SmsCode::getConsumed, false)
                 .orderByDesc(SmsCode::getId)
                 .last("LIMIT 1"));
-        if (entity == null || entity.getExpiresAt().isBefore(LocalDateTime.now())) {
+        if (entity == null || entity.getExpiresAt() == null || !entity.getExpiresAt().isAfter(AppTime.nowLocal())) {
             throw new IllegalArgumentException("验证码已过期，请重新获取");
         }
         if (!passwordEncoder.matches(code, entity.getCodeHash())) {
             throw new IllegalArgumentException("验证码不正确");
         }
+        int consumed = smsCodeMapper.update(null, new LambdaUpdateWrapper<SmsCode>()
+                .eq(SmsCode::getId, entity.getId()).eq(SmsCode::getPhone, phone)
+                .eq(SmsCode::getPurpose, "login").eq(SmsCode::getConsumed, false)
+                .gt(SmsCode::getExpiresAt, AppTime.nowLocal()).set(SmsCode::getConsumed, true));
+        if (consumed != 1) {
+            throw new IllegalArgumentException("验证码已失效，请重新获取");
+        }
         entity.setConsumed(true);
-        smsCodeMapper.updateById(entity);
     }
 
     public static String normalize(String raw) {

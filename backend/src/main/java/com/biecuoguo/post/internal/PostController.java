@@ -61,8 +61,9 @@ public class PostController {
     }
 
     @PostMapping("/{id}/comments")
-    public ApiResponse<PostDtos.CommentView> comment(@PathVariable Long id, @Valid @RequestBody PostDtos.CreateCommentRequest request) {
-        return ApiResponse.ok(postService.comment(id, request, SecurityUtils.currentUser()));
+    public ApiResponse<PostDtos.CommentView> comment(@PathVariable Long id, @Valid @RequestBody PostDtos.CreateCommentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String requestKey) {
+        return ApiResponse.ok(postService.comment(id, request, SecurityUtils.currentUser(), requestKey));
     }
 
     @PostMapping("/comments/{id}/like")
@@ -96,8 +97,9 @@ public class PostController {
     }
 
     @PostMapping("/{id}/share")
-    public ApiResponse<PostDtos.ShareResponse> share(@PathVariable Long id) {
-        return ApiResponse.ok(postService.share(id, SecurityUtils.currentUser()));
+    public ApiResponse<PostDtos.ShareResponse> share(@PathVariable Long id,
+            @RequestHeader(value = "Idempotency-Key", required = false) String requestKey) {
+        return ApiResponse.ok(postService.share(id, SecurityUtils.currentUser(), requestKey));
     }
 
     private CurrentUser currentUser(Authentication authentication) {

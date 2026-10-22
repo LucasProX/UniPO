@@ -138,10 +138,12 @@ public actor APIClient {
         try await request(path: "posts/\(postId)/comments")
     }
 
-    public func addComment(postId: Int64, content: String, parentId: Int64? = nil) async throws -> CommentView {
+    public func addComment(postId: Int64, content: String, parentId: Int64? = nil,
+                           requestKey: String = UUID().uuidString) async throws -> CommentView {
         var body: [String: Any] = ["content": content]
         if let parentId { body["parentId"] = parentId }
-        return try await request(path: "posts/\(postId)/comments", method: "POST", body: body)
+        return try await request(path: "posts/\(postId)/comments", method: "POST", body: body,
+                                 headers: ["Idempotency-Key": requestKey])
     }
 
     @discardableResult
@@ -218,6 +220,11 @@ public actor APIClient {
     @discardableResult
     public func setFollowing(uid: String, following: Bool) async throws -> Bool {
         try await request(path: userPath(uid) + "/follow", method: following ? "POST" : "DELETE")
+    }
+
+    @discardableResult
+    public func setBlocked(uid: String, blocked: Bool) async throws -> BlockStatusView {
+        try await request(path: userPath(uid) + "/block", method: blocked ? "POST" : "DELETE")
     }
 
     private func userPath(_ uid: String) -> String {
@@ -302,6 +309,7 @@ public actor APIClient {
         method: String = "GET",
         query: [URLQueryItem] = [],
         body: [String: Any]? = nil,
+        headers: [String: String] = [:],
         authorization: Authorization = .current
     ) async throws -> T {
         guard var components = URLComponents(string: AppConfig.apiBaseURL.absoluteString + "/" + path) else {
@@ -316,6 +324,7 @@ public actor APIClient {
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("ios", forHTTPHeaderField: "X-Client")
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         // 登录/刷新不能带旧 token：服务端过滤链看到过期 Bearer 会直接 403，
         // 表现就是「刚登录成功，再打开又是未登录」。
         let anonymousPaths: Set<String> = ["auth/login", "auth/refresh", "auth/sms-code", "auth/sms-login"]

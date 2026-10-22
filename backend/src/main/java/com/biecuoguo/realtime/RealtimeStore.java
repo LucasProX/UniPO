@@ -10,7 +10,7 @@ import java.util.List;
  */
 public interface RealtimeStore {
 
-    /** 分配下一个全局序号。多实例下必须来自共享存储。 */
+    /** 分配下一个可重放事件的全局序号。多实例下必须来自共享存储。 */
     long nextSeq();
 
     void append(Long userId, RealtimeEvent event);

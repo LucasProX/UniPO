@@ -58,6 +58,11 @@ final class APIClientTests: XCTestCase {
         try successBody(["id": 1, "publicUid": "fixture-user", "nickname": "同学", "role": "USER", "level": 1])
     }
 
+    private func commentBody(id: Int64 = 45) throws -> Data {
+        try successBody(["id": id, "postId": 12, "content": "同一条评论",
+                         "author": ["id": 1, "uid": "fixture-user", "nickname": "同学", "role": "USER", "level": 1]])
+    }
+
     private func requestBody(_ request: URLRequest) throws -> Data {
         if let body = request.httpBody { return body }
         // URLSession may replace httpBody with a stream before a URLProtocol sees it.
@@ -88,6 +93,141 @@ final class APIClientTests: XCTestCase {
         StubProtocol.handler = nil
         Delayed401Protocol.onRequest = nil
         super.tearDown()
+    }
+
+    func testExplicitCommentRetryKeepsItsIdempotencyKeyAndPayload() async throws {
+        let api = client()
+        let key = UUID().uuidString
+        let response = try commentBody()
+        var headers: [String?] = []
+        var payloads: [[String: Any]] = []
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/api/v1/posts/12/comments")
+            XCTAssertEqual(request.httpMethod, "POST")
+            headers.append(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            let payload = try JSONSerialization.jsonObject(with: self.requestBody(request)) as? [String: Any]
+            payloads.append(try XCTUnwrap(payload))
+            if headers.count == 1 { throw URLError(.networkConnectionLost) }
+            return (200, response)
+        }
+
+        do {
+            _ = try await api.addComment(postId: 12, content: "同一条评论", parentId: 8, requestKey: key)
+            XCTFail("Expected the first response to be lost")
+        } catch let error as APIError {
+            guard case .transport = error else { return XCTFail("Wrong error") }
+        }
+        XCTAssertEqual(headers.count, 1, "A failed write must not replay itself")
+        let retried = try await api.addComment(postId: 12, content: "同一条评论", parentId: 8, requestKey: key)
+        let duplicate = try await api.addComment(postId: 12, content: "同一条评论", parentId: 8, requestKey: key)
+        XCTAssertTrue(headers.count == 3 && headers.allSatisfy { $0 == key })
+        XCTAssertTrue(payloads.allSatisfy { ($0["content"] as? String) == "同一条评论" && ($0["parentId"] as? Int) == 8 })
+        XCTAssertEqual(retried.id, duplicate.id)
+    }
+
+    func testDifferentCommentIntentKeysAreSentIndependently() async throws {
+        let api = client()
+        let firstKey = UUID().uuidString
+        let secondKey = UUID().uuidString
+        var seen: [String] = []
+        StubProtocol.handler = { request in
+            let key = try XCTUnwrap(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            seen.append(key)
+            return (200, try self.commentBody(id: key == firstKey ? 45 : 46))
+        }
+        let first = try await api.addComment(postId: 12, content: "同一条评论", requestKey: firstKey)
+        let second = try await api.addComment(postId: 12, content: "同一条评论", requestKey: secondKey)
+        XCTAssertTrue(seen == [firstKey, secondKey])
+        XCTAssertNotEqual(first.id, second.id)
+    }
+
+    func testBlockAndUnblockUseThePublicUserBlockEndpoint() async throws {
+        let api = client()
+        var requests: [(String?, String?)] = []
+        StubProtocol.handler = { request in
+            requests.append((request.httpMethod, request.url?.path))
+            let blocked = request.httpMethod == "POST"
+            return (200, try self.successBody(["blocked": blocked, "blockedBy": false]))
+        }
+
+        let blocked = try await api.setBlocked(uid: "profile-fixture", blocked: true)
+        let unblocked = try await api.setBlocked(uid: "profile-fixture", blocked: false)
+
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests[0].0, "POST")
+        XCTAssertEqual(requests[0].1, "/api/v1/users/profile-fixture/block")
+        XCTAssertEqual(requests[1].0, "DELETE")
+        XCTAssertEqual(requests[1].1, "/api/v1/users/profile-fixture/block")
+        XCTAssertEqual(blocked, BlockStatusView(blocked: true, blockedBy: false))
+        XCTAssertEqual(unblocked, BlockStatusView(blocked: false, blockedBy: false))
+    }
+
+    func testNewCommentCallsWithoutAnExplicitKeyGetDistinctASCIIUUIDs() async throws {
+        let api = client()
+        let response = try commentBody()
+        var seen: [String] = []
+        StubProtocol.handler = { request in
+            let key = try XCTUnwrap(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            XCTAssertNotNil(UUID(uuidString: key))
+            XCTAssertTrue((1...64).contains(key.utf8.count) && key.unicodeScalars.allSatisfy { $0.isASCII })
+            seen.append(key)
+            return (200, response)
+        }
+        _ = try await api.addComment(postId: 12, content: "同一条评论")
+        _ = try await api.addComment(postId: 12, content: "同一条评论")
+        XCTAssertEqual(Set(seen).count, 2)
+    }
+
+    func testComment401NotifiesOnceWithoutReplayAndExplicitRetryCanKeepItsIntentAfterRecovery() async throws {
+        let api = client()
+        let recorder = RejectionRecorder()
+        api.setUnauthorizedHandler { await recorder.record($0) }
+        await api.setAccessToken("fixture-before-recovery", revision: 7)
+        let key = UUID().uuidString
+        let rejected = unauthorizedBody()
+        let response = try commentBody()
+        var requests = 0
+        StubProtocol.handler = { request in
+            requests += 1
+            XCTAssertTrue(request.value(forHTTPHeaderField: "Idempotency-Key") == key)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"),
+                           requests == 1 ? "Bearer fixture-before-recovery" : "Bearer fixture-after-recovery")
+            return requests == 1 ? (401, rejected) : (200, response)
+        }
+        do {
+            _ = try await api.addComment(postId: 12, content: "同一条评论", requestKey: key)
+            XCTFail("Expected unauthorized")
+        } catch let error as APIError {
+            guard case .unauthorized = error else { return XCTFail("Wrong error") }
+        }
+        XCTAssertEqual(requests, 1)
+        let revisions = await recorder.revisions
+        XCTAssertEqual(revisions, [7])
+        api.advanceAuthenticationRevision(8, clearToken: true)
+        await api.setAccessToken("fixture-after-recovery", revision: 8)
+        _ = try await api.addComment(postId: 12, content: "同一条评论", requestKey: key)
+        XCTAssertEqual(requests, 2)
+        let afterRetry = await recorder.revisions
+        XCTAssertEqual(afterRetry, [7])
+    }
+
+    func testCommentIntentHeaderNeverLeaksIntoOtherRequests() async throws {
+        let api = client()
+        let comment = try commentBody()
+        let other = try successBody(true)
+        StubProtocol.handler = { request in
+            if request.url?.lastPathComponent == "comments", request.httpMethod == "POST" {
+                XCTAssertNotNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+                return (200, comment)
+            }
+            XCTAssertNil(request.value(forHTTPHeaderField: "Idempotency-Key"))
+            return (200, other)
+        }
+        _ = try await api.addComment(postId: 12, content: "同一条评论")
+        _ = try? await api.comments(postId: 12)
+        _ = try? await api.likePost(id: 12, liked: false)
+        _ = try? await api.me()
+        _ = try? await api.login(email: "fixture", password: "fixture")
     }
 
     func testProtectedRequestAndUploadReportOnlyTheirAuthenticationRevision() async {

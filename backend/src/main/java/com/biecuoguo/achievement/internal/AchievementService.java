@@ -5,6 +5,7 @@ import com.biecuoguo.achievement.api.AchievementDtos;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.service.ExperienceService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,16 +25,19 @@ public class AchievementService {
     private final BadgeMapper badgeMapper;
     private final UserBadgeMapper userBadgeMapper;
     private final UserMapper userMapper;
+    private final ExperienceService experienceService;
 
     public AchievementService(AchievementStageMapper stageMapper, AchievementTaskMapper taskMapper,
                               AchievementProgressMapper progressMapper, BadgeMapper badgeMapper,
-                              UserBadgeMapper userBadgeMapper, UserMapper userMapper) {
+                              UserBadgeMapper userBadgeMapper, UserMapper userMapper,
+                              ExperienceService experienceService) {
         this.stageMapper = stageMapper;
         this.taskMapper = taskMapper;
         this.progressMapper = progressMapper;
         this.badgeMapper = badgeMapper;
         this.userBadgeMapper = userBadgeMapper;
         this.userMapper = userMapper;
+        this.experienceService = experienceService;
     }
 
     public AchievementDtos.AchievementView view(Long userId) {
@@ -131,14 +135,10 @@ public class AchievementService {
             AchievementProgress progress = new AchievementProgress();
             progress.setUserId(userId);
             progress.setTaskId(taskId);
-            progress.setCompletedAt(LocalDateTime.now());
+            progress.setCompletedAt(AppTime.nowLocal());
             progressMapper.insert(progress);
 
-            User user = userMapper.selectById(userId);
-            if (user != null) {
-                user.setXp((user.getXp() == null ? 0 : user.getXp()) + (task.getXp() == null ? 0 : task.getXp()));
-                userMapper.updateById(user);
-            }
+            experienceService.award(userId, task.getXp() == null ? 0 : task.getXp());
             awardBadge(userId, task.getBadgeCode());
         }
         return view(userId);
@@ -154,7 +154,7 @@ public class AchievementService {
         UserBadge userBadge = new UserBadge();
         userBadge.setUserId(userId);
         userBadge.setBadgeCode(badgeCode);
-        userBadge.setEarnedAt(LocalDateTime.now());
+        userBadge.setEarnedAt(AppTime.nowLocal());
         userBadgeMapper.insert(userBadge);
     }
 }

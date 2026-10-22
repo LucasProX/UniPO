@@ -3,13 +3,13 @@ package com.biecuoguo.realtime;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.Range;
-import org.springframework.data.redis.connection.Limit;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.StreamRecords;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -57,11 +57,14 @@ public class RedisRealtimeStore implements RealtimeStore {
 
     @Override
     public List<RealtimeEvent> after(Long userId, long afterSeq, int limit) {
+        if (limit <= 0) {
+            return List.of();
+        }
         String key = STREAM_PREFIX + userId;
-        Range<String> range = Range.from(Range.Bound.exclusive(Long.toString(afterSeq)))
-                .to(Range.Bound.unbounded());
-        List<MapRecord<String, Object, Object>> records =
-                redis.opsForStream().range(key, range, Limit.limit().count(limit));
+        // Redis Stream IDs are generated from Redis time, not from RealtimeEvent.seq.
+        // Read the bounded retained stream, then apply the application sequence cursor.
+        Range<String> range = Range.from(Range.Bound.<String>unbounded()).to(Range.Bound.<String>unbounded());
+        List<MapRecord<String, Object, Object>> records = redis.opsForStream().range(key, range);
         if (records == null) {
             return List.of();
         }
@@ -72,11 +75,14 @@ public class RedisRealtimeStore implements RealtimeStore {
                 continue;
             }
             try {
-                result.add(objectMapper.readValue(raw.toString(), RealtimeEvent.class));
+                RealtimeEvent event = objectMapper.readValue(raw.toString(), RealtimeEvent.class);
+                if (event.seq() > afterSeq) {
+                    result.add(event);
+                }
             } catch (Exception ignored) {
                 // 单条坏数据跳过，别让整次续传失败
             }
         }
-        return result;
+        return result.stream().sorted(Comparator.comparingLong(RealtimeEvent::seq)).limit(limit).toList();
     }
 }

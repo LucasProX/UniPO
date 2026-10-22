@@ -43,7 +43,7 @@ class UserProfileServiceTest {
     private final PostQueryApi posts = mock(PostQueryApi.class);
     private final UserService service = new UserService(users, preferences, follows, blocks,
             mock(UserCheckInMapper.class), mock(DeviceTokenMapper.class), presence,
-            mock(PasswordEncoder.class), mock(SessionService.class), posts);
+            mock(PasswordEncoder.class), mock(SessionService.class), posts, mock(ExperienceService.class));
     private User owner;
     private UserPreference preference;
     private boolean viewerFollowsOwner;
@@ -83,6 +83,7 @@ class UserProfileServiceTest {
         preference.setRemindBeforeHours(12);
         when(users.selectOne(any())).thenReturn(owner);
         when(users.selectById(OWNER)).thenReturn(owner);
+        when(users.lockById(OWNER)).thenReturn(owner);
         when(preferences.selectOne(any())).thenReturn(preference);
         when(presence.isOnline(anyLong())).thenReturn(true);
         when(posts.statsForUser(OWNER)).thenReturn(new PostQueryApi.UserPostStats(10, 4, 2, 3, 1));
@@ -202,7 +203,7 @@ class UserProfileServiceTest {
         var result = service.updateProfile(OWNER, backgroundRequest(" /api/media/8/content?v=new.jpg "));
 
         assertEquals("/api/media/8/content?v=new.jpg", result.backgroundUrl());
-        verify(users).selectById(OWNER);
+        verify(users).lockById(OWNER);
         verify(users).updateById(owner);
         verify(users, never()).selectById(VIEWER);
         assertEquals(result.backgroundUrl(), service.publicProfile(owner.getPublicUid(), null).profile().backgroundUrl());

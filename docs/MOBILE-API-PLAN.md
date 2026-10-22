@@ -113,7 +113,7 @@ GET /api/v1/posts?tab=recommend&cursor=eyJpZCI6MTIzfQ&limit=20
 - 端点 `WS /api/v1/realtime/ws`；协议见 [`docs/API.md`](API.md) §10.1。
 - 鉴权：浏览器用 httpOnly Cookie（握手自动带），App 连上后发 `auth` 帧带 Bearer——
   不把 token 塞 query，避免进日志/历史。
-- 断线续传：事件带全局 `seq`，重连带 `lastEventId`，服务端从 Redis Stream 补最近 100 条。
+- 可重放事件带全局 `seq`，重连带 `lastEventId`，服务端从 `RealtimeStore` 补最近 100 条。私信是 live-only、不带序号且不进入通用 replay；断线恢复通过受鉴权消息 API 完成。
 - Web 与 App 共用同一套协议；写操作仍走 REST。
 - 多实例：Redis Pub/Sub 广播；再大再拆独立连接网关。
 

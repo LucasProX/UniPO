@@ -2,6 +2,7 @@ package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
@@ -31,11 +32,12 @@ public class UserService {
     private final SessionService sessionService;
     /** 帖子统计走 facade，不直接注入 PostMapper（ADR-0002）。 */
     private final PostQueryApi postQueryApi;
+    private final ExperienceService experienceService;
 
     public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
                        UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper, DeviceTokenMapper deviceTokenMapper,
                        PresenceService presenceService, PasswordEncoder passwordEncoder, SessionService sessionService,
-                       PostQueryApi postQueryApi) {
+                       PostQueryApi postQueryApi, ExperienceService experienceService) {
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.userFollowMapper = userFollowMapper;
@@ -46,6 +48,7 @@ public class UserService {
         this.passwordEncoder = passwordEncoder;
         this.sessionService = sessionService;
         this.postQueryApi = postQueryApi;
+        this.experienceService = experienceService;
     }
 
     public UserProfile profile(Long userId) {
@@ -56,7 +59,7 @@ public class UserService {
 
     @Transactional
     public UserProfile updateProfile(Long userId, UserDtos.UpdateProfileRequest request) {
-        User user = requireUser(userId);
+        User user = requireUserForUpdate(userId);
         if (!"active".equals(user.getStatus())) {
             throw new AccessDeniedException("账号不可用");
         }
@@ -82,7 +85,7 @@ public class UserService {
         if (request.major() != null) user.setMajor(request.major());
         if (request.grade() != null) user.setGrade(request.grade());
         if (request.bio() != null) user.setBio(request.bio());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(AppTime.nowLocal());
         userMapper.updateById(user);
         return UserProfile.from(user, preference(userId), presenceService.isOnline(userId));
     }
@@ -99,7 +102,7 @@ public class UserService {
         if (request.emailNotificationEnabled() != null) preference.setEmailNotificationEnabled(request.emailNotificationEnabled());
         if (request.browserNotificationEnabled() != null) preference.setBrowserNotificationEnabled(request.browserNotificationEnabled());
         if (request.remindBeforeHours() != null) preference.setRemindBeforeHours(request.remindBeforeHours());
-        preference.setUpdatedAt(LocalDateTime.now());
+        preference.setUpdatedAt(AppTime.nowLocal());
         preferenceMapper.updateById(preference);
         return UserProfile.from(user, preference, presenceService.isOnline(userId));
     }
@@ -115,7 +118,7 @@ public class UserService {
 
     public UserDtos.CheckInView checkInStatus(Long userId) {
         User user = requireUser(userId);
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppTime.nowLocal().toLocalDate();
         UserCheckIn todayRecord = findCheckIn(userId, today);
         if (todayRecord != null) {
             return checkInView(user, true, safe(todayRecord.getStreak()), 0, today);
@@ -127,8 +130,8 @@ public class UserService {
 
     @Transactional
     public UserDtos.CheckInView checkIn(Long userId) {
-        User user = requireUser(userId);
-        LocalDate today = LocalDate.now();
+        User user = requireUserForUpdate(userId);
+        LocalDate today = AppTime.nowLocal().toLocalDate();
         UserCheckIn existing = findCheckIn(userId, today);
         if (existing != null) {
             return checkInView(user, true, safe(existing.getStreak()), 0, today);
@@ -145,7 +148,7 @@ public class UserService {
         checkIn.setCheckinDate(today);
         checkIn.setStreak(nextStreak);
         checkIn.setXpGained(gained);
-        checkIn.setCreatedAt(LocalDateTime.now());
+        checkIn.setCreatedAt(AppTime.nowLocal());
         checkInMapper.insert(checkIn);
 
         return checkInView(user, true, nextStreak, gained, today);
@@ -202,7 +205,7 @@ public class UserService {
         user.setStatus("deleted");
         user.setOnboardingCompleted(true);
         user.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(AppTime.nowLocal());
         userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, userId)
                 .set(User::getEmail, user.getEmail()).set(User::getPhone, null).set(User::getNickname, user.getNickname())
                 .set(User::getAvatarUrl, null).set(User::getBackgroundUrl, null).set(User::getBio, null)
@@ -220,7 +223,7 @@ public class UserService {
 
     @Transactional
     public UserProfile completeOnboarding(Long userId, UserDtos.OnboardingRequest request) {
-        User user = userMapper.selectById(userId);
+        User user = userMapper.lockById(userId);
         if (user == null) {
             throw new NoSuchElementException("用户不存在");
         }
@@ -239,7 +242,7 @@ public class UserService {
             user.setGender(request.gender());
         }
         if (request.birthYear() != null) {
-            int current = java.time.Year.now().getValue();
+            int current = AppTime.nowLocal().getYear();
             if (request.birthYear() < 1950 || request.birthYear() > current - 10) {
                 throw new IllegalArgumentException("出生年份不正确");
             }
@@ -264,7 +267,7 @@ public class UserService {
         user.setShowAge(request.showAge() == null || request.showAge());
         user.setShowGrade(request.showGrade() == null || request.showGrade());
         user.setOnboardingCompleted(true);
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setUpdatedAt(AppTime.nowLocal());
         userMapper.updateById(user);
         return UserProfile.from(user, preference(user.getId()), presenceService.isOnline(userId));
     }
@@ -293,17 +296,11 @@ public class UserService {
     }
 
     private void applyXp(User user, int amount) {
-        int level = user.getLevel() == null ? 1 : user.getLevel();
-        int xp = safe(user.getXp()) + amount;
-        while (level < 100 && xp >= levelXpNeed(level)) {
-            xp -= levelXpNeed(level);
-            level += 1;
-        }
-        user.setLevel(level);
-        user.setXp(xp);
-        user.setLevelTitle(levelTitle(level));
-        user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        User updated = experienceService.award(user.getId(), amount);
+        user.setLevel(updated.getLevel());
+        user.setXp(updated.getXp());
+        user.setLevelTitle(updated.getLevelTitle());
+        user.setUpdatedAt(updated.getUpdatedAt());
     }
 
     private int xpForLevel(int level) {
@@ -311,30 +308,6 @@ public class UserService {
         if (level <= 60) return 55;
         if (level <= 85) return 65;
         return 75;
-    }
-
-    private int totalXpForLevel(int level) {
-        int completed = Math.max(0, level - 1);
-        return Math.round(completed * completed * 28 + completed * 520);
-    }
-
-    private int levelXpNeed(int level) {
-        return totalXpForLevel(level + 1) - totalXpForLevel(level);
-    }
-
-    private String levelTitle(int level) {
-        return switch ((Math.max(1, Math.min(100, level)) - 1) / 10) {
-            case 0 -> "萌新探路员";
-            case 1 -> "早八幸存者";
-            case 2 -> "选课赌神";
-            case 3 -> "食堂测评官";
-            case 4 -> "图书馆钉子户";
-            case 5 -> "Deadline 驯服者";
-            case 6 -> "校园情报员";
-            case 7 -> "学分炼金术士";
-            case 8 -> "毕设渡劫人";
-            default -> "传说中的不鸽王";
-        };
     }
 
     private int safe(Integer value) {
@@ -373,12 +346,20 @@ public class UserService {
         return user;
     }
 
+    private User requireUserForUpdate(Long userId) {
+        User user = userMapper.lockById(userId);
+        if (user == null) {
+            throw new NoSuchElementException("用户不存在");
+        }
+        return user;
+    }
+
     private UserPreference preference(Long userId) {
         UserPreference preference = preferenceMapper.selectOne(new LambdaQueryWrapper<UserPreference>().eq(UserPreference::getUserId, userId));
         if (preference != null) {
             return preference;
         }
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = AppTime.nowLocal();
         preference = new UserPreference();
         preference.setUserId(userId);
         preference.setGoalTags("");

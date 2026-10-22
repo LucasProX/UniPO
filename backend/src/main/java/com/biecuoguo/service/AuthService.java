@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.auth.api.AccountSecurityApi;
 import com.biecuoguo.config.AppProperties;
+import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserPreference;
 import com.biecuoguo.dto.AuthDtos;
@@ -15,11 +16,16 @@ import com.biecuoguo.security.JwtService;
 import com.biecuoguo.security.TokenBlacklistService;
 import com.biecuoguo.security.SessionService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 
@@ -46,8 +52,9 @@ public class AuthService implements CommandLineRunner {
     private final SmsService smsService;
     private final AccountSecurityApi accounts;
     private final SessionService sessions;
+    private final TransactionTemplate smsTransactions;
 
-    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService, SmsService smsService, AccountSecurityApi accounts, SessionService sessions) {
+    public AuthService(AppProperties properties, UserMapper userMapper, UserPreferenceMapper preferenceMapper, VerificationService verificationService, PasswordEncoder passwordEncoder, JwtService jwtService, TokenBlacklistService tokenBlacklistService, PresenceService presenceService, SmsService smsService, AccountSecurityApi accounts, SessionService sessions, PlatformTransactionManager transactionManager) {
         this.properties = properties;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
@@ -59,6 +66,8 @@ public class AuthService implements CommandLineRunner {
         this.smsService = smsService;
         this.accounts = accounts;
         this.sessions = sessions;
+        this.smsTransactions = new TransactionTemplate(transactionManager);
+        this.smsTransactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
@@ -149,8 +158,19 @@ public class AuthService implements CommandLineRunner {
      * 手机号验证码登录：没有账号就自动注册。
      * 手机号用户的 email 列存手机号（该列本来就不校验邮箱格式），password 是随机值。
      */
-    @Transactional
     public AuthDtos.AuthResponse smsLogin(AuthDtos.SmsLoginRequest request) {
+        // A uniqueness race or deadlock invalidates the whole attempt, including SMS consumption.
+        // Retry only from a new transaction/read snapshot, never inside a rollback-only transaction.
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return smsTransactions.execute(status -> smsLoginOnce(request));
+            } catch (DuplicateKeyException | TransientDataAccessException retryable) {
+                if (attempt >= 2) { throw retryable; }
+            }
+        }
+    }
+
+    private AuthDtos.AuthResponse smsLoginOnce(AuthDtos.SmsLoginRequest request) {
         String phone = SmsService.normalize(request.phone());
         smsService.verify(phone, request.code());
         User user = findByPhone(phone);
@@ -158,6 +178,14 @@ public class AuthService implements CommandLineRunner {
             User byEmail = findByEmail(phone);
             if (byEmail != null) {
                 user = byEmail;
+                int bound = userMapper.update(null, new LambdaUpdateWrapper<User>()
+                        .eq(User::getId, user.getId()).eq(User::getAuthVersion, user.getAuthVersion())
+                        .eq(User::getStatus, "active")
+                        .and(value -> value.isNull(User::getPhone).or().eq(User::getPhone, phone))
+                        .set(User::getPhone, phone).set(User::getUpdatedAt, AppTime.nowLocal()));
+                if (bound != 1) {
+                    throw new InsufficientAuthenticationException("账号状态已变化，请重新登录");
+                }
                 user.setPhone(phone);
             }
         }
@@ -167,15 +195,15 @@ public class AuthService implements CommandLineRunner {
         if (!"active".equals(user.getStatus())) {
             throw new IllegalArgumentException("账号已被停用");
         }
-        user.setLastLoginAt(LocalDateTime.now());
-        user.setUpdatedAt(LocalDateTime.now());
+        user.setLastLoginAt(AppTime.nowLocal());
+        user.setUpdatedAt(AppTime.nowLocal());
         updateLoginTime(user);
         presenceService.markOnline(user.getId());
         return issueTokens(user, preferenceFor(user.getId()));
     }
 
     private User createPhoneUser(String phone, String requestedNickname) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = AppTime.nowLocal();
         String nickname = requestedNickname == null ? "" : requestedNickname.trim();
         if (nickname.isBlank()) {
             nickname = "同学" + phone.substring(phone.length() - 4);

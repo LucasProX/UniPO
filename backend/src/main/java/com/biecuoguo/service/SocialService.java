@@ -1,6 +1,7 @@
 package com.biecuoguo.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserBlock;
@@ -12,6 +13,7 @@ import com.biecuoguo.mapper.UserFollowMapper;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.mapper.UserReportMapper;
 import com.biecuoguo.security.CurrentUser;
+import com.biecuoguo.social.api.BlockQueryApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,7 +27,7 @@ import java.util.NoSuchElementException;
 import java.util.Set;
 
 @Service
-public class SocialService {
+public class SocialService implements BlockQueryApi {
 
     private static final int LIST_LIMIT = 200;
     private static final Set<String> REPORT_CATEGORIES = Set.of(
@@ -63,7 +65,7 @@ public class SocialService {
         UserFollow follow = new UserFollow();
         follow.setFollowerId(currentUser.id());
         follow.setFollowingId(target.getId());
-        follow.setCreatedAt(LocalDateTime.now());
+        follow.setCreatedAt(AppTime.nowLocal());
         followMapper.insert(follow);
         return true;
     }
@@ -123,10 +125,8 @@ public class SocialService {
 
     @Transactional
     public void markFollowersSeen(Long userId) {
-        User user = userMapper.selectById(userId);
-        if (user == null) return;
-        user.setFollowersSeenAt(LocalDateTime.now());
-        userMapper.updateById(user);
+        userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, userId)
+                .set(User::getFollowersSeenAt, AppTime.nowLocal()));
     }
 
     @Transactional
@@ -142,7 +142,7 @@ public class SocialService {
             UserBlock block = new UserBlock();
             block.setBlockerId(currentUser.id());
             block.setBlockedId(target.getId());
-            block.setCreatedAt(LocalDateTime.now());
+            block.setCreatedAt(AppTime.nowLocal());
             blockMapper.insert(block);
         }
         // 拉黑时双向取关：拉黑后还互相关注是最容易让人困惑的状态。
@@ -192,7 +192,7 @@ public class SocialService {
         report.setCategory(category);
         report.setDetail(detail == null || detail.isBlank() ? null : detail);
         report.setStatus("pending");
-        report.setCreatedAt(LocalDateTime.now());
+        report.setCreatedAt(AppTime.nowLocal());
         reportMapper.insert(report);
         return report.getId();
     }
@@ -244,8 +244,25 @@ public class SocialService {
         return result;
     }
 
-    private boolean blockedEitherWay(Long a, Long b) {
+    @Override
+    public boolean isBlockedEitherWay(Long a, Long b) {
+        if (a == null || b == null || a.equals(b)) return false;
         return blocked(a, b) || blocked(b, a);
+    }
+
+    @Override
+    public Set<Long> blockedUserIds(Long viewerId) {
+        if (viewerId == null) return Set.of();
+        return blockMapper.selectList(new LambdaQueryWrapper<UserBlock>()
+                        .and(w -> w.eq(UserBlock::getBlockerId, viewerId)
+                                .or().eq(UserBlock::getBlockedId, viewerId)))
+                .stream()
+                .map(block -> viewerId.equals(block.getBlockerId()) ? block.getBlockedId() : block.getBlockerId())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private boolean blockedEitherWay(Long a, Long b) {
+        return isBlockedEitherWay(a, b);
     }
 
     private boolean blocked(Long blockerId, Long blockedId) {

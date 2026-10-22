@@ -1,12 +1,12 @@
 # API 参考（现状快照）
 
-> 快照日期 2026-10-20，commit 见 git log。当前接口**已版本化**：base path 同时提供 `/api`（旧契约，保留兼容）与 `/api/v1`（新契约，前端已切）。
+> 快照复核日期 2026-10-22。当前接口**已版本化**：base path 同时提供 `/api`（旧契约，保留兼容）与 `/api/v1`（新契约，前端已切）。
 
 ## 1. 通用约定
 
 | 项 | 现状 |
 |---|---|
-| 认证 | `Authorization: Bearer <jwt>`；无状态、无刷新令牌、有效期 10080 分钟 |
+| 认证 | App 使用 `Authorization: Bearer <access>`；access 默认 120 分钟，refresh 默认 14 天且只用于刷新/退出；JWT 的 `typ` 区分两者，持久设备会话与用户 `auth_version` 负责撤销 |
 | 成功响应 | HTTP 200，body `{"code":"OK","message":"","data": <T>, "requestId":"e2075084cb304be9"}` |
 | 错误响应 | 4xx/5xx，body `{"code":"AUTH_INVALID_CREDENTIALS","message":"中文提示","data":null,"requestId":"...","timestamp":"ISO-8601 Instant"}` |
 | 业务错误码 | 见 §1.3。**App 端 switch `code`，不要匹配中文 `message`**（文案随时会改） |
@@ -122,11 +122,20 @@
 | POST | `/` | 登录 | 发帖；需先选学校；官方/置顶有角色限制 |
 | DELETE | `/{id}` | 登录 | 软删除（`status=deleted`），仅作者 |
 | GET | `/{id}/comments` | 公开 | 全部评论 + 楼中楼 |
-| POST | `/{id}/comments` | 登录 | 评论（`parentId` 支持回复） |
+| POST | `/{id}/comments` | 登录 | 评论（`parentId` 支持回复）；可选 `Idempotency-Key` |
 | POST/DELETE | `/comments/{id}/like` | 登录 | 评论点赞（注意：路径在 `/api/posts` 下） |
 | POST/DELETE | `/{id}/like` | 登录 | 帖子点赞 |
 | POST/DELETE | `/{id}/favorite` | 登录 | 收藏 |
-| POST | `/{id}/share` | 登录 | 分享计数 +1 |
+| POST | `/{id}/share` | 登录 | 分享计数 +1；可选 `Idempotency-Key` |
+
+### 3.1 评论与分享幂等键
+
+评论和分享可带 `Idempotency-Key` 请求头。允许值为 1–64 个 ASCII 字符，字符集为 `[A-Za-z0-9._:-]`；键在各自操作类型内按用户唯一，评论键与分享键互不冲突。
+
+- 相同用户、相同键和相同操作内容的重试会返回第一次写入的结果，不重复增加计数、经验值或统计。
+- 评论键绑定帖子、父评论和评论正文；分享键绑定帖子。将旧键用于不同内容或另一篇帖子会返回 400，编辑后的新操作应生成新键。
+- 不带该头的旧客户端保持兼容，但请求失败后自行重发不具备去重保证。
+- 幂等记录不绕过资源权限与状态检查。若首次操作已提交、响应丢失，之后帖子被删除或下架，再次重放可能得到 404；不会产生第二次副作用。
 
 ## 4. 用户 `/api/users`
 
@@ -300,9 +309,11 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 { "category": "spam", "detail": "补充说明（选填，≤500 字）" }
 ```
 
-**拉黑的语义（MVP）**：双向取关、禁止再关注；公开主页返回 `blocked / blockedBy`，
-前端据此隐藏关注/私信入口。**信息流过滤还没接**（被拉黑用户的帖子仍可能出现在推荐里），
-下一步在 `PostService` 的可见性条件里排除双向拉黑关系。
+**拉黑语义（DP03）**：双向取关，并禁止任一方向再次关注。只要任一方拉黑另一方，双方均不能通过服务端读取对方的作品、喜欢/收藏内容、评论或私信；信息流、今日热门和必看列表也排除被拉黑作者。主页保留 `blocked / blockedBy` 关系状态，供本人取消自己发起的拉黑；只有 `blocked=true` 时本人可取消，`blockedBy=true` 仅表示对方拉黑了自己。
+
+私信会话列表和未读统计在拉黑期间隐藏对应会话；创建会话、读取历史、标记已读和发送均在产生任何副作用前拒绝。已有消息不删除，解除所有方向的拉黑后恢复读取。被拒绝的发送不得写入消息、更新会话时间或触发 WebSocket/APNs。私信事件不进入通用 WebSocket 断线重放缓存，重连后由受鉴权的消息 HTTP 接口补齐；已进入网络传输的在途帧及拉黑前已送达的通知无法撤回。
+
+这些规则必须在服务端执行，不能依赖 iOS 隐藏按钮或本地过滤。post/message 模块通过 social 的公开查询 facade 获取关系，禁止直接依赖 `UserBlockMapper`。对应实现和验证状态见开发计划 DP03 台账。
 
 ### 9.5 成就系统
 
@@ -337,9 +348,9 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/auth/sms-code` | 发送短信验证码，body `{ "phone": "13800138000" }` |
-| POST | `/api/auth/sms-login` | 手机号 + 验证码登录；未注册自动建号，body `{ "phone": "...", "code": "123456", "nickname": "可选" }` |
+| POST | `/api/auth/sms-login` | 手机号 + 4 位验证码登录；未注册自动建号，body `{ "phone": "...", "code": "1234", "nickname": "可选" }` |
 
-- **本地 mock**：`app.sms.mock-accept-any-code=true` 时固定码 `1234`，且**任意 4 位数字都通过**；
+- **本地 mock**：`app.sms.mock-accept-any-code=true` 时不生成或保存固定码，任意格式正确的 4 位数字都通过；
   非 local/dev/test 打开会被 `StartupSafetyGuard` 拒绝启动。
 - **真实短信通道还没接**（阿里云/腾讯云），非 mock 模式调用 `/sms-code` 会返回「短信服务未配置」。
   上线前必须接 provider + 短信签名/模板审核。
@@ -457,11 +468,11 @@ college / major / grade / following / followedAt；不返回 email 等敏感字�
 | type | 字段 | 说明 |
 |---|---|---|
 | `ready` | `userId, ts` | 认证成功、可以收事件 |
-| `event` | `event, seq, ts, payload` | 业务事件；目前只有 `message` |
+| `event` | `event, [seq], ts, payload` | 可重放业务事件带 `seq`；私信仅在线投递，不带序号 |
 | `pong` | `ts` | 心跳响应 |
 | `error` | `code, message` | 统一错误码（如 `AUTH_UNAUTHENTICATED`） |
 
-- 事件带全局自增 `seq`，客户端记住它；重连带 `lastEventId` 就能补上断线期间的消息。
+- 可重放事件带全局自增 `seq`，客户端只用这类序号推进 `lastEventId`。私信不进入 replay 缓存且不推进序号；断线后从受鉴权的会话/历史 API 同步。
 - 心跳：客户端 25 秒发一次 `ping`，60 秒收不到 `pong` 主动重连（半开连接检测）。
 - 多实例：事件先落 Redis Stream（每用户最近 500 条），再经 Redis Pub/Sub 广播给所有实例；
   单机则是进程内回调。切换只由 `STATE_BACKEND` 决定，业务代码不变。

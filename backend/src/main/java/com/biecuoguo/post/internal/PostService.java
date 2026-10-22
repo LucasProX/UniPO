@@ -1,22 +1,26 @@
 package com.biecuoguo.post.internal;
 
 import com.biecuoguo.service.PresenceService;
+import com.biecuoguo.service.ExperienceService;
 
 import com.biecuoguo.domain.User;
 
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
 import com.biecuoguo.post.api.PostAdminApi;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.mapper.*;
 import com.biecuoguo.security.CurrentUser;
+import com.biecuoguo.social.api.BlockQueryApi;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -42,8 +46,10 @@ public class PostService implements PostQueryApi, PostAdminApi {
     private final CollegeMapper collegeMapper;
     private final MajorMapper majorMapper;
     private final PresenceService presenceService;
+    private final ExperienceService experienceService;
+    private final BlockQueryApi blockQueryApi;
 
-    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService) {
+    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi) {
         this.appProperties = appProperties;
         this.postMapper = postMapper;
         this.imageMapper = imageMapper;
@@ -58,6 +64,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
         this.collegeMapper = collegeMapper;
         this.majorMapper = majorMapper;
         this.presenceService = presenceService;
+        this.experienceService = experienceService;
+        this.blockQueryApi = blockQueryApi;
     }
 
     public List<PostDtos.PostView> list(String tab, CurrentUser currentUser) {
@@ -199,7 +207,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
     }
 
     public PostDtos.PostView hotToday(CurrentUser currentUser) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = AppTime.nowLocal().toLocalDate();
+        Set<Long> blockedAuthors = currentUser == null ? Set.of() : blockQueryApi.blockedUserIds(currentUser.id());
         List<PostDailyStat> stats = dailyStatMapper.selectList(new LambdaQueryWrapper<PostDailyStat>()
                         .eq(PostDailyStat::getStatDate, today)
                         .orderByDesc(PostDailyStat::getLikeCount)
@@ -210,6 +219,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         List<Long> statPostIds = stats.stream().map(PostDailyStat::getPostId).filter(Objects::nonNull).toList();
         Map<Long, Post> statPosts = postMapper.selectList(new LambdaQueryWrapper<Post>()
                         .in(Post::getId, statPostIds)
+                        .notIn(!blockedAuthors.isEmpty(), Post::getAuthorId, blockedAuthors)
                         .eq(Post::getStatus, "published"))
                 .stream().collect(Collectors.toMap(Post::getId, Function.identity(), (a, b) -> a));
         if (statPosts.isEmpty()) {
@@ -239,12 +249,12 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public PostDtos.PostView create(PostDtos.CreatePostRequest request, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        User author = requireUser(currentUser.id());
+        User author = requireRewardUser(currentUser.id());
         validateBoard(request.board());
         if (author.getSchoolId() == null) {
             throw new IllegalArgumentException("请先在个人中心选择学校");
         }
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = AppTime.nowLocal();
         Post post = new Post();
         post.setAuthorId(author.getId());
         post.setSchoolId(author.getSchoolId());
@@ -281,18 +291,18 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public boolean deleteOwnPost(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
+        Post post = requireMutablePost(postId, currentUser);
         if (!Objects.equals(post.getAuthorId(), currentUser.id())) {
             throw new AccessDeniedException("只能删除自己的 PO");
         }
-        post.setStatus("deleted");
-        post.setUpdatedAt(LocalDateTime.now());
-        postMapper.updateById(post);
+        postMapper.update(null, new LambdaUpdateWrapper<Post>().eq(Post::getId, postId)
+                .set(Post::getStatus, "deleted").set(Post::getUpdatedAt, AppTime.nowLocal()));
         return true;
     }
 
     public List<PostDtos.CommentView> comments(Long postId, CurrentUser currentUser) {
         Post post = requirePost(postId);
+        requireNotBlocked(post, currentUser);
         List<Comment> comments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getPostId, post.getId())
                 .ne(Comment::getStatus, "hidden")
@@ -303,14 +313,30 @@ public class PostService implements PostQueryApi, PostAdminApi {
 
     @Transactional
     public PostDtos.CommentView comment(Long postId, PostDtos.CreateCommentRequest request, CurrentUser currentUser) {
+        return comment(postId, request, currentUser, null);
+    }
+
+    @Transactional
+    public PostDtos.CommentView comment(Long postId, PostDtos.CreateCommentRequest request, CurrentUser currentUser, String requestKey) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
-        User author = requireUser(currentUser.id());
-        LocalDateTime now = LocalDateTime.now();
+        String key = normalizeRequestKey(requestKey);
+        Post post = requireMutablePost(postId, currentUser);
+        if (request.parentId() != null) {
+            Comment parent = commentMapper.lockById(request.parentId());
+            if (parent == null || !Objects.equals(parent.getPostId(), postId) || "hidden".equals(parent.getStatus())) {
+                throw new IllegalArgumentException("回复的评论不存在或不属于此帖子");
+            }
+            if (blockQueryApi.isBlockedEitherWay(currentUser.id(), parent.getUserId())) {
+                throw new NoSuchElementException("回复的评论不存在");
+            }
+        }
+        User author = requireRewardUser(currentUser.id());
+        LocalDateTime now = AppTime.nowLocal();
         Comment comment = new Comment();
         comment.setPostId(post.getId());
         comment.setUserId(author.getId());
         comment.setParentId(request.parentId());
+        comment.setRequestKey(key);
         comment.setContent(request.content().trim());
         comment.setLikeCount(0);
         comment.setReplyCount(0);
@@ -318,10 +344,20 @@ public class PostService implements PostQueryApi, PostAdminApi {
         comment.setStatus("visible");
         comment.setCreatedAt(now);
         comment.setUpdatedAt(now);
-        commentMapper.insert(comment);
-        post.setCommentCount(safe(post.getCommentCount()) + 1);
-        post.setUpdatedAt(now);
-        postMapper.updateById(post);
+        try { commentMapper.insert(comment); }
+        catch (DuplicateKeyException duplicate) {
+            if (key == null) { throw duplicate; }
+            Comment existing = commentMapper.selectOne(new LambdaQueryWrapper<Comment>()
+                    .eq(Comment::getUserId, author.getId()).eq(Comment::getRequestKey, key).last("FOR UPDATE"));
+            if (existing == null) { throw duplicate; }
+            if (!Objects.equals(existing.getPostId(), postId) || !Objects.equals(existing.getParentId(), request.parentId())
+                    || !Objects.equals(existing.getContent(), request.content().trim())) {
+                throw new IllegalArgumentException("此发送标识已用于另一条评论，请重新编辑后发送");
+            }
+            return commentViews(List.of(existing), currentUser).get(0);
+        }
+        postMapper.adjustCounters(postId, 0, 1, 0, 0, now);
+        if (request.parentId() != null) { commentMapper.incrementReplies(request.parentId(), now); }
         upsertDailyStat(post.getId(), 0, 1, 0);
         grantXp(author, 4);
         return commentViews(List.of(comment), currentUser).get(0);
@@ -330,35 +366,31 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public boolean likeComment(Long commentId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Comment comment = requirePostComment(commentId);
-        CommentLike existing = commentLikeMapper.selectOne(new LambdaQueryWrapper<CommentLike>()
-                .eq(CommentLike::getCommentId, commentId)
-                .eq(CommentLike::getUserId, currentUser.id()));
-        if (existing != null) {
-            return true;
-        }
+        Comment comment = requireMutableComment(commentId, currentUser);
         CommentLike like = new CommentLike();
         like.setCommentId(commentId);
         like.setUserId(currentUser.id());
-        like.setCreatedAt(LocalDateTime.now());
-        commentLikeMapper.insert(like);
-        comment.setLikeCount(safe(comment.getLikeCount()) + 1);
-        comment.setUpdatedAt(LocalDateTime.now());
-        commentMapper.updateById(comment);
+        like.setCreatedAt(AppTime.nowLocal());
+        try { commentLikeMapper.insert(like); }
+        catch (DuplicateKeyException duplicate) {
+            if (commentLikeMapper.selectOne(new LambdaQueryWrapper<CommentLike>()
+                    .eq(CommentLike::getCommentId, commentId).eq(CommentLike::getUserId, currentUser.id())
+                    .last("FOR UPDATE")) == null) { throw duplicate; }
+            return true;
+        }
+        commentMapper.adjustLikes(comment.getId(), 1, AppTime.nowLocal());
         return true;
     }
 
     @Transactional
     public boolean unlikeComment(Long commentId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Comment comment = requirePostComment(commentId);
+        Comment comment = requireMutableComment(commentId, currentUser);
         int deleted = commentLikeMapper.delete(new LambdaQueryWrapper<CommentLike>()
                 .eq(CommentLike::getCommentId, commentId)
                 .eq(CommentLike::getUserId, currentUser.id()));
         if (deleted > 0) {
-            comment.setLikeCount(Math.max(0, safe(comment.getLikeCount()) - 1));
-            comment.setUpdatedAt(LocalDateTime.now());
-            commentMapper.updateById(comment);
+            commentMapper.adjustLikes(comment.getId(), -deleted, AppTime.nowLocal());
         }
         return true;
     }
@@ -366,19 +398,19 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public boolean like(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
+        Post post = requireMutablePost(postId, currentUser);
         Long userId = currentUser.id();
-        PostLike existing = likeMapper.selectOne(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId).eq(PostLike::getUserId, userId));
-        if (existing != null) {
-            return true;
-        }
         PostLike like = new PostLike();
         like.setPostId(postId);
         like.setUserId(userId);
-        like.setCreatedAt(LocalDateTime.now());
-        likeMapper.insert(like);
-        post.setLikeCount(safe(post.getLikeCount()) + 1);
-        postMapper.updateById(post);
+        like.setCreatedAt(AppTime.nowLocal());
+        try { likeMapper.insert(like); }
+        catch (DuplicateKeyException duplicate) {
+            if (likeMapper.selectOne(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId)
+                    .eq(PostLike::getUserId, userId).last("FOR UPDATE")) == null) { throw duplicate; }
+            return true;
+        }
+        postMapper.adjustCounters(postId, 1, 0, 0, 0, AppTime.nowLocal());
         upsertDailyStat(postId, 1, 0, 0);
         return true;
     }
@@ -386,11 +418,10 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public boolean unlike(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
+        requireMutablePost(postId, currentUser);
         int deleted = likeMapper.delete(new LambdaQueryWrapper<PostLike>().eq(PostLike::getPostId, postId).eq(PostLike::getUserId, currentUser.id()));
         if (deleted > 0) {
-            post.setLikeCount(Math.max(0, safe(post.getLikeCount()) - 1));
-            postMapper.updateById(post);
+            postMapper.adjustCounters(postId, -deleted, 0, 0, 0, AppTime.nowLocal());
         }
         return true;
     }
@@ -398,47 +429,63 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Transactional
     public boolean favorite(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
-        PostFavorite existing = favoriteMapper.selectOne(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId).eq(PostFavorite::getUserId, currentUser.id()));
-        if (existing != null) {
-            return true;
-        }
+        requireMutablePost(postId, currentUser);
         PostFavorite favorite = new PostFavorite();
         favorite.setPostId(postId);
         favorite.setUserId(currentUser.id());
-        favorite.setCreatedAt(LocalDateTime.now());
-        favoriteMapper.insert(favorite);
-        post.setFavoriteCount(safe(post.getFavoriteCount()) + 1);
-        postMapper.updateById(post);
+        favorite.setCreatedAt(AppTime.nowLocal());
+        try { favoriteMapper.insert(favorite); }
+        catch (DuplicateKeyException duplicate) {
+            if (favoriteMapper.selectOne(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId)
+                    .eq(PostFavorite::getUserId, currentUser.id()).last("FOR UPDATE")) == null) { throw duplicate; }
+            return true;
+        }
+        postMapper.adjustCounters(postId, 0, 0, 1, 0, AppTime.nowLocal());
         return true;
     }
 
     @Transactional
     public boolean unfavorite(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
+        requireMutablePost(postId, currentUser);
         int deleted = favoriteMapper.delete(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getPostId, postId).eq(PostFavorite::getUserId, currentUser.id()));
         if (deleted > 0) {
-            post.setFavoriteCount(Math.max(0, safe(post.getFavoriteCount()) - 1));
-            postMapper.updateById(post);
+            postMapper.adjustCounters(postId, 0, 0, -deleted, 0, AppTime.nowLocal());
         }
         return true;
     }
 
     @Transactional
     public PostDtos.ShareResponse share(Long postId, CurrentUser currentUser) {
+        return share(postId, currentUser, null);
+    }
+
+    @Transactional
+    public PostDtos.ShareResponse share(Long postId, CurrentUser currentUser, String requestKey) {
         requireAuthenticated(currentUser);
-        Post post = requirePost(postId);
+        String key = normalizeRequestKey(requestKey);
+        Post post = requireMutablePost(postId, currentUser);
         PostShare share = new PostShare();
         share.setPostId(postId);
         share.setUserId(currentUser.id());
         share.setChannel("copy_link");
-        share.setCreatedAt(LocalDateTime.now());
-        shareMapper.insert(share);
-        post.setShareCount(safe(post.getShareCount()) + 1);
-        postMapper.updateById(post);
+        share.setRequestKey(key);
+        share.setResultShareCount(safe(post.getShareCount()) + 1);
+        share.setCreatedAt(AppTime.nowLocal());
+        try { shareMapper.insert(share); }
+        catch (DuplicateKeyException duplicate) {
+            if (key == null) { throw duplicate; }
+            PostShare existing = shareMapper.selectOne(new LambdaQueryWrapper<PostShare>()
+                    .eq(PostShare::getUserId, currentUser.id()).eq(PostShare::getRequestKey, key).last("FOR UPDATE"));
+            if (existing == null) { throw duplicate; }
+            if (!Objects.equals(existing.getPostId(), postId)) {
+                throw new IllegalArgumentException("此分享标识已用于另一篇帖子");
+            }
+            return new PostDtos.ShareResponse("/posts/" + postId, existing.getResultShareCount());
+        }
+        postMapper.adjustCounters(postId, 0, 0, 0, 1, AppTime.nowLocal());
         upsertDailyStat(postId, 0, 0, 1);
-        return new PostDtos.ShareResponse("/posts/" + postId, post.getShareCount());
+        return new PostDtos.ShareResponse("/posts/" + postId, share.getResultShareCount());
     }
 
     @Override
@@ -458,7 +505,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
     @Override
     @Transactional
     public PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status) {
-        Post post = postMapper.selectById(postId);
+        Post post = postMapper.lockById(postId);
         if (post == null) {
             throw new NoSuchElementException("帖子不存在");
         }
@@ -471,8 +518,14 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (pinned != null) post.setPinned(pinned);
         if (official != null) post.setOfficial(official);
         if (dontMiss != null) post.setDontMiss(dontMiss);
-        post.setUpdatedAt(LocalDateTime.now());
-        postMapper.updateById(post);
+        post.setUpdatedAt(AppTime.nowLocal());
+        LambdaUpdateWrapper<Post> update = new LambdaUpdateWrapper<Post>().eq(Post::getId, postId)
+                .set(Post::getUpdatedAt, AppTime.nowLocal());
+        if (status != null) update.set(Post::getStatus, status);
+        if (pinned != null) update.set(Post::getPinned, pinned);
+        if (official != null) update.set(Post::getOfficial, official);
+        if (dontMiss != null) update.set(Post::getDontMiss, dontMiss);
+        postMapper.update(null, update);
         return toViews(List.of(post), null).get(0);
     }
 
@@ -498,6 +551,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
     }
 
     public List<PostDtos.PostView> userPosts(Long userId, CurrentUser currentUser) {
+        if (isBlockedPair(currentUser, userId)) return List.of();
         return toViews(postMapper.selectList(new LambdaQueryWrapper<Post>()
                 .eq(Post::getAuthorId, userId)
                 .eq(Post::getStatus, "published")
@@ -509,6 +563,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (user == null) {
             throw new NoSuchElementException("用户不存在");
         }
+        if (isBlockedPair(currentUser, user.getId())) return List.of();
         return userPosts(user.getId(), currentUser);
     }
 
@@ -524,6 +579,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (user == null) {
             throw new NoSuchElementException("用户不存在");
         }
+        if (isBlockedPair(currentUser, user.getId())) return List.of();
         List<Long> ids = likeMapper.selectList(new LambdaQueryWrapper<PostLike>().eq(PostLike::getUserId, user.getId()))
                 .stream().map(PostLike::getPostId).toList();
         return postsByIds(ids, currentUser);
@@ -541,6 +597,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (user == null) {
             throw new NoSuchElementException("用户不存在");
         }
+        if (isBlockedPair(currentUser, user.getId())) return List.of();
         List<Long> ids = favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>().eq(PostFavorite::getUserId, user.getId()))
                 .stream().map(PostFavorite::getPostId).toList();
         return postsByIds(ids, currentUser);
@@ -549,6 +606,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
     public List<PostDtos.InteractionNoticeView> interactionNotices(CurrentUser currentUser) {
         requireAuthenticated(currentUser);
         Long currentUserId = currentUser.id();
+        Set<Long> blockedAuthors = blockQueryApi.blockedUserIds(currentUserId);
         List<Post> myPosts = postMapper.selectList(new LambdaQueryWrapper<Post>()
                 .eq(Post::getAuthorId, currentUserId)
                 .eq(Post::getStatus, "published"));
@@ -557,14 +615,17 @@ public class PostService implements PostQueryApi, PostAdminApi {
 
         List<PostLike> likes = postIds.isEmpty() ? List.of() : likeMapper.selectList(new LambdaQueryWrapper<PostLike>()
                 .in(PostLike::getPostId, postIds)
+                .notIn(!blockedAuthors.isEmpty(), PostLike::getUserId, blockedAuthors)
                 .ne(PostLike::getUserId, currentUserId)
                 .orderByDesc(PostLike::getCreatedAt));
         List<PostFavorite> favorites = postIds.isEmpty() ? List.of() : favoriteMapper.selectList(new LambdaQueryWrapper<PostFavorite>()
                 .in(PostFavorite::getPostId, postIds)
+                .notIn(!blockedAuthors.isEmpty(), PostFavorite::getUserId, blockedAuthors)
                 .ne(PostFavorite::getUserId, currentUserId)
                 .orderByDesc(PostFavorite::getCreatedAt));
         List<Comment> comments = postIds.isEmpty() ? List.of() : commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .in(Comment::getPostId, postIds)
+                .notIn(!blockedAuthors.isEmpty(), Comment::getUserId, blockedAuthors)
                 .ne(Comment::getUserId, currentUserId)
                 .ne(Comment::getStatus, "hidden")
                 .orderByDesc(Comment::getCreatedAt));
@@ -577,6 +638,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         List<Long> myRootCommentIds = myRootComments.stream().map(Comment::getId).toList();
         List<Comment> commentReplies = myRootCommentIds.isEmpty() ? List.of() : commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .in(Comment::getParentId, myRootCommentIds)
+                .notIn(!blockedAuthors.isEmpty(), Comment::getUserId, blockedAuthors)
                 .ne(Comment::getUserId, currentUserId)
                 .ne(Comment::getStatus, "hidden")
                 .orderByDesc(Comment::getCreatedAt));
@@ -593,6 +655,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (!replyPostIds.isEmpty()) {
             postMapper.selectList(new LambdaQueryWrapper<Post>()
                             .in(Post::getId, replyPostIds)
+                            .notIn(!blockedAuthors.isEmpty(), Post::getAuthorId, blockedAuthors)
                             .eq(Post::getStatus, "published"))
                     .forEach(post -> postMap.put(post.getId(), post));
         }
@@ -677,9 +740,11 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (ids.isEmpty()) {
             return List.of();
         }
+        Set<Long> blockedAuthors = currentUser == null ? Set.of() : blockQueryApi.blockedUserIds(currentUser.id());
         return toViews(postMapper.selectList(new LambdaQueryWrapper<Post>()
                 .in(Post::getId, ids)
                 .eq(Post::getStatus, "published")
+                .notIn(!blockedAuthors.isEmpty(), Post::getAuthorId, blockedAuthors)
                 .orderByDesc(Post::getPublishedAt)), currentUser);
     }
 
@@ -690,7 +755,20 @@ public class PostService implements PostQueryApi, PostAdminApi {
         // 决定看到什么帖子的是「MySQL 先返回哪一行」；再用一个 1L 兜底，等于把魔数写在 SQL 里。
         // 现在只有一个来源：app.default-school-id。
         Long schoolId = viewer == null || viewer.getSchoolId() == null ? defaultSchoolId() : viewer.getSchoolId();
-        return wrapper.eq(Post::getSchoolId, schoolId);
+        Set<Long> blockedAuthors = viewer == null ? Set.of() : blockQueryApi.blockedUserIds(viewer.getId());
+        return wrapper.eq(Post::getSchoolId, schoolId)
+                .notIn(!blockedAuthors.isEmpty(), Post::getAuthorId, blockedAuthors);
+    }
+
+    private boolean isBlockedPair(CurrentUser viewer, Long authorId) {
+        return viewer != null && authorId != null
+                && blockQueryApi.isBlockedEitherWay(viewer.id(), authorId);
+    }
+
+    private void requireNotBlocked(Post post, CurrentUser viewer) {
+        if (post != null && isBlockedPair(viewer, post.getAuthorId())) {
+            throw new NoSuchElementException("PO 不存在");
+        }
     }
 
     /** 未登录访客 / 没填学校的用户看到的默认学校，来自 {@code app.default-school-id}。 */
@@ -799,6 +877,13 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (comments.isEmpty()) {
             return List.of();
         }
+        if (currentUser != null) {
+            Set<Long> blockedAuthors = blockQueryApi.blockedUserIds(currentUser.id());
+            if (!blockedAuthors.isEmpty()) {
+                comments = comments.stream().filter(comment -> !blockedAuthors.contains(comment.getUserId())).toList();
+                if (comments.isEmpty()) { return List.of(); }
+            }
+        }
         Set<Long> userIds = comments.stream().map(Comment::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, User> users = userIds.isEmpty() ? Map.of() : userMapper.selectList(new LambdaQueryWrapper<User>().in(User::getId, userIds))
                 .stream().collect(Collectors.toMap(User::getId, Function.identity(), (a, b) -> a));
@@ -888,46 +973,12 @@ public class PostService implements PostQueryApi, PostAdminApi {
     }
 
     private void upsertDailyStat(Long postId, int likes, int comments, int shares) {
-        LocalDate today = LocalDate.now();
-        PostDailyStat stat = dailyStatMapper.selectOne(new LambdaQueryWrapper<PostDailyStat>().eq(PostDailyStat::getPostId, postId).eq(PostDailyStat::getStatDate, today));
-        if (stat == null) {
-            stat = new PostDailyStat();
-            stat.setPostId(postId);
-            stat.setStatDate(today);
-            stat.setLikeCount(Math.max(0, likes));
-            stat.setCommentCount(Math.max(0, comments));
-            stat.setShareCount(Math.max(0, shares));
-            dailyStatMapper.insert(stat);
-        } else {
-            stat.setLikeCount(safe(stat.getLikeCount()) + likes);
-            stat.setCommentCount(safe(stat.getCommentCount()) + comments);
-            stat.setShareCount(safe(stat.getShareCount()) + shares);
-            dailyStatMapper.updateById(stat);
-        }
+        // Historical additions, not current stock: undo does not erase a past action.
+        dailyStatMapper.increment(postId, AppTime.nowLocal().toLocalDate(), likes, comments, shares);
     }
 
     private void grantXp(User user, int amount) {
-        user.setXp(safe(user.getXp()) + amount);
-        int level = Math.max(1, Math.min(100, user.getXp() / 40 + 1));
-        user.setLevel(level);
-        user.setLevelTitle(levelTitle(level));
-        user.setUpdatedAt(LocalDateTime.now());
-        userMapper.updateById(user);
-    }
-
-    private String levelTitle(int level) {
-        return switch ((Math.max(1, Math.min(100, level)) - 1) / 10) {
-            case 0 -> "萌新探路员";
-            case 1 -> "早八幸存者";
-            case 2 -> "选课赌神";
-            case 3 -> "食堂测评官";
-            case 4 -> "图书馆钉子户";
-            case 5 -> "Deadline 驯服者";
-            case 6 -> "校园情报员";
-            case 7 -> "学分炼金术士";
-            case 8 -> "毕设渡劫人";
-            default -> "传说中的不鸽王";
-        };
+        experienceService.award(user.getId(), amount);
     }
 
     private User requireUser(Long userId) {
@@ -936,6 +987,42 @@ public class PostService implements PostQueryApi, PostAdminApi {
             throw new NoSuchElementException("用户不存在");
         }
         return user;
+    }
+
+    private User requireRewardUser(Long userId) {
+        User user = userMapper.lockById(userId);
+        if (user == null || !"active".equals(user.getStatus())) {
+            throw new AccessDeniedException("账号不可用");
+        }
+        return user;
+    }
+
+    private String normalizeRequestKey(String value) {
+        if (value == null) { return null; }
+        if (!value.matches("[A-Za-z0-9._:-]{1,64}")) {
+            throw new IllegalArgumentException("发送标识格式不正确");
+        }
+        return value;
+    }
+
+    private Post requireMutablePost(Long postId, CurrentUser viewer) {
+        Post post = postMapper.lockById(postId);
+        if (post == null || !"published".equals(post.getStatus())) { throw new NoSuchElementException("PO 不存在"); }
+        requireNotBlocked(post, viewer);
+        return post;
+    }
+
+    private Comment requireMutableComment(Long commentId, CurrentUser viewer) {
+        Comment locator = commentMapper.selectById(commentId);
+        if (locator == null || locator.getPostId() == null) { throw new NoSuchElementException("评论不存在"); }
+        requireMutablePost(locator.getPostId(), viewer);
+        Comment current = commentMapper.lockById(commentId);
+        if (current == null || !Objects.equals(current.getPostId(), locator.getPostId()) || "hidden".equals(current.getStatus())) {
+            throw new NoSuchElementException("评论不存在");
+        }
+        Set<Long> blockedAuthors = viewer == null ? Set.of() : blockQueryApi.blockedUserIds(viewer.id());
+        if (blockedAuthors.contains(current.getUserId())) { throw new NoSuchElementException("评论不存在"); }
+        return current;
     }
 
     private void requireAuthenticated(CurrentUser currentUser) {

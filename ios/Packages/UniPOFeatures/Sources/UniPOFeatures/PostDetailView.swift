@@ -23,6 +23,7 @@ struct PostDetailView: View {
     @State private var conversationOwnerID: Int64?
     @State private var commentError: String?
     @State private var commentRequestID: UUID?
+    @State private var commentIntentKey = UUID().uuidString
     @State private var commentsLoadID: UUID?
     @State private var isLiking = false
     @State private var isFavoriting = false
@@ -300,7 +301,10 @@ struct PostDetailView: View {
                     .accessibilityLabel("评论内容")
                     .accessibilityHint("最多 \(commentLimit) 个字符")
                     .accessibilityIdentifier("comment.input")
-                    .onChange(of: commentText) { _, _ in commentError = nil }
+                    .onChange(of: commentText) { _, _ in
+                        commentError = nil
+                        commentIntentKey = UUID().uuidString
+                    }
 
                 Button {
                     Task { await sendComment() }
@@ -414,6 +418,9 @@ struct PostDetailView: View {
         let revision = auth.authenticationRevision
         let text = trimmedComment
         guard !text.isEmpty, !commentOverLimit else { return }
+        // A retry of this draft owns the same intent across transport failures and
+        // login recovery. Authentication changes never rotate its request key.
+        let intentKey = commentIntentKey
         isSending = true
         let requestID = UUID()
         commentRequestID = requestID
@@ -422,11 +429,16 @@ struct PostDetailView: View {
             if commentRequestID == requestID { isSending = false; commentRequestID = nil }
         }
         do {
-            let created = try await APIClient.shared.addComment(postId: post.id, content: text)
+            let created = try await APIClient.shared.addComment(postId: post.id, content: text, requestKey: intentKey)
             guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
-            if !comments.contains(where: { $0.id == created.id }) { comments.append(created) }
-            commentCount += 1
-            if trimmedComment == text { commentText = ""; commentFocused = false }
+            if !comments.contains(where: { $0.id == created.id }) {
+                comments.append(created)
+                commentCount += 1
+            }
+            if commentIntentKey == intentKey {
+                commentIntentKey = UUID().uuidString
+                if trimmedComment == text { commentText = ""; commentFocused = false }
+            }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
             commentError = (error as? LocalizedError)?.errorDescription ?? "评论未发送，请重试"

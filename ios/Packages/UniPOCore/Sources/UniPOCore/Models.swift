@@ -142,6 +142,28 @@ public struct PublicUserProfile: Codable {
     public var relationship: FollowRelationship {
         FollowRelationship(following: following, followedBy: followedBy == true)
     }
+
+    public var isBlockedEitherWay: Bool { blocked || blockedBy }
+
+    public var canManageBlock: Bool { blocked || !blockedBy }
+
+    public func applying(blockStatus: BlockStatusView) -> PublicUserProfile {
+        PublicUserProfile(profile: profile, stats: stats, following: following, mine: mine,
+                          blocked: blockStatus.blocked, blockedBy: blockStatus.blockedBy,
+                          followedBy: followedBy)
+    }
+}
+
+public struct BlockStatusView: Codable, Equatable {
+    public let blocked: Bool
+    public let blockedBy: Bool
+
+    public init(blocked: Bool, blockedBy: Bool) {
+        self.blocked = blocked
+        self.blockedBy = blockedBy
+    }
+
+    public var isBlockedEitherWay: Bool { blocked || blockedBy }
 }
 
 public struct PostView: Codable, Identifiable, Hashable {

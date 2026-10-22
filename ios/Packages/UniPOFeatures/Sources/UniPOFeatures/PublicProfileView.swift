@@ -14,8 +14,11 @@ struct PublicProfileView: View {
     @State private var actionError: String?
     @State private var followBusy = false
     @State private var messageBusy = false
+    @State private var blockBusy = false
     @State private var followRequestID: UUID?
     @State private var messageRequestID: UUID?
+    @State private var blockRequestID: UUID?
+    @State private var blockConfirmation: BlockConfirmation?
     @State private var selectedPost: PostView?
     @State private var conversation: ConversationView?
     @State private var generation = 0
@@ -28,7 +31,7 @@ struct PublicProfileView: View {
                     if let value {
                         header(value)
                         if let loadError { errorNotice(loadError) }
-                        if value.blocked || value.blockedBy {
+                        if value.isBlockedEitherWay {
                             Text("暂时无法查看此用户的内容").font(.uniBody(14)).foregroundStyle(UniColor.secondary)
                         } else if loading && posts.isEmpty {
                             UniLoadingState("正在加载作品…")
@@ -59,7 +62,30 @@ struct PublicProfileView: View {
             .refreshable { await load() }
             .navigationTitle("个人主页")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } } }
+            .toolbar {
+                if let value, !value.mine, value.canManageBlock {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            if value.blocked {
+                                Button("取消拉黑", systemImage: "person.crop.circle.badge.checkmark") {
+                                    requestBlockChange(blocked: false)
+                                }
+                            } else if !value.blockedBy {
+                                Button("拉黑", systemImage: "hand.raised", role: .destructive) {
+                                    requestBlockChange(blocked: true)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("更多用户操作")
+                        .disabled(blockBusy)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } }
+            }
             .task(id: auth.profile?.id) {
                 if let previousViewer, previousViewer != auth.profile?.id {
                     selectedPost = nil
@@ -68,8 +94,11 @@ struct PublicProfileView: View {
                 previousViewer = auth.profile?.id
                 followBusy = false
                 messageBusy = false
+                blockBusy = false
                 followRequestID = nil
                 messageRequestID = nil
+                blockRequestID = nil
+                blockConfirmation = nil
                 actionError = nil
                 value = nil
                 posts = []
@@ -89,6 +118,24 @@ struct PublicProfileView: View {
             .alert("操作未完成", isPresented: Binding(
                 get: { actionError != nil }, set: { if !$0 { actionError = nil } }
             )) { Button("知道了", role: .cancel) {} } message: { Text(actionError ?? "") }
+            .confirmationDialog(
+                blockConfirmation?.title ?? "",
+                isPresented: Binding(
+                    get: { blockConfirmation != nil },
+                    set: { if !$0 { blockConfirmation = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let action = blockConfirmation {
+                    Button(action.confirmationTitle, role: action.blocked ? .destructive : nil) {
+                        blockConfirmation = nil
+                        Task { await changeBlock(blocked: action.blocked) }
+                    }
+                    Button("取消", role: .cancel) { blockConfirmation = nil }
+                }
+            } message: {
+                Text(blockConfirmation?.message ?? "")
+            }
         }
     }
 
@@ -133,7 +180,7 @@ struct PublicProfileView: View {
                         .background(value.relationship == .notFollowing ? UniColor.blue : UniColor.ink, in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(followBusy || value.blocked || value.blockedBy || user.statusIsUnavailable)
+                    .disabled(followBusy || value.isBlockedEitherWay || user.statusIsUnavailable)
                     .accessibilityIdentifier("profile.follow")
                     Button { Task { await startMessage() } } label: {
                         HStack(spacing: 7) {
@@ -145,7 +192,7 @@ struct PublicProfileView: View {
                         .background(Color.white.opacity(0.9), in: Capsule())
                     }
                     .buttonStyle(.plain)
-                    .disabled(messageBusy || value.blocked || value.blockedBy || user.statusIsUnavailable)
+                    .disabled(messageBusy || value.isBlockedEitherWay || user.statusIsUnavailable)
                 }
             }
         }
@@ -182,7 +229,7 @@ struct PublicProfileView: View {
             let result = try await APIClient.shared.publicProfile(uid: uid)
             guard generation == currentGeneration, auth.profile?.id == viewer else { return }
             value = result
-            if result.blocked || result.blockedBy { posts = [] }
+            if result.isBlockedEitherWay { posts = [] }
             else {
                 let loaded = try await APIClient.shared.publicPosts(uid: uid)
                 guard generation == currentGeneration, auth.profile?.id == viewer else { return }
@@ -197,7 +244,7 @@ struct PublicProfileView: View {
 
     private func toggleFollow() async {
         guard auth.isAuthenticated else { auth.requireLogin(); return }
-        guard let value, !value.mine, !followBusy, !value.blocked, !value.blockedBy else { return }
+        guard let value, !value.mine, !followBusy, !value.isBlockedEitherWay else { return }
         let viewer = auth.profile?.id
         let requestID = UUID()
         followRequestID = requestID
@@ -241,6 +288,58 @@ struct PublicProfileView: View {
             guard auth.profile?.id == viewer, messageRequestID == requestID else { return }
             actionError = (error as? LocalizedError)?.errorDescription ?? "暂时无法发起私信"
         }
+    }
+
+    private func requestBlockChange(blocked: Bool) {
+        guard auth.isAuthenticated else { auth.requireLogin(); return }
+        guard let value, !value.mine, value.canManageBlock, !blockBusy else { return }
+        guard blocked ? (!value.blocked && !value.blockedBy) : value.blocked else { return }
+        blockConfirmation = BlockConfirmation(blocked: blocked)
+    }
+
+    private func changeBlock(blocked: Bool) async {
+        guard auth.isAuthenticated, let current = value, !current.mine, current.canManageBlock, !blockBusy else { return }
+        guard blocked ? (!current.blocked && !current.blockedBy) : current.blocked else { return }
+        let viewer = auth.profile?.id
+        let requestID = UUID()
+        blockRequestID = requestID
+        blockBusy = true
+        defer {
+            if blockRequestID == requestID {
+                blockBusy = false
+                blockRequestID = nil
+            }
+        }
+        do {
+            let blockStatus = try await APIClient.shared.setBlocked(uid: uid, blocked: blocked)
+            guard auth.profile?.id == viewer, blockRequestID == requestID else { return }
+            generation += 1
+            value = current.applying(blockStatus: blockStatus)
+            loadError = nil
+            if blockStatus.isBlockedEitherWay {
+                loading = false
+                posts = []
+                selectedPost = nil
+                conversation = nil
+            } else {
+                posts = []
+                await load()
+            }
+            guard auth.profile?.id == viewer, blockRequestID == requestID else { return }
+        } catch {
+            guard auth.profile?.id == viewer, blockRequestID == requestID else { return }
+            actionError = (error as? LocalizedError)?.errorDescription ?? "拉黑状态更新失败"
+        }
+    }
+}
+
+private struct BlockConfirmation {
+    let blocked: Bool
+
+    var title: String { blocked ? "拉黑此用户？" : "取消拉黑？" }
+    var confirmationTitle: String { blocked ? "拉黑" : "取消拉黑" }
+    var message: String {
+        blocked ? "拉黑后，双方将无法查看彼此的内容或发送私信。" : "取消后，双方可重新查看彼此的内容并发送私信。"
     }
 }
 
