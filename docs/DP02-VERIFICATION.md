@@ -45,6 +45,10 @@
 | Redis `d96cc43fa0264257` | 2 执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp02/d96cc43fa0264257/TEST-com.biecuoguo.state.RedisSessionStoreIntegrationTest-d96cc43fa0264257.xml` |
 | DP17 MySQL `9aa2f8bb82891860` | 25 执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp17/mysql-9aa2f8bb82891860/TEST-com.biecuoguo.post.internal.PostInteractionMySqlIntegrationTest-9aa2f8bb82891860.xml`；全量 V1–V21 migration 成功 |
 | SMS 登录 MySQL `d27500773c1624de` | 20 执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp02/sms-d27500773c1624de/TEST-com.biecuoguo.auth.internal.SmsLoginMySqlIntegrationTest-d27500773c1624de.xml`；全量 V1–V21 migration 成功 |
+| Redis 会话与 replay `c555026108bf06b0` | 会话 2 项与 replay 1 项执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp02/c555026108bf06b0/`；新 replay 用例与 DP03 的关系边界见 DP03-VERIFICATION |
+| V22 社交与互动 MySQL `f44fe580211a48ef` | 34 执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp17/mysql-f44fe580211a48ef/`；真实关系及注销清理交错，不替代设备撤销专项 |
+| V22 私信与拉黑 MySQL `3baedfe913ad44db` | 15 执行 / 0 失败 / 0 错误 / 0 跳过 | `.logs/dp03/message-3baedfe913ad44db/`；真实事务与提交后本地通知，非 APNs/网络系统验收 |
+| V22 常规 Maven，2026-10-22 17:40 | 225 发现 / 150 执行 / 75 条件跳过 / 0 失败 / 0 错误 | `.logs/dp03/backend-final-package.log`；当前 JAR 另经 `smoke-368a979751d9d0b5` 含上传 42/42 复验 |
 
 MySQL 专项实际覆盖独立设备、绝对寿命、单设备归属、全设备版本推进、旧版本不能创建设备、禁用/注销状态、数据库最新角色、自然到期、跨用户/版本拒绝、旧凭据拒绝、普通 ORM 写入保护、事务回滚、并发创建与撤销及旧事务快照。
 

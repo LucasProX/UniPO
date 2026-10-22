@@ -42,8 +42,8 @@ fi
 fixture_report="$task_root/backend/target/surefire-reports/TEST-com.biecuoguo.post.internal.PostInteractionMySqlIntegrationTest-$fixture_run.xml"
 if [ -f "$fixture_report" ]; then
   cp "$fixture_report" "$fixture_log_dir/"
-  if ! grep -q 'tests="26"' "$fixture_report" || ! grep -q 'skipped="0"' "$fixture_report"; then
-    printf 'The explicitly enabled 26 integration tests were skipped or not all executed.\n' >&2
+  if ! grep -q 'tests="34"' "$fixture_report" || ! grep -q 'skipped="0"' "$fixture_report"; then
+    printf 'The explicitly enabled 34 integration tests were skipped or not all executed.\n' >&2
     fixture_test_result=2
   fi
   if [ "$fixture_test_result" != 0 ]; then

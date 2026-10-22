@@ -4,15 +4,23 @@ import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.extension.spring.MybatisSqlSessionFactoryBean;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
+import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.mapper.CollegeMapper;
+import com.biecuoguo.mapper.DeviceTokenMapper;
 import com.biecuoguo.mapper.MajorMapper;
 import com.biecuoguo.mapper.SchoolMapper;
+import com.biecuoguo.mapper.UserBlockMapper;
+import com.biecuoguo.mapper.UserFollowMapper;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.mapper.UserReportMapper;
+import com.biecuoguo.mapper.SocialRelationshipLockMapper;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.security.CurrentUser;
+import com.biecuoguo.security.SessionService;
 import com.biecuoguo.service.PresenceService;
 import com.biecuoguo.service.ExperienceService;
-import com.biecuoguo.social.api.BlockQueryApi;
+import com.biecuoguo.service.SocialService;
+import com.biecuoguo.service.UserService;
 import com.biecuoguo.state.MemoryPresenceStore;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.flywaydb.core.Flyway;
@@ -32,31 +40,37 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.Mockito.mock;
 
 /**
  * DP17 business invariants against real MySQL, MyBatis-Plus and Spring transaction advice.
@@ -66,10 +80,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @Timeout(30)
 class PostInteractionMySqlIntegrationTest {
     private static final AtomicInteger PUBLIC_UID = new AtomicInteger(71_000_000);
-    private static final Set<UserPair> BLOCKED_PAIRS = ConcurrentHashMap.newKeySet();
+    private static final AtomicReference<StatusReadGate> STATUS_READ_GATE = new AtomicReference<>();
+    private static final AtomicReference<RelationshipReadGate> RELATIONSHIP_READ_GATE = new AtomicReference<>();
     private static AnnotationConfigApplicationContext context;
     private static JdbcTemplate jdbc;
     private static PostService posts;
+    private static SocialService social;
+    private static UserService userProfiles;
     private static ExperienceService experience;
     private static DataSourceTransactionManager transactionManager;
     private static long ownedSchoolId;
@@ -113,15 +130,21 @@ class PostInteractionMySqlIntegrationTest {
         flyway.migrate();
         assertEquals(0, flyway.info().pending().length, "All repository migrations must execute");
         assertTrue(flyway.validateWithResult().validationSuccessful, "The migration chain must validate");
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM flyway_schema_history "
+                + "WHERE version = '22' AND success = 1", Integer.class),
+                "The social pair-lock migration must be applied successfully");
 
         context = new AnnotationConfigApplicationContext();
         context.registerBean(DataSource.class, () -> dataSource);
         context.register(FixtureConfiguration.class);
         context.refresh();
         posts = context.getBean(PostService.class);
+        social = context.getBean(SocialService.class);
+        userProfiles = context.getBean(UserService.class);
         experience = context.getBean(ExperienceService.class);
         transactionManager = context.getBean(DataSourceTransactionManager.class);
         assertTrue(AopUtils.isAopProxy(posts), "Service calls must use real transaction advice");
+        assertTrue(AopUtils.isAopProxy(social), "Relationship and authority calls must use real transaction advice");
         String schoolCode = "dp17-" + UUID.randomUUID();
         jdbc.update("INSERT INTO schools (name, code, created_at, updated_at) VALUES (?, ?, NOW(), NOW())",
                 "DP17 fixture school", schoolCode);
@@ -133,7 +156,6 @@ class PostInteractionMySqlIntegrationTest {
 
     @AfterEach
     void removeOnlyRowsCreatedByThisTest() {
-        BLOCKED_PAIRS.clear();
         for (Long postId : ownedPosts) {
             jdbc.update("DELETE FROM comment_likes WHERE comment_id IN (SELECT id FROM comments WHERE post_id = ?)", postId);
             jdbc.update("DELETE FROM comments WHERE post_id = ?", postId);
@@ -451,8 +473,9 @@ class PostInteractionMySqlIntegrationTest {
             CurrentUser commenter = newUser();
             long postId = newPost(postAuthor);
             long parentId = seedComment(postId, parentAuthor, "visible");
-            BLOCKED_PAIRS.add(UserPair.of(commenterBlockedParentAuthor ? commenter.id() : parentAuthor.id(),
-                    commenterBlockedParentAuthor ? parentAuthor.id() : commenter.id()));
+            CurrentUser blocker = commenterBlockedParentAuthor ? commenter : parentAuthor;
+            CurrentUser blocked = commenterBlockedParentAuthor ? parentAuthor : commenter;
+            social.block(uid(blocked.id()), blocker);
 
             assertThrows(NoSuchElementException.class, () -> posts.comment(postId,
                     new PostDtos.CreateCommentRequest("Must not cross a block", parentId), commenter,
@@ -462,8 +485,296 @@ class PostInteractionMySqlIntegrationTest {
             assertEquals(1, postCount(postId, "comment_count"), "The rejected reply must not change post counters");
             assertEquals(0, commentCount(parentId, "reply_count"), "The rejected reply must not change parent counters");
             assertEquals(0, userXp(commenter.id()), "The rejected reply must not grant experience");
-            BLOCKED_PAIRS.clear();
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    Integer.class, blocker.id(), blocked.id()));
+            jdbc.update("DELETE FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?", blocker.id(), blocked.id());
         }
+    }
+
+    @Test
+    void realBlocksRemoveMutualFollowsHideFeedAndProfileWorksAndUnblockRestoresContent() {
+        CurrentUser first = newUser();
+        CurrentUser second = newUser();
+        long firstPost = newPost(first);
+        long secondPost = newPost(second);
+        String firstUid = uid(first.id());
+        String secondUid = uid(second.id());
+
+        for (CurrentUser blocker : List.of(first, second)) {
+            CurrentUser blocked = blocker.id().equals(first.id()) ? second : first;
+            String blockerUid = blocker.id().equals(first.id()) ? firstUid : secondUid;
+            String blockedUid = blocker.id().equals(first.id()) ? secondUid : firstUid;
+            long blockerPost = blocker.id().equals(first.id()) ? firstPost : secondPost;
+            long blockedPost = blocker.id().equals(first.id()) ? secondPost : firstPost;
+
+            social.follow(secondUid, first);
+            social.follow(firstUid, second);
+            assertTrue(userProfiles.publicProfile(blockedUid, blocker.id()).following());
+            assertTrue(userProfiles.publicProfile(blockedUid, blocker.id()).followedBy());
+
+            UserDtos.BlockStatusView status = social.block(blockedUid, blocker);
+            assertTrue(status.blocked());
+            assertFalse(status.blockedBy());
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    Integer.class, blocker.id(), blocked.id()));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_follows WHERE "
+                    + "(follower_id = ? AND following_id = ?) OR (follower_id = ? AND following_id = ?)",
+                    Integer.class, first.id(), second.id(), second.id(), first.id()),
+                    "Blocking must remove both follow directions");
+
+            UserDtos.PublicProfile profileWhileBlocked = userProfiles.publicProfile(blockedUid, blocker.id());
+            assertTrue(profileWhileBlocked.blocked());
+            assertFalse(profileWhileBlocked.blockedBy());
+            assertFalse(profileWhileBlocked.following());
+            assertFalse(profileWhileBlocked.followedBy());
+            assertTrue(posts.userPostsByUid(blockedUid, blocker).isEmpty(),
+                    "A blocked peer's profile works must be hidden");
+            assertFalse(posts.list("school", blocker).stream().anyMatch(post -> post.id().equals(blockedPost)),
+                    "The feed must hide the blocked peer's posts");
+            assertTrue(posts.list("school", blocker).stream().anyMatch(post -> post.id().equals(blockerPost)));
+            assertTrue(posts.userPostsByUid(blockerUid, blocked).isEmpty(),
+                    "The content restriction must apply in the reverse direction too");
+            assertFalse(posts.list("school", blocked).stream().anyMatch(post -> post.id().equals(blockerPost)));
+
+            UserDtos.BlockStatusView unblocked = social.unblock(blockedUid, blocker);
+            assertFalse(unblocked.blocked());
+            assertFalse(unblocked.blockedBy());
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE "
+                    + "(blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
+                    Integer.class, first.id(), second.id(), second.id(), first.id()));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_follows WHERE "
+                    + "(follower_id = ? AND following_id = ?) OR (follower_id = ? AND following_id = ?)",
+                    Integer.class, first.id(), second.id(), second.id(), first.id()),
+                    "Unblocking must not silently restore either follow edge");
+            assertFalse(userProfiles.publicProfile(blockedUid, blocker.id()).blocked());
+            assertFalse(userProfiles.publicProfile(blockedUid, blocker.id()).blockedBy());
+            assertTrue(posts.userPostsByUid(blockedUid, blocker).stream().anyMatch(post -> post.id().equals(blockedPost)),
+                    "Unblocking must restore profile works");
+            assertTrue(posts.list("school", blocker).stream().anyMatch(post -> post.id().equals(blockedPost)),
+                    "Unblocking must restore feed visibility");
+            assertTrue(posts.userPostsByUid(blockerUid, blocked).stream().anyMatch(post -> post.id().equals(blockerPost)));
+            assertTrue(posts.list("school", blocked).stream().anyMatch(post -> post.id().equals(blockerPost)));
+        }
+    }
+
+    @Test
+    void concurrentDuplicateBlocksConvergeToOneRealBlockRow() throws Exception {
+        CurrentUser blocker = newUser();
+        CurrentUser target = newUser();
+        String targetUid = uid(target.id());
+        String trigger = "dp03_delay_block_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        createInsertDelayTrigger(trigger, "user_blocks", blocker.id(), target.id());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<UserDtos.BlockStatusView> first = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                return social.block(targetUid, blocker);
+            });
+            Future<UserDtos.BlockStatusView> second = executor.submit(() -> {
+                ready.countDown();
+                await(start);
+                return social.block(targetUid, blocker);
+            });
+            assertTrue(ready.await(5, TimeUnit.SECONDS), "Both block requests must reach the start gate");
+            start.countDown();
+
+            assertTrue(first.get(8, TimeUnit.SECONDS).blocked());
+            assertTrue(second.get(8, TimeUnit.SECONDS).blocked());
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    Integer.class, blocker.id(), target.id()));
+            assertTrue(social.isBlockedEitherWay(blocker.id(), target.id()));
+        } finally {
+            executor.shutdownNow();
+            dropTrigger(trigger);
+        }
+    }
+
+    @Test
+    void aConcurrentFollowAndBlockCannotCommitBothRelationships() throws Exception {
+        CurrentUser blocker = newUser();
+        CurrentUser target = newUser();
+        String blockerUid = uid(blocker.id());
+        String targetUid = uid(target.id());
+        String trigger = "dp03_delay_follow_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        createInsertDelayTrigger(trigger, "user_follows", blocker.id(), target.id());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> follow = executor.submit(() -> {
+                try {
+                    return social.follow(targetUid, blocker);
+                } catch (IllegalArgumentException blockedByConcurrentRequest) {
+                    return false;
+                }
+            });
+            // The fixture trigger holds the follow write inside its transaction while block starts.
+            Thread.sleep(200);
+            Future<UserDtos.BlockStatusView> block = executor.submit(() -> social.block(targetUid, blocker));
+
+            assertTrue(block.get(8, TimeUnit.SECONDS).blocked());
+            follow.get(8, TimeUnit.SECONDS);
+            assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    Integer.class, blocker.id(), target.id()));
+            assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_follows WHERE "
+                    + "(follower_id = ? AND following_id = ?) OR (follower_id = ? AND following_id = ?)",
+                    Integer.class, blocker.id(), target.id(), target.id(), blocker.id()),
+                    "A block racing a follow must win without leaving a follow edge");
+            assertTrue(social.isBlockedEitherWay(blocker.id(), target.id()));
+        } finally {
+            executor.shutdownNow();
+            dropTrigger(trigger);
+        }
+    }
+
+    @Test
+    void deletedParticipantsCannotCreateFollowOrBlockRelationships() {
+        for (boolean deleteActor : List.of(false, true)) {
+            CurrentUser actor = newUser();
+            CurrentUser target = newUser();
+            String targetUid = uid(target.id());
+            userProfiles.deleteAccount(deleteActor ? actor.id() : target.id());
+
+            assertThrows(NoSuchElementException.class, () -> social.follow(targetUid, actor));
+            assertThrows(NoSuchElementException.class, () -> social.block(targetUid, actor));
+            assertNoRelationshipFacts(actor.id(), target.id());
+        }
+    }
+
+    @Test
+    void deletionCleanupCannotBeUndoneByWaitingFollowOrBlockWriters() throws Exception {
+        for (boolean deleteActor : List.of(false, true)) {
+            for (boolean writeBlock : List.of(false, true)) {
+                CurrentUser actor = newUser();
+                CurrentUser target = newUser();
+                String targetUid = uid(target.id());
+                long deletedId = deleteActor ? actor.id() : target.id();
+                // Exercise an already existing pair row, not just an FK wait on first creation.
+                social.follow(targetUid, actor);
+                social.follow(uid(actor.id()), target);
+                CountDownLatch cleanupFinished = new CountDownLatch(1);
+                CountDownLatch commitDeletion = new CountDownLatch(1);
+                StatusReadGate gate = new StatusReadGate(deletedId, new CountDownLatch(1));
+                ExecutorService workers = Executors.newFixedThreadPool(2);
+                try {
+                    Future<?> deletion = workers.submit(() -> {
+                        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+                        transaction.executeWithoutResult(status -> {
+                            userProfiles.deleteAccount(deletedId);
+                            assertNoRelationshipFacts(actor.id(), target.id());
+                            cleanupFinished.countDown();
+                            await(commitDeletion, "The deletion commit gate was not released");
+                        });
+                    });
+                    await(cleanupFinished, "Account deletion must finish its relationship cleanup first");
+                    STATUS_READ_GATE.set(gate);
+                    Future<?> lateWriter = workers.submit(() -> {
+                        assertThrows(NoSuchElementException.class, () -> {
+                            if (writeBlock) { social.block(targetUid, actor); }
+                            else { social.follow(targetUid, actor); }
+                        });
+                    });
+                    await(gate.reached(), "The late relationship writer must reach the deleted participant's shared read");
+                    assertThrows(java.util.concurrent.TimeoutException.class,
+                            () -> lateWriter.get(200, TimeUnit.MILLISECONDS),
+                            "A shared participant read must wait for the deletion's exclusive user lock");
+                    commitDeletion.countDown();
+                    deletion.get(5, TimeUnit.SECONDS);
+                    lateWriter.get(5, TimeUnit.SECONDS);
+                    assertEquals("deleted", jdbc.queryForObject("SELECT status FROM users WHERE id = ?",
+                            String.class, deletedId));
+                    assertNoRelationshipFacts(actor.id(), target.id());
+                } finally {
+                    STATUS_READ_GATE.compareAndSet(gate, null);
+                    commitDeletion.countDown();
+                    stopWorkers(workers);
+                }
+            }
+        }
+    }
+
+    @Test
+    void differentPairsCanPerformTheirFirstFollowAndBlockWritesConcurrently() throws Exception {
+        for (boolean writeBlock : List.of(false, true)) {
+            CurrentUser actor = newUser();
+            CurrentUser firstTarget = newUser();
+            CurrentUser secondTarget = newUser();
+            String firstUid = uid(firstTarget.id());
+            String secondUid = uid(secondTarget.id());
+            RelationshipReadGate gate = new RelationshipReadGate();
+            ExecutorService workers = Executors.newFixedThreadPool(2);
+            RELATIONSHIP_READ_GATE.set(gate);
+            try {
+                Future<?> first = workers.submit(() -> {
+                    if (writeBlock) { social.block(firstUid, actor); }
+                    else { assertTrue(social.follow(firstUid, actor)); }
+                });
+                Future<?> second = workers.submit(() -> {
+                    if (writeBlock) { social.block(secondUid, actor); }
+                    else { assertTrue(social.follow(secondUid, actor)); }
+                });
+                await(gate.bothRead, "Both different pairs must reach their first absent relation read concurrently");
+                gate.continueWrites.countDown();
+                first.get(5, TimeUnit.SECONDS);
+                second.get(5, TimeUnit.SECONDS);
+                if (writeBlock) {
+                    assertTrue(social.isBlockedEitherWay(actor.id(), firstTarget.id()));
+                    assertTrue(social.isBlockedEitherWay(actor.id(), secondTarget.id()));
+                } else {
+                    assertEquals(2, social.followingCount(actor.id()));
+                }
+            } finally {
+                RELATIONSHIP_READ_GATE.compareAndSet(gate, null);
+                gate.continueWrites.countDown();
+                stopWorkers(workers);
+            }
+        }
+    }
+
+    @Test
+    void authorityQueriesReadCommittedRelationshipsOutsideOldRepeatableReadSnapshots() throws Exception {
+        CurrentUser actor = newUser();
+        CurrentUser target = newUser();
+        String targetUid = uid(target.id());
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+        TransactionTemplate oldSnapshot = new TransactionTemplate(transactionManager);
+        oldSnapshot.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        oldSnapshot.setTimeout(15);
+        try {
+            oldSnapshot.executeWithoutResult(status -> {
+                assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ?",
+                        Integer.class, actor.id()), "Create the caller's empty Repeatable Read snapshot");
+                assertFalse(social.isBlockedEitherWay(actor.id(), target.id()));
+                assertTrue(social.blockedUserIds(actor.id()).isEmpty());
+                awaitWorker(worker.submit(() -> social.block(targetUid, actor)));
+
+                assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE blocker_id = ?",
+                        Integer.class, actor.id()), "The surrounding business snapshot must still be old");
+                assertTrue(social.isBlockedEitherWay(actor.id(), target.id()),
+                        "Authority cannot inherit the caller's old snapshot or previously cached false");
+                assertEquals(Set.of(target.id()), social.blockedUserIds(actor.id()));
+                assertEquals(Set.of(actor.id()), social.blockedUserIds(target.id()));
+                awaitWorker(worker.submit(() -> social.unblock(targetUid, actor)));
+
+                assertFalse(social.isBlockedEitherWay(actor.id(), target.id()),
+                        "Previously cached true must not hide a committed unblock");
+                assertTrue(social.blockedUserIds(actor.id()).isEmpty());
+            });
+        } finally {
+            stopWorkers(worker);
+        }
+    }
+
+    @Test
+    void relationshipLocksRequireAnActiveDatabaseTransaction() {
+        CurrentUser actor = newUser();
+        CurrentUser target = newUser();
+        assertThrows(org.springframework.transaction.IllegalTransactionStateException.class,
+                () -> social.lockPair(actor.id(), target.id()));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM social_relationship_pair_locks "
+                + "WHERE user_low_id = ? AND user_high_id = ?", Integer.class,
+                Math.min(actor.id(), target.id()), Math.max(actor.id(), target.id())));
     }
 
     @Test
@@ -880,6 +1191,81 @@ class PostInteractionMySqlIntegrationTest {
         return jdbc.queryForObject("SELECT " + column + " FROM posts WHERE id = ?", Integer.class, postId);
     }
 
+    private void assertNoRelationshipFacts(long firstId, long secondId) {
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_follows WHERE "
+                + "(follower_id = ? AND following_id = ?) OR (follower_id = ? AND following_id = ?)",
+                Integer.class, firstId, secondId, secondId, firstId));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM user_blocks WHERE "
+                + "(blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
+                Integer.class, firstId, secondId, secondId, firstId));
+    }
+
+    private static void awaitWorker(Future<?> work) {
+        try {
+            work.get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted waiting for a committed relationship write", interrupted);
+        } catch (ExecutionException | java.util.concurrent.TimeoutException failure) {
+            throw new IllegalStateException("The relationship write must commit before the authority recheck", failure);
+        }
+    }
+
+    private static void stopWorkers(ExecutorService workers) {
+        workers.shutdownNow();
+        try {
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS), "Fixture workers must stop before row cleanup");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while stopping relationship fixture workers", interrupted);
+        }
+    }
+
+    private record StatusReadGate(long userId, CountDownLatch reached) {}
+
+    private static final class RelationshipReadGate {
+        private final CountDownLatch bothRead = new CountDownLatch(2);
+        private final CountDownLatch continueWrites = new CountDownLatch(1);
+        private final Set<Long> enteredThreads = ConcurrentHashMap.newKeySet();
+
+        void afterAbsentRead() {
+            if (enteredThreads.add(Thread.currentThread().threadId())) {
+                bothRead.countDown();
+                await(continueWrites, "The different-pair write gate was not released");
+            }
+        }
+    }
+
+    /** Only observes/gates calls; every actual mapper operation still executes against MySQL. */
+    private static UserMapper statusObservingUserMapper(SqlSessionTemplate template) {
+        UserMapper delegate = template.getMapper(UserMapper.class);
+        return (UserMapper) Proxy.newProxyInstance(UserMapper.class.getClassLoader(), new Class<?>[]{UserMapper.class},
+                (proxy, method, args) -> {
+                    StatusReadGate gate = STATUS_READ_GATE.get();
+                    if (gate != null && "lockStatusForShare".equals(method.getName())
+                            && ((Long) args[0]).longValue() == gate.userId()) {
+                        gate.reached().countDown();
+                    }
+                    try { return method.invoke(delegate, args); }
+                    catch (InvocationTargetException failure) { throw failure.getCause(); }
+                });
+    }
+
+    private static UserBlockMapper readGatedBlockMapper(SqlSessionTemplate template) {
+        UserBlockMapper delegate = template.getMapper(UserBlockMapper.class);
+        return (UserBlockMapper) Proxy.newProxyInstance(UserBlockMapper.class.getClassLoader(),
+                new Class<?>[]{UserBlockMapper.class}, (proxy, method, args) -> {
+                    Object result;
+                    try { result = method.invoke(delegate, args); }
+                    catch (InvocationTargetException failure) { throw failure.getCause(); }
+                    RelationshipReadGate gate = RELATIONSHIP_READ_GATE.get();
+                    if (gate != null && "selectOne".equals(method.getName()) && result == null) {
+                        gate.afterAbsentRead();
+                    }
+                    return result;
+                });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableTransactionManagement(proxyTargetClass = true)
     static class FixtureConfiguration {
@@ -890,8 +1276,10 @@ class PostInteractionMySqlIntegrationTest {
             configuration.setDefaultStatementTimeout(5);
             for (Class<?> mapper : List.of(PostMapper.class, PostImageMapper.class, PostLikeMapper.class,
                     PostFavoriteMapper.class, PostShareMapper.class, PostDailyStatMapper.class,
-                    CommentMapper.class, CommentLikeMapper.class, UserMapper.class, SchoolMapper.class,
-                    CollegeMapper.class, MajorMapper.class)) {
+                    CommentMapper.class, CommentLikeMapper.class, UserMapper.class, UserBlockMapper.class,
+                    UserFollowMapper.class, UserReportMapper.class, SocialRelationshipLockMapper.class, DeviceTokenMapper.class,
+                    SchoolMapper.class, CollegeMapper.class,
+                    MajorMapper.class)) {
                 configuration.addMapper(mapper);
             }
             MybatisSqlSessionFactoryBean factory = new MybatisSqlSessionFactoryBean();
@@ -911,7 +1299,14 @@ class PostInteractionMySqlIntegrationTest {
         }
 
         @Bean
-        PostService postService(SqlSessionTemplate template, ExperienceService experienceService, BlockQueryApi blockQueryApi) {
+        SocialService socialService(SqlSessionTemplate template) {
+            return new SocialService(statusObservingUserMapper(template), template.getMapper(UserFollowMapper.class),
+                    readGatedBlockMapper(template), template.getMapper(UserReportMapper.class),
+                    template.getMapper(SocialRelationshipLockMapper.class));
+        }
+
+        @Bean
+        PostService postService(SqlSessionTemplate template, ExperienceService experienceService, SocialService socialService) {
             return new PostService(new AppProperties(null, null, null, null, null, null, 1L),
                     template.getMapper(PostMapper.class), template.getMapper(PostImageMapper.class),
                     template.getMapper(PostLikeMapper.class), template.getMapper(PostFavoriteMapper.class),
@@ -919,23 +1314,16 @@ class PostInteractionMySqlIntegrationTest {
                     template.getMapper(CommentMapper.class), template.getMapper(CommentLikeMapper.class),
                     template.getMapper(UserMapper.class), template.getMapper(SchoolMapper.class),
                     template.getMapper(CollegeMapper.class), template.getMapper(MajorMapper.class),
-                    new PresenceService(new MemoryPresenceStore()), experienceService, blockQueryApi);
+                    new PresenceService(new MemoryPresenceStore()), experienceService, socialService);
         }
 
         @Bean
-        BlockQueryApi blockQueryApi() {
-            return new BlockQueryApi() {
-                @Override
-                public Set<Long> blockedUserIds(Long viewerId) {
-                    return BLOCKED_PAIRS.stream().filter(pair -> pair.contains(viewerId))
-                            .map(pair -> pair.other(viewerId)).collect(java.util.stream.Collectors.toUnmodifiableSet());
-                }
-
-                @Override
-                public boolean isBlockedEitherWay(Long firstUserId, Long secondUserId) {
-                    return BLOCKED_PAIRS.contains(UserPair.of(firstUserId, secondUserId));
-                }
-            };
+        UserService userService(SqlSessionTemplate template, PostService postService,
+                                ExperienceService experienceService) {
+            return new UserService(template.getMapper(UserMapper.class), null,
+                    template.getMapper(UserFollowMapper.class), template.getMapper(UserBlockMapper.class),
+                    null, template.getMapper(DeviceTokenMapper.class), new PresenceService(new MemoryPresenceStore()),
+                    new BCryptPasswordEncoder(4), mock(SessionService.class), postService, experienceService);
         }
 
         @Bean
@@ -944,12 +1332,35 @@ class PostInteractionMySqlIntegrationTest {
         }
     }
 
-    private record UserPair(long low, long high) {
-        static UserPair of(long first, long second) {
-            return new UserPair(Math.min(first, second), Math.max(first, second));
-        }
+    private String uid(long userId) {
+        return jdbc.queryForObject("SELECT public_uid FROM users WHERE id = ?", String.class, userId);
+    }
 
-        boolean contains(long userId) { return low == userId || high == userId; }
-        long other(long userId) { return low == userId ? high : low; }
+    private void createInsertDelayTrigger(String triggerName, String table, long firstUserId, long secondUserId) {
+        if (!Set.of("user_blocks", "user_follows").contains(table)
+                || !triggerName.matches("dp03_delay_(block|follow)_[0-9a-f]{12}")) {
+            throw new IllegalArgumentException("Invalid integration trigger name or target");
+        }
+        jdbc.execute("CREATE TRIGGER " + triggerName + " BEFORE INSERT ON " + table
+                + " FOR EACH ROW SET @dp03_insert_delay = IF(NEW." + ("user_blocks".equals(table) ? "blocker_id" : "follower_id")
+                + " = " + firstUserId + " AND NEW." + ("user_blocks".equals(table) ? "blocked_id" : "following_id")
+                + " = " + secondUserId + ", SLEEP(1), 0)");
+    }
+
+    private void dropTrigger(String triggerName) {
+        if (triggerName.matches("dp03_delay_(block|follow)_[0-9a-f]{12}")) {
+            jdbc.execute("DROP TRIGGER IF EXISTS " + triggerName);
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting for the test start gate");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("The test start gate was interrupted", interrupted);
+        }
     }
 }

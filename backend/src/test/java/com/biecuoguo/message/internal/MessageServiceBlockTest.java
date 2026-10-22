@@ -15,6 +15,8 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -25,10 +27,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 class MessageServiceBlockTest {
@@ -49,6 +54,10 @@ class MessageServiceBlockTest {
     static void initializeLambdaMetadata() {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "message-block-tests"),
                 Conversation.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "message-block-tests-message"),
+                Message.class);
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), "message-block-tests-user"),
+                User.class);
     }
 
     @BeforeEach
@@ -93,6 +102,46 @@ class MessageServiceBlockTest {
     }
 
     @Test
+    void sendPublishesOnlyAfterTransactionCommit() {
+        when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
+        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(false);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.send(5L, new MessageDtos.SendMessageRequest("hello"), VIEWER);
+
+            verifyNoInteractions(realtime, push);
+            var synchronizations = TransactionSynchronizationManager.getSynchronizations();
+            assertEquals(1, synchronizations.size());
+            synchronizations.forEach(TransactionSynchronization::afterCommit);
+
+            verify(realtime).publish(eq(PEER_ID), eq("message"), any());
+            verify(push, timeout(2_000)).send(PEER_ID, "新私信", "hello", java.util.Map.of("conversationId", "5"));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
+    void rolledBackMessageDoesNotPublishOrPush() {
+        when(conversations.selectById(5L)).thenReturn(conversation(5L, VIEWER.id(), PEER_ID));
+        when(blocks.isBlockedEitherWay(VIEWER.id(), PEER_ID)).thenReturn(false);
+        TransactionSynchronizationManager.initSynchronization();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            service.send(5L, new MessageDtos.SendMessageRequest("hello"), VIEWER);
+
+            TransactionSynchronizationManager.getSynchronizations().forEach(
+                    synchronization -> synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+            verifyNoInteractions(realtime, push);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+            TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
+
+    @Test
     void conversationsAndUnreadCountFilterPeersBlockedInEitherDirection() {
         when(blocks.blockedUserIds(VIEWER.id())).thenReturn(Set.of(PEER_ID));
         AtomicReference<String> sql = new AtomicReference<>();
@@ -109,6 +158,56 @@ class MessageServiceBlockTest {
         assertTrue(predicate.contains("user_one_id") && predicate.contains("user_two_id")
                 && count(predicate, "not in") == 2, "Both participant columns must exclude the blocked peer");
         verifyNoInteractions(messages, realtime, push);
+    }
+
+    @Test
+    void conversationsHideAPeerBlockedWhilePreviewsAreBeingLoaded() {
+        setupVisibleCandidates();
+        AtomicReference<Set<Long>> committedBlocks = new AtomicReference<>(Set.of());
+        when(blocks.blockedUserIds(VIEWER.id())).thenAnswer(invocation -> committedBlocks.get());
+        when(messages.selectList(any())).thenAnswer(invocation -> {
+            committedBlocks.set(Set.of(PEER_ID));
+            return List.of(message(5L, "private preview"), message(6L, "visible preview"));
+        });
+
+        List<MessageDtos.ConversationView> result = service.conversations(VIEWER);
+
+        assertEquals(1, result.size());
+        assertEquals(6L, result.getFirst().id());
+        assertEquals("visible preview", result.getFirst().lastMessage());
+        assertEquals(2L, result.getFirst().unreadCount());
+        verify(blocks, times(2)).blockedUserIds(VIEWER.id());
+        verify(messages).selectUnreadCounts(VIEWER.id(), List.of(5L, 6L));
+        verify(blocks, never()).isBlockedEitherWay(any(), any());
+    }
+
+    @Test
+    void unreadCountDropsAPeerBlockedDuringTheAggregateQuery() {
+        setupVisibleCandidates();
+        AtomicReference<Set<Long>> committedBlocks = new AtomicReference<>(Set.of());
+        when(blocks.blockedUserIds(VIEWER.id())).thenAnswer(invocation -> committedBlocks.get());
+        when(messages.selectUnreadCounts(VIEWER.id(), List.of(5L, 6L))).thenAnswer(invocation -> {
+            committedBlocks.set(Set.of(PEER_ID));
+            return List.of(new MessageMapper.UnreadCount(5L, 3L), new MessageMapper.UnreadCount(6L, 2L));
+        });
+
+        assertEquals(2L, service.unreadCount(VIEWER));
+
+        verify(blocks, times(2)).blockedUserIds(VIEWER.id());
+        verify(messages, never()).selectList(any());
+        verify(blocks, never()).isBlockedEitherWay(any(), any());
+    }
+
+    @Test
+    void finalRelationshipFailureDoesNotReturnPreparedPreviewsOrCounts() {
+        setupVisibleCandidates();
+        when(blocks.blockedUserIds(VIEWER.id())).thenReturn(Set.of())
+                .thenThrow(new IllegalStateException("relationship store unavailable"))
+                .thenReturn(Set.of())
+                .thenThrow(new IllegalStateException("relationship store unavailable"));
+
+        assertThrows(IllegalStateException.class, () -> service.conversations(VIEWER));
+        assertThrows(IllegalStateException.class, () -> service.unreadCount(VIEWER));
     }
 
     @Test
@@ -132,6 +231,27 @@ class MessageServiceBlockTest {
         assertThrows(IllegalStateException.class, () -> service.unreadCount(VIEWER));
 
         verifyNoInteractions(conversations, messages, realtime, push);
+    }
+
+    private void setupVisibleCandidates() {
+        // Cover both positions of the current user in the canonical conversation pair.
+        when(conversations.selectList(any())).thenReturn(List.of(
+                conversation(5L, VIEWER.id(), PEER_ID), conversation(6L, 5L, VIEWER.id())));
+        User firstPeer = new User();
+        firstPeer.setId(PEER_ID);
+        User secondPeer = new User();
+        secondPeer.setId(5L);
+        when(users.selectList(any())).thenReturn(List.of(firstPeer, secondPeer));
+        when(messages.selectList(any())).thenReturn(List.of(message(5L, "private preview"), message(6L, "visible preview")));
+        when(messages.selectUnreadCounts(VIEWER.id(), List.of(5L, 6L)))
+                .thenReturn(List.of(new MessageMapper.UnreadCount(5L, 3L), new MessageMapper.UnreadCount(6L, 2L)));
+    }
+
+    private static Message message(long conversationId, String content) {
+        Message message = new Message();
+        message.setConversationId(conversationId);
+        message.setContent(content);
+        return message;
     }
 
     private static Conversation conversation(long id, Long firstUserId, Long secondUserId) {

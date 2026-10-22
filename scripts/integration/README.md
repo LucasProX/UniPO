@@ -136,7 +136,25 @@ Redis 夹具证明 R06 存储撤销与 TTL，MySQL 夹具证明设备身份领�
 
 从仓库根执行 `bash scripts/integration/post-interactions.sh`。脚本复用独立 MySQL fixture 生命周期，只运行 `PostInteractionMySqlIntegrationTest`，验证数据库 marker 后从 V1 完整应用 migration；不启动 Boot、不读取仓库 `.env`，也不连接 Redis 或远端服务。测试通过真实 MySQL、MyBatis 与 Spring 事务代理检查帖子互动记录和冗余计数在并发、重复请求、旧事务快照及帖子删除/审核状态下保持一致，同时覆盖评论与分享幂等键、每日统计和统一经验更新。
 
-2026-10-22 V21 索引调整后的基线 run `9aa2f8bb82891860` **25/25 通过、0 跳过**。随后 DP03 加入双向拉黑下回复评论的数据库行为用例，专项脚本也固定要求 26 项，避免旧报告误报成功。最新独立 run `c493246b3cb17bbb` 从 V1 全量迁移到 V21，**26/26 通过、0 失败、0 跳过**；日志与 JUnit XML 位于 `.logs/dp17/mysql-c493246b3cb17bbb/`，容器和网络均由 fixture 清理。新增用例以 `BlockQueryApi` 内存 stub 提供两种方向的拉黑关系，真实 MySQL 验证拒绝回复时评论数、回复数、经验均无副作用；它不是对 `user_blocks`/SocialService 的完整集成。结果不包含热帖竞争吞吐；单帖锁等待与容量仍由 DP23 压测验收，也不替代真实拉黑存储、Redis replay 集成和 iOS 登录后验收。
+2026-10-22 V21 基线 `9aa2f8bb82891860` 为 25 项，随后 `c493246b3cb17bbb` 为 26 项，仅通过关系 stub 验证评论副作用。V22 起改用真实 SocialService 和 user_blocks；`5288fa910c5c1e7f` 的 29 项通过后，又加入注销交错、不同 pair 并发和旧事务权威读取。最终 run `f44fe580211a48ef` **34/34 通过、0 失败/错误/跳过**，从空库完整迁移 V1–V22，并显式断言 V22 成功。日志/XML 在 `.logs/dp17/mysql-f44fe580211a48ef/`。普通 `mvn test` 默认跳过，runner 固定核对 34 项显式执行。
+
+注销用例使用真实 UserService SQL，但 SessionService 是替身，身份撤销继续看 DP02；此处证明的是关系不复活。初次 `6906746051cd832d` 因 fixture binlog 下创建触发器报 1419 失败，仅隔离 Compose 添加 `log-bin-trust-function-creators` 后重跑。结果不证明热点吞吐、iOS 登录后交互或服务器已部署。详细边界见 [DP03 验收记录](../../docs/DP03-VERIFICATION.md)。
+
+## DP03 私信与拉黑事务专项
+
+从仓库根执行 `bash scripts/integration/message-blocks.sh`。使用同一新建 MySQL 22306 隔离生命周期、空库和随机 marker，只运行 `MessageBlockMySqlIntegrationTest`，不读根 `.env`，不连接远端或真实 APNs。不要与其他 22306 fixture 同时运行。
+
+最终 run `3baedfe913ad44db` **15/15 通过、0 失败/错误/跳过**，V1–V22 成功，产物在 `.logs/dp03/message-3baedfe913ad44db/`。真实 Spring 事务、MyBatis、MessageService 和 SocialService 覆盖双向拉黑、取消恢复、锁等待、回滚无通知、独立连接确认提交、旧 RR 的列表/聚合与越权。多连接用例使用真实 LocalRealtimeBroker/RealtimeHub，身份为替身，覆盖首个 sink 期间拉黑提交后下一 sink 重新检查。
+
+最早 run `6f57cdbfc64b4d79` 的合成昵称重复导致初始化失败，未进入业务，原报告保留。通过轮次的容器/网络已清理，runner 固定核对 15 项与零跳过；常规 Maven 不代替显式运行。
+
+包含上述改动的最终 JAR 在 run `368a979751d9d0b5` 重新通过双应用与真实媒体的 42 项原始冒烟，上传开启、零跳过、清理完成；产物在 `.logs/dp02/smoke-368a979751d9d0b5/`。
+
+## DP03 Redis replay 专项
+
+`redis-session.sh` 同时运行 RedisSessionStoreIntegrationTest 和 RedisRealtimeStoreIntegrationTest，两个独立连接共享本轮 Redis。run `c555026108bf06b0` 的会话 2 项和 replay 1 项均通过，零跳过，产物在 `.logs/dp02/c555026108bf06b0/`。
+
+新增 replay 验证私信不占全局序号、不写 Stream，以及 100 条上限、按应用序号排序和排他分页。它不代表保留窗外的恢复协议、多实例 Pub/Sub 网络、持久 Outbox 或 iOS 端到端验收。默认镜像未缓存时脚本会安全退出；可用 `UNIPO_DP02_REDIS_IMAGE` 指定已缓存 Redis 7 镜像。
 
 ## SMS 登录并发专项
 

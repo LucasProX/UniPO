@@ -17,6 +17,7 @@ services:
       - --max-connections=30
       - --performance-schema=OFF
       - --mysqlx=OFF
+      - --log-bin-trust-function-creators=1
     ports:
       - "127.0.0.1:22306:3306"
     tmpfs:

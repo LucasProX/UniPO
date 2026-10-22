@@ -122,7 +122,7 @@ fixture_log="$fixture_log_dir/redis-session-$UNIPO_DP02_RUN_ID.log"
 printf 'Running R06 against a fresh loopback-only Redis fixture.\n'
 printf 'Test output: %s\n' "$fixture_log"
 set +e
-mvn -B -f "$task_root/backend/pom.xml" -Dtest=RedisSessionStoreIntegrationTest \
+mvn -B -f "$task_root/backend/pom.xml" -Dtest=RedisSessionStoreIntegrationTest,RedisRealtimeStoreIntegrationTest \
   -Dsurefire.reportNameSuffix="$UNIPO_DP02_RUN_ID" test 2>&1 | tee "$fixture_log"
 fixture_pipeline_status=("${PIPESTATUS[@]}")
 fixture_test_result=${fixture_pipeline_status[0]}
@@ -132,15 +132,18 @@ if [ "${fixture_pipeline_status[1]}" != 0 ]; then
   fixture_test_result=2
 fi
 fixture_report="$task_root/backend/target/surefire-reports/TEST-com.biecuoguo.state.RedisSessionStoreIntegrationTest-$UNIPO_DP02_RUN_ID.xml"
-if [ -f "$fixture_report" ]; then
-  cp "$fixture_report" "$fixture_log_dir/"
-  if ! grep -Eq 'tests="[1-9][0-9]*"' "$fixture_report" \
-    || ! grep -q 'skipped="0"' "$fixture_report"; then
-    printf 'The explicitly enabled integration tests were skipped or not executed.\n' >&2
+fixture_realtime_report="$task_root/backend/target/surefire-reports/TEST-com.biecuoguo.realtime.RedisRealtimeStoreIntegrationTest-$UNIPO_DP02_RUN_ID.xml"
+for fixture_report in "$fixture_report" "$fixture_realtime_report"; do
+  if [ -f "$fixture_report" ]; then
+    cp "$fixture_report" "$fixture_log_dir/"
+    if ! grep -Eq 'tests="[1-9][0-9]*"' "$fixture_report" \
+      || ! grep -q 'skipped="0"' "$fixture_report"; then
+      printf 'The explicitly enabled integration tests were skipped or not executed: %s\n' "$(basename "$fixture_report")" >&2
+      fixture_test_result=2
+    fi
+  else
+    printf 'No integration test report was produced: %s\n' "$(basename "$fixture_report")" >&2
     fixture_test_result=2
   fi
-else
-  printf 'No integration test report was produced.\n' >&2
-  fixture_test_result=2
-fi
+done
 exit "$fixture_test_result"

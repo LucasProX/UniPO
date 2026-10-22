@@ -12,8 +12,14 @@ import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.realtime.RealtimeHub;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.social.api.BlockQueryApi;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -25,6 +31,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class MessageService {
+    private static final Logger log = LoggerFactory.getLogger(MessageService.class);
+
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
     private final UserMapper userMapper;
@@ -45,12 +53,15 @@ public class MessageService {
         this.blockQueryApi = blockQueryApi;
     }
 
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<MessageDtos.ConversationView> conversations(CurrentUser currentUser) {
         List<Conversation> conversationList = visibleConversations(currentUser.id());
         if (conversationList.isEmpty()) {
             return List.of();
         }
         List<Long> conversationIds = conversationList.stream().map(Conversation::getId).toList();
+        Map<Long, Long> peerIdByConversation = conversationList.stream().collect(Collectors.toMap(
+                Conversation::getId, conversation -> peerIdOf(conversation, currentUser.id())));
 
         // 1) 对端用户一次批量查完
         Set<Long> peerIds = conversationList.stream()
@@ -67,24 +78,27 @@ public class MessageService {
                 .stream()
                 .collect(Collectors.toMap(Message::getConversationId, m -> m, (a, b) -> b));
 
-        // 3) 未读数一次查完，按会话分组计数
-        Map<Long, Integer> unreadByConversation = messageMapper.selectList(new LambdaQueryWrapper<Message>()
-                        .in(Message::getConversationId, conversationIds)
-                        .eq(Message::getReceiverId, currentUser.id())
-                        .eq(Message::getReadFlag, false))
+        // 3) 只聚合本轮候选会话的未读数，不读取未读正文。
+        Map<Long, Long> unreadByConversation = messageMapper.selectUnreadCounts(currentUser.id(), conversationIds)
                 .stream()
-                .collect(Collectors.groupingBy(Message::getConversationId, Collectors.summingInt(m -> 1)));
+                .collect(Collectors.toMap(MessageMapper.UnreadCount::conversationId, MessageMapper.UnreadCount::unreadCount));
 
-        return conversationList.stream()
+        List<MessageDtos.ConversationView> views = conversationList.stream()
                 .map(conversation -> new MessageDtos.ConversationView(
                         conversation.getId(),
                         authorView(peers.get(peerIdOf(conversation, currentUser.id()))),
                         contentOf(lastMessageByConversation.get(conversation.getId())),
-                        unreadByConversation.getOrDefault(conversation.getId(), 0).longValue(),
+                        unreadByConversation.getOrDefault(conversation.getId(), 0L),
                         AppTime.toOffset(conversation.getLastMessageAt()),
                         AppTime.toOffset(conversation.getUpdatedAt())
                 ))
                 .toList();
+
+        // This final authority read happens after preview, unread and presence lookups. A block
+        // committed before this point must hide the result; responses already in flight cannot be recalled.
+        // NOT_SUPPORTED prevents an upstream Repeatable Read snapshot from preserving an old relationship.
+        Set<Long> blockedAtReturn = blockQueryApi.blockedUserIds(currentUser.id());
+        return views.stream().filter(view -> !blockedAtReturn.contains(peerIdByConversation.get(view.id()))).toList();
     }
 
     private Long peerIdOf(Conversation conversation, Long currentUserId) {
@@ -95,7 +109,7 @@ public class MessageService {
         return message == null ? "" : message.getContent();
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public MessageDtos.ConversationView create(MessageDtos.CreateConversationRequest request, CurrentUser currentUser) {
         if (request.peerId() == null && (request.peerUid() == null || request.peerUid().isBlank())) {
             throw new IllegalArgumentException("私信对象不能为空");
@@ -110,14 +124,18 @@ public class MessageService {
         if (peer.getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("不能给自己发私信");
         }
+        blockQueryApi.lockPair(currentUser.id(), peer.getId());
         requireNotBlocked(currentUser.id(), peer.getId());
         Conversation conversation = findOrCreate(currentUser.id(), peer.getId());
         return toView(conversation, currentUser.id());
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public List<MessageDtos.MessageView> messages(Long conversationId, CurrentUser currentUser) {
         Conversation conversation = requireConversation(conversationId, currentUser.id());
-        requireNotBlocked(currentUser.id(), peerIdOf(conversation, currentUser.id()));
+        Long peerId = peerIdOf(conversation, currentUser.id());
+        blockQueryApi.lockPair(currentUser.id(), peerId);
+        requireNotBlocked(currentUser.id(), peerId);
         List<Message> messages = messageMapper.selectList(new LambdaQueryWrapper<Message>()
                 .eq(Message::getConversationId, conversation.getId())
                 .orderByAsc(Message::getCreatedAt));
@@ -134,10 +152,11 @@ public class MessageService {
         return messages.stream().map(this::messageView).toList();
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public MessageDtos.MessageView send(Long conversationId, MessageDtos.SendMessageRequest request, CurrentUser currentUser) {
         Conversation conversation = requireConversation(conversationId, currentUser.id());
         Long receiverId = conversation.getUserOneId().equals(currentUser.id()) ? conversation.getUserTwoId() : conversation.getUserOneId();
+        blockQueryApi.lockPair(currentUser.id(), receiverId);
         requireNotBlocked(currentUser.id(), receiverId);
         LocalDateTime now = LocalDateTime.now();
         Message message = new Message();
@@ -152,24 +171,53 @@ public class MessageService {
         conversation.setUpdatedAt(now);
         conversationMapper.updateById(conversation);
         MessageDtos.MessageView view = messageView(message);
-        // 推给收件人：没有在线连接就静默返回，不影响发消息本身（推送是加速通道，轮询仍是兜底）。
-        realtimeHub.publish(receiverId, "message", Map.of("conversationId", conversation.getId(), "message", view));
-        // APNs 不阻塞发消息：虚拟线程里发，失败只打日志。
         String preview = message.getContent().length() > 60
                 ? message.getContent().substring(0, 60) + "…"
                 : message.getContent();
-        Thread.startVirtualThread(() -> sendPushIfVisible(currentUser.id(), receiverId, preview,
-                Map.of("conversationId", String.valueOf(conversation.getId()))));
+        publishAfterCommit(receiverId, conversation.getId(), currentUser.id(), view, preview);
         return view;
     }
 
+    private void publishAfterCommit(long receiverId, long conversationId, long senderId,
+                                    MessageDtos.MessageView view, String preview) {
+        Runnable publish = () -> {
+            try {
+                realtimeHub.publish(receiverId, "message", Map.of("conversationId", conversationId, "message", view));
+            } catch (RuntimeException failure) {
+                log.warn("Committed private message realtime delivery failed conversation={}", conversationId, failure);
+            }
+            try {
+                Thread.startVirtualThread(() -> sendPushIfVisible(senderId, receiverId, preview,
+                        Map.of("conversationId", String.valueOf(conversationId))));
+            } catch (RuntimeException failure) {
+                log.warn("Committed private message push scheduling failed conversation={}", conversationId, failure);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publish.run();
+                }
+            });
+        } else {
+            publish.run();
+        }
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public long unreadCount(CurrentUser currentUser) {
-        List<Long> visibleIds = visibleConversations(currentUser.id()).stream().map(Conversation::getId).toList();
-        if (visibleIds.isEmpty()) { return 0; }
-        return messageMapper.selectCount(new LambdaQueryWrapper<Message>()
-                .in(Message::getConversationId, visibleIds)
-                .eq(Message::getReceiverId, currentUser.id())
-                .eq(Message::getReadFlag, false));
+        List<Conversation> candidates = visibleConversations(currentUser.id());
+        if (candidates.isEmpty()) { return 0; }
+        List<Long> candidateIds = candidates.stream().map(Conversation::getId).toList();
+        Map<Long, Long> unread = messageMapper.selectUnreadCounts(currentUser.id(), candidateIds).stream()
+                .collect(Collectors.toMap(MessageMapper.UnreadCount::conversationId, MessageMapper.UnreadCount::unreadCount));
+        // Recheck after counting so a block committed during the aggregate query cannot leak its count.
+        Set<Long> blockedAtReturn = blockQueryApi.blockedUserIds(currentUser.id());
+        return candidates.stream()
+                .filter(conversation -> !blockedAtReturn.contains(peerIdOf(conversation, currentUser.id())))
+                .mapToLong(conversation -> unread.getOrDefault(conversation.getId(), 0L))
+                .sum();
     }
 
     private List<Conversation> visibleConversations(Long userId) {

@@ -12,10 +12,14 @@ import com.biecuoguo.mapper.UserBlockMapper;
 import com.biecuoguo.mapper.UserFollowMapper;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.mapper.UserReportMapper;
+import com.biecuoguo.mapper.SocialRelationshipLockMapper;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.social.api.BlockQueryApi;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -38,27 +42,32 @@ public class SocialService implements BlockQueryApi {
     private final UserFollowMapper followMapper;
     private final UserBlockMapper blockMapper;
     private final UserReportMapper reportMapper;
+    private final SocialRelationshipLockMapper relationshipLockMapper;
 
     public SocialService(UserMapper userMapper, UserFollowMapper followMapper,
-                         UserBlockMapper blockMapper, UserReportMapper reportMapper) {
+                         UserBlockMapper blockMapper, UserReportMapper reportMapper,
+                         SocialRelationshipLockMapper relationshipLockMapper) {
         this.userMapper = userMapper;
         this.followMapper = followMapper;
         this.blockMapper = blockMapper;
         this.reportMapper = reportMapper;
+        this.relationshipLockMapper = relationshipLockMapper;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public boolean follow(String uid, CurrentUser currentUser) {
         User target = userByUid(uid);
         if (target.getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("不能关注自己");
         }
-        if (blockedEitherWay(currentUser.id(), target.getId())) {
+        lockPair(currentUser.id(), target.getId());
+        if (blockedEitherWayForUpdate(currentUser.id(), target.getId())) {
             throw new IllegalArgumentException("无法关注该用户");
         }
         UserFollow existing = followMapper.selectOne(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, currentUser.id())
-                .eq(UserFollow::getFollowingId, target.getId()));
+                .eq(UserFollow::getFollowingId, target.getId())
+                .last("FOR UPDATE"));
         if (existing != null) {
             return true;
         }
@@ -70,9 +79,10 @@ public class SocialService implements BlockQueryApi {
         return true;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public boolean unfollow(String uid, CurrentUser currentUser) {
         User target = userByUid(uid);
+        if (!target.getId().equals(currentUser.id())) { lockPair(currentUser.id(), target.getId()); }
         followMapper.delete(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, currentUser.id())
                 .eq(UserFollow::getFollowingId, target.getId()));
@@ -103,9 +113,10 @@ public class SocialService implements BlockQueryApi {
      * 移除粉丝：只有本人能移除自己的粉丝（把「对方关注我」这条边删掉）。
      * 不允许用这个接口去删别人对自己的关注关系。
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public boolean removeFollower(String followerUid, CurrentUser currentUser) {
         User follower = userByUid(followerUid);
+        if (!follower.getId().equals(currentUser.id())) { lockPair(currentUser.id(), follower.getId()); }
         followMapper.delete(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, follower.getId())
                 .eq(UserFollow::getFollowingId, currentUser.id()));
@@ -129,15 +140,17 @@ public class SocialService implements BlockQueryApi {
                 .set(User::getFollowersSeenAt, AppTime.nowLocal()));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public UserDtos.BlockStatusView block(String uid, CurrentUser currentUser) {
         User target = userByUid(uid);
         if (target.getId().equals(currentUser.id())) {
             throw new IllegalArgumentException("不能拉黑自己");
         }
-        boolean exists = blockMapper.selectCount(new LambdaQueryWrapper<UserBlock>()
+        lockPair(currentUser.id(), target.getId());
+        boolean exists = blockMapper.selectOne(new LambdaQueryWrapper<UserBlock>()
                 .eq(UserBlock::getBlockerId, currentUser.id())
-                .eq(UserBlock::getBlockedId, target.getId())) > 0;
+                .eq(UserBlock::getBlockedId, target.getId())
+                .last("FOR UPDATE")) != null;
         if (!exists) {
             UserBlock block = new UserBlock();
             block.setBlockerId(currentUser.id());
@@ -152,16 +165,17 @@ public class SocialService implements BlockQueryApi {
         followMapper.delete(new LambdaQueryWrapper<UserFollow>()
                 .eq(UserFollow::getFollowerId, target.getId())
                 .eq(UserFollow::getFollowingId, currentUser.id()));
-        return new UserDtos.BlockStatusView(true, blockedBy(target.getId(), currentUser.id()));
+        return new UserDtos.BlockStatusView(true, blockedForUpdate(target.getId(), currentUser.id()));
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public UserDtos.BlockStatusView unblock(String uid, CurrentUser currentUser) {
         User target = userByUid(uid);
+        if (!target.getId().equals(currentUser.id())) { lockPair(currentUser.id(), target.getId()); }
         blockMapper.delete(new LambdaQueryWrapper<UserBlock>()
                 .eq(UserBlock::getBlockerId, currentUser.id())
                 .eq(UserBlock::getBlockedId, target.getId()));
-        return new UserDtos.BlockStatusView(false, blockedBy(target.getId(), currentUser.id()));
+        return new UserDtos.BlockStatusView(false, blockedForUpdate(target.getId(), currentUser.id()));
     }
 
     public UserDtos.BlockStatusView blockStatus(Long viewerId, Long targetId) {
@@ -245,24 +259,17 @@ public class SocialService implements BlockQueryApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean isBlockedEitherWay(Long a, Long b) {
         if (a == null || b == null || a.equals(b)) return false;
-        return blocked(a, b) || blocked(b, a);
+        return blockMapper.existsEitherWay(a, b);
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public Set<Long> blockedUserIds(Long viewerId) {
         if (viewerId == null) return Set.of();
-        return blockMapper.selectList(new LambdaQueryWrapper<UserBlock>()
-                        .and(w -> w.eq(UserBlock::getBlockerId, viewerId)
-                                .or().eq(UserBlock::getBlockedId, viewerId)))
-                .stream()
-                .map(block -> viewerId.equals(block.getBlockerId()) ? block.getBlockedId() : block.getBlockerId())
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-    }
-
-    private boolean blockedEitherWay(Long a, Long b) {
-        return isBlockedEitherWay(a, b);
+        return Set.copyOf(blockMapper.selectBlockedUserIds(viewerId));
     }
 
     private boolean blocked(Long blockerId, Long blockedId) {
@@ -273,6 +280,44 @@ public class SocialService implements BlockQueryApi {
 
     private boolean blockedBy(Long targetId, Long viewerId) {
         return blocked(targetId, viewerId);
+    }
+
+    private void lockRelationshipPair(Long firstUserId, Long secondUserId) {
+        long low = Math.min(firstUserId, secondUserId);
+        long high = Math.max(firstUserId, secondUserId);
+        // Always acquire participant locks before the pair lock. Account deletion holds the user's
+        // exclusive lock through relationship cleanup; a late writer must observe deleted and stop.
+        if (!"active".equals(userMapper.lockStatusForShare(low))
+                || !"active".equals(userMapper.lockStatusForShare(high))) {
+            throw new NoSuchElementException("用户不存在或已注销");
+        }
+        relationshipLockMapper.ensurePair(low, high);
+        if (relationshipLockMapper.lockPair(low, high) == null) {
+            throw new IllegalStateException("无法锁定用户关系");
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void lockPair(Long firstUserId, Long secondUserId) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive()) {
+            throw new IllegalStateException("用户关系锁需要数据库事务");
+        }
+        if (firstUserId == null || secondUserId == null || firstUserId.equals(secondUserId)) {
+            throw new IllegalArgumentException("用户关系锁参数不合法");
+        }
+        lockRelationshipPair(firstUserId, secondUserId);
+    }
+
+    private boolean blockedEitherWayForUpdate(Long a, Long b) {
+        return blockedForUpdate(a, b) || blockedForUpdate(b, a);
+    }
+
+    private boolean blockedForUpdate(Long blockerId, Long blockedId) {
+        return blockMapper.selectOne(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, blockerId)
+                .eq(UserBlock::getBlockedId, blockedId)
+                .last("FOR UPDATE")) != null;
     }
 
     private User userByUid(String uid) {

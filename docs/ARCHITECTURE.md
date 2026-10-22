@@ -14,8 +14,12 @@
 4. **状态外部化**：会话、限流、在线态、撤销名单、实时广播都进 Redis；对象存储进 MinIO/S3；
    应用实例保持无状态 —— 这是「一台机器能跑、十台也能跑」的前提。
 
-实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）；消息的可靠投递用 Outbox + Redis Streams。
+实时通道从 SSE 演进到 **WebSocket**（带 ack、心跳、断线续传）。目标可靠投递采用 Outbox；当前私信已移到提交后通知，但持久 Outbox 尚未交付。私信不进入通用 Redis Stream 重放，断线恢复走消息 HTTP 接口。
 详见 ADR-0001。
+
+### 2026 年 10 月 22 日增量
+
+V20 的身份版本与设备记录由 MySQL 作为权威，access、refresh、Cookie 和实时连接统一校验，详见 ADR-0003。V21 加入互动幂等；V22 以用户对锁串行关注、拉黑和私信操作，详见 ADR-0004。独立 MySQL/Redis 验证与客户端边界分别记录在 DP02、DP03 验收文档。下方旧快照不能用于推断这些增量尚未实现或已经部署。
 
 ### 落地进度（2026-10-20）
 
@@ -101,6 +105,8 @@ Caddy :443/80 -> frontend(nginx) :80 -> /api/ -> backend :8080
 | `users` | 账号、资料、`public_uid`、`role`、`operator_scope`、等级 XP；V17 增加 `gender` / `birth_year` / `zodiac` / `mbti` / 展示开关 / `onboarding_completed` |
 | `user_preferences` | 兴趣标签、推送偏好 |
 | `user_follows` | 关注关系 |
+| `user_blocks` | 有方向的拉黑事实；访问权限按双向关系判断 |
+| `social_relationship_pair_locks` | V22，同一用户对一条事务锁记录；顺序为先用户共享状态锁、后 pair 锁 |
 | `user_checkins` | 每日签到 |
 | `schools` / `colleges` / `majors` | 学校 / 学院 / 专业三级组织 |
 | `categories` / `tags` | 分类 / 标签字典，`/api/categories`、`/api/tags` 只读 |

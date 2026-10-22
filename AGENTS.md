@@ -35,7 +35,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V21，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V22，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -85,7 +85,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V21）：
+后端（Flyway 自动执行 V1–V22）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -160,6 +160,8 @@ xcrun simctl launch booted com.unipo.app
   身份权威是 MySQL 的 `users.auth_version` 与 `auth_device_sessions`；刷新保留同一设备和绝对期限，不互相消费并发 refresh，但退出设备会拒绝所有派生 token。具体边界见 ADR-0003。
 - **安全状态只经受控写入**：`passwordHash/role/operatorScope/status/authVersion` 禁止普通 `updateById` 回写。改密、重置、封禁、解封、角色变化、注销与 logout-all 在同一事务推进身份版本；不得让旧资料实体恢复旧密码或权限。用户列表、封禁和角色修改只允许 ADMIN，普通运营不可通过这些接口提权。
 - **实时身份不是永久 userId**：上下文保留版本、设备和到期时间；全部上行、每条 live/replay 帧均查权威。4 秒单调租约加 1 秒独立 watchdog 限制空闲连接的逻辑存活；校验超时/拥塞/未知身份关闭，不沿用旧成功。Cookie 只用 peek，不能靠 WS 巡检永久续期；已进入传输的在途帧不能撤回。
+- **社交关系按用户对串行**：V22 的 `social_relationship_pair_locks` 是关注、拉黑与私信创建/读取/发送共用的事务锁。先按用户 ID 顺序共享锁定并确认双方 active，再取得 pair 锁；外部只能经 `BlockQueryApi`。不能锁住热门用户整行来串行其全部关系，也不能在持 pair 锁后反向申请用户锁。权威关系读取要挂起旧业务事务并绕过缓存；列表在资料、预览和未读组装后批量重查，保证该查询前已提交的拉黑被过滤，之后的在途结果不能撤回。详情见 ADR-0004。
+- **通知只能在消息提交后发**：WebSocket 与 APNs 的调度不能放在数据库事务提交前。当前 after-commit 回调只能防回滚幽灵消息，不能保证进程崩溃后重试；持久 Outbox、去重与恢复仍属 DP14，不得将这个切片写成 DP14 完成。
 - **Web 端登录态用 httpOnly Cookie，App 继续用 Bearer**（2026-10-20，ADR-0001 D3）：
   `POST /auth/login|register|refresh` 会额外下发两个 Cookie —— `unipo_sid`（HttpOnly，不透明 session id）
   和 `unipo_csrf`（非 HttpOnly，前端读出来放进 `X-CSRF-Token`）。Cookie 外壳存在 `SessionStore`（memory/redis），身份仍须通过持久设备和版本校验。
@@ -188,7 +190,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V21 只增不改，下一次迁移按实际最高版本递增（当前应为 `V22__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V22 只增不改，下一次迁移按实际最高版本递增（当前应为 `V23__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -306,6 +308,7 @@ xcrun simctl launch booted com.unipo.app
 - `docs/LOCAL-DEV.md` — 本地环境搭建、启动顺序、默认账号、常见故障
 - [`docs/adr/`](docs/adr/) — 架构决策记录（ADR）。**改架构前先读，改完补一条新 ADR**
 - [`docs/DP02-VERIFICATION.md`](docs/DP02-VERIFICATION.md) — 身份撤销、双实例、故障与客户端的当前验证证据及剩余门槛
+- [`docs/DP03-VERIFICATION.md`](docs/DP03-VERIFICATION.md) — 拉黑、关注、私信的真实依赖证据、并发边界与剩余 UI 验收
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
 
 ## 11. 开发手记必须同步（硬规矩）
