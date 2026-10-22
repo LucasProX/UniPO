@@ -35,7 +35,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V25，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V26，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -85,7 +85,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V25）：
+后端（Flyway 自动执行 V1–V26）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -193,7 +193,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V25 只增不改，下一次迁移按实际最高版本递增（当前应为 `V26__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V26 只增不改，下一次迁移按实际最高版本递增（当前应为 `V27__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -244,6 +244,10 @@ xcrun simctl launch booted com.unipo.app
 - **主页身份入口**统一用 `UserProfileLink`，以 `publicUid` 判断本人；帖子、评论、会话列表与聊天标题保持一致。本人进入 `ProfileView`，他人进入 `PublicProfileView`。
 - **朋友必须双向关注**：以服务端 `following && followedBy` 为准；仅自己关注对方是「已关注」，仅被对方关注仍是「关注」，不能由本地一次关注操作推断成朋友。
 - **主页背景与公开资料**：背景上传后通过 `PUT /users/me` 保存 `backgroundUrl`，空字符串恢复默认；本人和访客共用 `ProfileBackdrop`，以服务端保存结果为准。公开资料的隐私限制由服务端执行，不能只在界面隐藏；关闭展示的性别、出生年份、年级及私人账号/偏好字段不向他人返回实际值。
+- **底栏（2026-10-23）**：首页 · 成长 · 发布 · 消息 · 我的。工具页已暂停并移除，别再加回空入口。「消息」Tab 是 `InboxView`（私信 + 互动通知），嵌入的 `MessagesView` 用 `embedded: true`：不显示关闭按钮、不自己弹登录页（否则和 RootView 的登录 cover 叠两层）。推送打开会话改为切到消息 Tab；未读角标由 RootView 低频轮询放在底栏。
+- **成长背景与阶段**：入学年份决定当前阶段（后端 `GrowthTerms` + `achievement_stages.term_from/term_to`），客户端不拼「第几周」。引导第 2 步与「成长」页共用 `GrowthBackgroundForm` / `GrowthBackgroundStore`；引导先存背景再提交 onboarding，且不再传 grade。已完成任务可撤回（确认后调 DELETE），经验按累计值回退。
+- **发帖图片一律转 JPEG**：相册原图可能是 HEIC，服务端只认 JPEG/PNG/GIF/WebP 文件头，`ComposeSheet` 上传前统一转成最长边 2048 的 JPEG；最多 9 张，标签最多 5 个。
+- **互动通知列表用 `listID`（类型 + id）做 ForEach 标识**：点赞、收藏、评论来自不同表，数字 id 会撞。
 - **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
   登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。
 

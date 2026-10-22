@@ -49,6 +49,48 @@ public class ExperienceService {
         return user;
     }
 
+    /** 撤回一次奖励：按累计经验回退，可跨级下降，不会低于 0。 */
+    @Transactional
+    public User revoke(Long userId, int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("经验值不能为负数");
+        }
+        User user = userMapper.lockById(userId);
+        if (user == null) {
+            throw new NoSuchElementException("用户不存在");
+        }
+        if (amount == 0) {
+            return user;
+        }
+        Progress progress = reverted(user.getLevel(), user.getXp(), amount);
+        LocalDateTime now = AppTime.nowLocal();
+        userMapper.update(null, new LambdaUpdateWrapper<User>().eq(User::getId, userId)
+                .set(User::getXp, progress.xp())
+                .set(User::getLevel, progress.level())
+                .set(User::getLevelTitle, progress.title())
+                .set(User::getUpdatedAt, now));
+        user.setXp(progress.xp());
+        user.setLevel(progress.level());
+        user.setLevelTitle(progress.title());
+        user.setUpdatedAt(now);
+        return user;
+    }
+
+    static Progress reverted(Integer currentLevel, Integer currentXp, int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("经验值不能为负数");
+        }
+        int level = Math.max(1, Math.min(100, currentLevel == null ? 1 : currentLevel));
+        long total = totalXpForLevel(level) + Math.max(0L, currentXp == null ? 0L : currentXp.longValue());
+        long remaining = Math.max(0L, total - amount);
+        int newLevel = 1;
+        while (newLevel < 100 && remaining >= totalXpForLevel(newLevel + 1)) {
+            newLevel++;
+        }
+        long xp = remaining - totalXpForLevel(newLevel);
+        return new Progress(newLevel, (int) Math.min(Integer.MAX_VALUE, xp), levelTitle(newLevel));
+    }
+
     static Progress progress(Integer currentLevel, Integer currentXp, int amount) {
         if (amount < 0) {
             throw new IllegalArgumentException("经验值不能为负数");

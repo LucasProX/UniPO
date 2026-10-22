@@ -4,13 +4,14 @@ import UniPOUI
 struct DockBar: View {
     @Binding var tab: AppTab
     let isAuthenticated: Bool
+    var unreadCount = 0
     let onCompose: () -> Void
-    let onRequestAuth: () -> Void
+    let onRequestAuth: (AppTab) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
             dockItem(.home, icon: "house.fill", label: "首页")
-            dockItem(.tools, icon: "square.grid.2x2.fill", label: "工具")
+            dockItem(.achievements, icon: "map.fill", label: "成长")
 
             Button(action: onCompose) {
                 ZStack {
@@ -27,7 +28,7 @@ struct DockBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("发 PO")
 
-            dockItem(.achievements, icon: "rosette", label: "成就")
+            dockItem(.messages, icon: "bubble.left.and.bubble.right.fill", label: "消息", badge: unreadCount)
             dockItem(.profile, icon: "person.fill", label: "我的")
         }
         .padding(.horizontal, 8)
@@ -35,11 +36,11 @@ struct DockBar: View {
         .glassSurface(radius: 34, interactive: true)
     }
 
-    private func dockItem(_ item: AppTab, icon: String, label: String) -> some View {
+    private func dockItem(_ item: AppTab, icon: String, label: String, badge: Int = 0) -> some View {
         Button {
-            // 「我的」是登录后才存在的地方；未登录先跳登录，不展示游客态主页。
-            if item == .profile && !isAuthenticated {
-                onRequestAuth()
+            // 「消息」与「我的」是登录后才存在的地方；未登录先跳登录，不展示游客态。
+            if (item == .profile || item == .messages) && !isAuthenticated {
+                onRequestAuth(item)
                 return
             }
             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -49,13 +50,25 @@ struct DockBar: View {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 19, weight: .semibold))
+                    .overlay(alignment: .topTrailing) {
+                        if badge > 0 {
+                            Text(badge > 99 ? "99+" : "\(badge)")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(UniColor.danger, in: Capsule())
+                                .offset(x: 10, y: -6)
+                        }
+                    }
                 Text(label)
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(tab == item ? UniColor.ink : UniColor.tertiary)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(badge > 0 ? "\(label)，\(badge) 条未读" : label)
     }
 }

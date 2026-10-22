@@ -6,15 +6,15 @@ struct HomeView: View {
     @Environment(AuthStore.self) private var auth
     let onRequestAuth: () -> Void
     let onOpenAchievements: () -> Void
-    let onOpenMessages: () -> Void
 
     @State private var feed = FeedStore()
     @State private var growth: AchievementView?
     @State private var growthLoading = false
     @State private var growthError: String?
     @State private var growthGeneration = 0
+    @State private var editingBackground = false
+    @State private var completingTask = false
     @State private var selectedPost: PostView?
-    @State private var unreadCount = 0
     @State private var previousViewerID: Int64?
 
     private var board: String { feed.board }
@@ -50,7 +50,6 @@ struct HomeView: View {
                 if let previousViewerID, previousViewerID != userID { selectedPost = nil }
                 previousViewerID = userID
             }
-            unreadCount = 0
             growth = nil
             growthError = nil
             growthLoading = false
@@ -59,7 +58,6 @@ struct HomeView: View {
             guard !auth.isRestoring else { return }
             await load(reset: true)
         }
-        .task { await pollUnread() }
         .task {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-post-detail"), selectedPost == nil {
@@ -67,6 +65,12 @@ struct HomeView: View {
                 selectedPost = posts.first
             }
             #endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoPostPublished)) { _ in
+            Task { await feed.refresh() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoPostDeleted)) { note in
+            if let id = note.object as? Int64 { feed.remove(postID: id) }
         }
         .sheet(item: $selectedPost) { post in
             PostDetailView(post: post)
@@ -95,25 +99,6 @@ struct HomeView: View {
                     .foregroundStyle(UniColor.secondary)
             }
             Spacer()
-            Button(action: onOpenMessages) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(UniColor.ink)
-                    .frame(width: 40, height: 40)
-                    .background(UniColor.mist.opacity(0.75), in: Circle())
-                    .overlay(alignment: .topTrailing) {
-                        if unreadCount > 0 {
-                            Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(UniColor.danger, in: Capsule())
-                                .offset(x: 4, y: -4)
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
             if let profile = auth.profile {
                 UserProfileLink(uid: profile.publicUid, name: profile.nickname) {
                     UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 40)
@@ -161,89 +146,139 @@ struct HomeView: View {
     }
 
     private var stageCard: some View {
-        Button {
-            if !auth.isAuthenticated { onRequestAuth() }
-            else if growthError != nil { Task { await loadGrowth() } }
-            else { onOpenAchievements() }
-        } label: {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 14) {
+            Button {
+                if !auth.isAuthenticated { onRequestAuth() }
+                else if growthError != nil { Task { await loadGrowth() } }
+                else { onOpenAchievements() }
+            } label: {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(auth.isAuthenticated ? "成长主线进度" : "成长任务")
+                        Text(stageEyebrow)
                             .font(.uniLabel(11))
                             .foregroundStyle(UniColor.blue)
                         Text(growthTitle)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(UniColor.ink)
+                            .multilineTextAlignment(.leading)
                     }
                     Spacer()
-                    if let growth, growth.totalTasks > 0 {
+                    if let stage = growth?.currentStage, stage.totalCount > 0 {
                         ZStack {
+                            Circle().stroke(UniColor.mist, lineWidth: 5)
                             Circle()
-                                .stroke(UniColor.mist, lineWidth: 6)
-                            Circle()
-                                .trim(from: 0, to: growthProgress)
-                                .stroke(UniColor.blue, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                                .trim(from: 0, to: CGFloat(stage.completedCount) / CGFloat(stage.totalCount))
+                                .stroke(UniColor.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
-                            Text("\(Int(growthProgress * 100))%")
+                            Text("\(stage.completedCount)/\(stage.totalCount)")
                                 .font(.system(size: 12, weight: .bold))
                                 .foregroundStyle(UniColor.ink)
                         }
-                        .frame(width: 54, height: 54)
+                        .frame(width: 50, height: 50)
+                        .accessibilityLabel("本阶段完成 \(stage.completedCount) 项，共 \(stage.totalCount) 项")
                     } else if growthLoading {
                         ProgressView().tint(UniColor.blue)
+                    } else {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(UniColor.blue)
                     }
                 }
-
-                if let growth {
-                    Text("累计完成 \(growth.completedTasks) / \(growth.totalTasks) 项任务")
-                        .font(.uniLabel(12))
-                        .foregroundStyle(UniColor.secondary)
-                    Text("通用成长主线，尚未按学校与专业定制")
-                        .font(.uniLabel(10))
-                        .foregroundStyle(UniColor.tertiary)
-                } else {
-                    Text(growthError ?? (auth.isAuthenticated ? "正在读取你的任务记录" : "登录后查看真实任务和完成记录"))
-                        .font(.uniLabel(12))
-                        .foregroundStyle(UniColor.secondary)
-                }
-
-                HStack(spacing: 6) {
-                    Text(growthError != nil ? "点此重试" : (auth.isAuthenticated ? "查看完整成就" : "登录查看成长任务"))
-                        .font(.uniLabel(12))
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(UniColor.blue)
+                .contentShape(Rectangle())
             }
-            .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .fill(Color.white)
-                    .shadow(color: UniColor.ink.opacity(0.07), radius: 22, y: 10)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 26, style: .continuous)
-                    .stroke(UniColor.blue.opacity(0.16), lineWidth: 1)
-            )
+            .buttonStyle(.plain)
+
+            if let growth {
+                if let next = growth.nextTask {
+                    nextTaskRow(next)
+                } else {
+                    Text(growth.totalTasks > 0 ? "这个阶段的任务都完成了，去「成长」看看下一阶段" : "暂时没有适用的成长任务")
+                        .font(.uniBody(13))
+                        .foregroundStyle(UniColor.secondary)
+                }
+                if growth.needsBackground {
+                    Button { editingBackground = true } label: {
+                        Label("补充入学年份，按你所在的学期推荐任务", systemImage: "graduationcap")
+                            .font(.uniLabel(12))
+                            .foregroundStyle(UniColor.blue)
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                Text(growthError ?? (auth.isAuthenticated ? "正在读取你的任务记录" : "登录后按你的入学年份推荐这个阶段该做的事"))
+                    .font(.uniBody(13))
+                    .foregroundStyle(UniColor.secondary)
+            }
         }
-        .buttonStyle(.plain)
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .fill(Color.white)
+                .shadow(color: UniColor.ink.opacity(0.06), radius: 18, y: 8)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .stroke(UniColor.blue.opacity(0.16), lineWidth: 1)
+        )
         .accessibilityIdentifier("home.growth")
+        .sheet(isPresented: $editingBackground) {
+            GrowthBackgroundSheet(profile: auth.profile) { Task { await loadGrowth() } }
+                .environment(auth)
+        }
+    }
+
+    private func nextTaskRow(_ task: AchievementTaskView) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("下一步")
+                    .font(.uniLabel(10))
+                    .foregroundStyle(UniColor.tertiary)
+                Text(task.title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(UniColor.ink)
+                if let detail = task.description, !detail.isEmpty {
+                    Text(detail)
+                        .font(.uniBody(12))
+                        .foregroundStyle(UniColor.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 8)
+            Button {
+                Task { await completeNext(task) }
+            } label: {
+                Group {
+                    if completingTask { ProgressView().tint(.white) }
+                    else { Text("完成").font(.uniLabel(13)) }
+                }
+                .foregroundStyle(.white)
+                .frame(minWidth: 64, minHeight: 44)
+                .background(UniColor.ink, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(completingTask)
+            .accessibilityLabel("完成任务：\(task.title)")
+        }
+        .padding(14)
+        .background(UniColor.paper, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+    }
+
+    private var stageEyebrow: String {
+        guard auth.isAuthenticated, let growth else { return "成长主线" }
+        if let term = growth.termLabel { return "当前 · \(term)" }
+        return "成长主线 · 按完成进度"
     }
 
     private var growthTitle: String {
         guard auth.isAuthenticated else { return "你的下一步，从这里开始" }
-        if growthLoading { return "正在加载成长进度" }
-        if growthError != nil { return "成长进度暂不可用" }
+        if growthLoading && growth == nil { return "正在加载成长进度" }
+        if growthError != nil { return "成长进度暂不可用，点此重试" }
         guard let growth else { return "暂时没有成长任务" }
-        if let stage = growth.stages.first(where: { $0.code == growth.currentStageCode }) { return stage.title }
+        if let stage = growth.currentStage { return stage.title + (stage.subtitle.map { " · \($0)" } ?? "") }
         return growth.totalTasks > 0 ? "当前主线已完成" : "暂时没有成长任务"
     }
 
-    private var growthProgress: CGFloat {
-        guard let growth, growth.totalTasks > 0 else { return 0 }
-        return min(1, max(0, CGFloat(growth.completedTasks) / CGFloat(growth.totalTasks)))
-    }
 
     @ViewBuilder
     private var content: some View {
@@ -327,17 +362,17 @@ struct HomeView: View {
         growthLoading = false
     }
 
-    private func pollUnread() async {
-        while !Task.isCancelled {
-            let userID = auth.profile?.id
-            let revision = auth.authenticationRevision
-            if userID != nil, let count = try? await APIClient.shared.unreadCount(),
-               auth.profile?.id == userID, auth.authenticationRevision == revision {
-                unreadCount = count
-            } else if !auth.isAuthenticated {
-                unreadCount = 0
-            }
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
+    private func completeNext(_ task: AchievementTaskView) async {
+        let userID = auth.profile?.id
+        completingTask = true
+        defer { completingTask = false }
+        do {
+            let result = try await APIClient.shared.completeTask(id: task.id)
+            guard auth.profile?.id == userID else { return }
+            growth = result
+            growthError = nil
+        } catch {
+            growthError = (error as? LocalizedError)?.errorDescription ?? "任务记录失败，请重试"
         }
     }
 

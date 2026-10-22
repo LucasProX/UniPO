@@ -13,8 +13,11 @@ struct ComposeSheet: View {
     @State private var content = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var pickerItems: [PhotosPickerItem] = []
     @State private var imageURLs: [String] = []
+    @State private var tags: [String] = []
+    @State private var tagDraft = ""
+    @FocusState private var tagFocused: Bool
     @State private var isUploading = false
     @State private var uploadRequestID: UUID?
     @State private var submitRequestID: UUID?
@@ -24,6 +27,9 @@ struct ComposeSheet: View {
     }
 
     private let boards = [("school", "校 PO"), ("college", "院 PO"), ("major", "专业 PO")]
+    private let maxImages = 9
+    private let maxTags = 5
+    private let template = "遇到的问题：\n\n我的做法：\n\n结果怎么样：\n\n适合谁参考："
 
     private var canPublish: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
@@ -40,8 +46,9 @@ struct ComposeSheet: View {
                 }
             }
             .navigationTitle("发一条校园 PO")
-            .onChange(of: pickerItem) { _, item in
-                Task { await upload(item) }
+            .onChange(of: pickerItems) { _, items in
+                guard !items.isEmpty else { return }
+                Task { await upload(items) }
             }
             .onChange(of: identityKey) { _, _ in
                 uploadRequestID = nil
@@ -106,36 +113,7 @@ struct ComposeSheet: View {
 
                 Divider()
 
-                HStack(spacing: 10) {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "photo.on.rectangle.angled")
-                            Text(imageURLs.isEmpty ? "添加图片" : "换一张")
-                        }
-                        .font(.uniLabel(12))
-                        .foregroundStyle(UniColor.blue)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(UniColor.blue.opacity(0.08), in: Capsule())
-                    }
-
-                    if isUploading {
-                        ProgressView().tint(UniColor.ink)
-                    }
-
-                    ForEach(imageURLs, id: \.self) { url in
-                        AsyncImage(url: AppConfig.absoluteURL(url)) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().scaledToFill()
-                            } else {
-                                UniColor.mist
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    Spacer()
-                }
+                imageStrip
 
                 TextEditor(text: $content)
                     .font(.uniBody(15))
@@ -148,12 +126,125 @@ struct ComposeSheet: View {
                         .foregroundStyle(UniColor.danger)
                 }
 
-                Text("附件功能仅对金V开放，后续开放 PDF 上传。")
-                    .font(.uniLabel(11))
-                    .foregroundStyle(UniColor.tertiary)
+                if content.isEmpty {
+                    Button {
+                        content = template
+                    } label: {
+                        Label("用经验模板写：问题、做法、结果、适合谁", systemImage: "list.bullet.rectangle")
+                            .font(.uniLabel(12))
+                            .foregroundStyle(UniColor.blue)
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                tagEditor
             }
             .padding(18)
         }
+    }
+
+    private var imageStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(imageURLs, id: \.self) { url in
+                    AsyncImage(url: AppConfig.absoluteURL(url)) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().scaledToFill()
+                        } else {
+                            UniColor.mist
+                        }
+                    }
+                    .frame(width: 76, height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            imageURLs.removeAll { $0 == url }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 18))
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, UniColor.ink.opacity(0.7))
+                                .frame(width: 32, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("移除这张图片")
+                    }
+                }
+                if isUploading {
+                    ProgressView()
+                        .frame(width: 76, height: 76)
+                        .background(UniColor.paper, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+                }
+                if imageURLs.count < maxImages {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: maxImages - imageURLs.count,
+                                 selectionBehavior: .ordered, matching: .images) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "photo.badge.plus").font(.system(size: 20, weight: .semibold))
+                            Text("\(imageURLs.count)/\(maxImages)").font(.uniLabel(10))
+                        }
+                        .foregroundStyle(UniColor.blue)
+                        .frame(width: 76, height: 76)
+                        .background(UniColor.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+                    }
+                    .disabled(isUploading)
+                    .accessibilityLabel("添加图片，最多 \(maxImages) 张")
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private var tagEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !tags.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(tags, id: \.self) { tag in
+                            Button {
+                                tags.removeAll { $0 == tag }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text("#\(tag)")
+                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                }
+                                .font(.uniLabel(12))
+                                .foregroundStyle(UniColor.ink)
+                                .padding(.horizontal, 10).frame(minHeight: 32)
+                                .background(UniColor.mist, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("移除标签 \(tag)")
+                        }
+                    }
+                }
+            }
+            if tags.count < maxTags {
+                HStack(spacing: 8) {
+                    Image(systemName: "number").foregroundStyle(UniColor.tertiary)
+                    TextField("加标签，如 四级、选课（最多 \(maxTags) 个）", text: $tagDraft)
+                        .font(.uniBody(14))
+                        .focused($tagFocused)
+                        .submitLabel(.done)
+                        .onSubmit(addTag)
+                    if !tagDraft.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Button("添加", action: addTag).font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(UniColor.paper, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+            }
+        }
+    }
+
+    private func addTag() {
+        let cleaned = tagDraft.replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: ",", with: "").replacingOccurrences(of: "，", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        tagDraft = ""
+        guard !cleaned.isEmpty, tags.count < maxTags, !tags.contains(cleaned) else { return }
+        tags.append(String(cleaned.prefix(12)))
     }
 
     private var signedOut: some View {
@@ -205,7 +296,7 @@ struct ComposeSheet: View {
         do {
             let result = try await APIClient.shared.uploadImage(data: data, filename: "test.png", mimeType: "image/png")
             guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
-            imageURLs = [result.url]
+            imageURLs.append(result.url)
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
@@ -213,29 +304,48 @@ struct ComposeSheet: View {
     }
     #endif
 
-    private func upload(_ item: PhotosPickerItem?) async {
-        guard let item, let userID = auth.profile?.id else { return }
+    /// 逐张上传，保持选择顺序。相册原图可能是 HEIC，统一转成最长边 2048 的 JPEG，
+    /// 既能通过服务端文件头校验，也避免撞 5MB 上限。
+    private func upload(_ items: [PhotosPickerItem]) async {
+        guard let userID = auth.profile?.id, !isUploading else { return }
         let revision = auth.authenticationRevision
         let requestID = UUID()
         uploadRequestID = requestID
         isUploading = true
+        errorMessage = nil
         defer {
             if uploadRequestID == requestID { isUploading = false; uploadRequestID = nil }
+            pickerItems = []
         }
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self) else {
+        var failed = 0
+        for item in items {
+            guard imageURLs.count < maxImages else { break }
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self),
+                      let jpeg = Self.normalizedJPEG(data) else { failed += 1; continue }
                 guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
-                errorMessage = "读取图片失败"
-                return
+                let result = try await APIClient.shared.uploadImage(data: jpeg)
+                guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
+                if !imageURLs.contains(result.url) { imageURLs.append(result.url) }
+            } catch {
+                guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
+                failed += 1
             }
-            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
-            let result = try await APIClient.shared.uploadImage(data: data)
-            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
-            imageURLs = [result.url]
-        } catch {
-            guard isCurrentIdentity(userID: userID, revision: revision), uploadRequestID == requestID else { return }
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "图片上传失败"
         }
+        if failed > 0 { errorMessage = "有 \(failed) 张图片上传失败，可以重新添加" }
+    }
+
+    private static func normalizedJPEG(_ data: Data, maxSide: CGFloat = 2048) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxSide ? maxSide / longest : 1
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return rendered.jpegData(compressionQuality: 0.85)
     }
 
     private func submit() async {
@@ -253,9 +363,11 @@ struct ComposeSheet: View {
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
                 board: board,
+                tags: tags,
                 images: imageURLs
             )
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
+            NotificationCenter.default.post(name: .unipoPostPublished, object: nil)
             dismiss()
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }

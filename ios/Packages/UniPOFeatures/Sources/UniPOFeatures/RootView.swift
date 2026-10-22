@@ -3,7 +3,7 @@ import UniPOCore
 import UniPOUI
 
 public enum AppTab: Int, CaseIterable {
-    case home, tools, achievements, profile
+    case home, achievements, messages, profile
 }
 
 public struct RootView: View {
@@ -11,7 +11,7 @@ public struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: AppTab = .home
     @State private var showCompose = false
-    @State private var showMessages = false
+    @State private var unreadCount = 0
     @State private var pendingConversationId: Int64?
     @State private var pendingProfileTab = false
     @State private var lastVerifiedUserID: Int64?
@@ -25,7 +25,7 @@ public struct RootView: View {
         if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-tab"),
            ProcessInfo.processInfo.arguments.indices.contains(index + 1) {
             switch ProcessInfo.processInfo.arguments[index + 1] {
-            case "tools": _tab = State(initialValue: .tools)
+            case "messages": _tab = State(initialValue: .messages)
             case "achievements": _tab = State(initialValue: .achievements)
             case "profile": _tab = State(initialValue: .profile)
             default: _tab = State(initialValue: .home)
@@ -35,7 +35,7 @@ public struct RootView: View {
             _showCompose = State(initialValue: true)
         }
         if ProcessInfo.processInfo.arguments.contains("-messages") {
-            _showMessages = State(initialValue: true)
+            _tab = State(initialValue: .messages)
         }
     }
 
@@ -47,15 +47,13 @@ public struct RootView: View {
                 switch tab {
                 case .home:
                     HomeView(onRequestAuth: { auth.requireLogin() },
-                             onOpenAchievements: { tab = .achievements },
-                             onOpenMessages: {
-                                 if auth.isAuthenticated { showMessages = true } else { auth.requireLogin() }
-                             })
-                case .tools:
-                    ToolsView()
+                             onOpenAchievements: { tab = .achievements })
                 case .achievements:
                     AchievementsView()
                         .id(identityKey)
+                case .messages:
+                    InboxView(initialConversationId: pendingConversationId)
+                        .id("\(identityKey):\(pendingConversationId ?? 0)")
                 case .profile:
                     ProfileView()
                         .id(identityKey)
@@ -71,10 +69,10 @@ public struct RootView: View {
             .frame(height: 150)
             .allowsHitTesting(false)
 
-            DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, onCompose: {
+            DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, unreadCount: unreadCount, onCompose: {
                 if auth.isAuthenticated { showCompose = true } else { auth.requireLogin() }
-            }, onRequestAuth: {
-                pendingProfileTab = true
+            }, onRequestAuth: { target in
+                pendingProfileTab = target == .profile
                 auth.requireLogin()
             })
                 .padding(.horizontal, 16)
@@ -103,12 +101,6 @@ public struct RootView: View {
             LoginView()
                 .environment(auth)
         }
-        .sheet(isPresented: $showMessages, onDismiss: { pendingConversationId = nil }) {
-            MessagesView(initialConversationId: pendingConversationId)
-                .environment(auth)
-                .presentationDetents([.large])
-                .presentationCornerRadius(30)
-        }
         .tint(UniColor.blue)
         .onChange(of: auth.profile?.onboardingCompleted) { _, completed in
             if auth.isAuthenticated, pendingProfileTab, completed == true {
@@ -129,7 +121,7 @@ public struct RootView: View {
                 pendingProfileTab = false
                 tab = .profile
             }
-            if !auth.isAuthenticated, !auth.isSessionRecoveryPending, tab == .profile {
+            if !auth.isAuthenticated, !auth.isSessionRecoveryPending, tab == .profile || tab == .messages {
                 tab = .home
             }
             if auth.isAuthenticated, auth.profile?.onboardingCompleted == false {
@@ -146,7 +138,12 @@ public struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .unipoOpenConversation)) { note in
             guard auth.isAuthenticated, let id = note.object as? Int64 else { return }
             pendingConversationId = id
-            showMessages = true
+            tab = .messages
+        }
+        .task(id: identityKey) { await pollUnread() }
+        .onChange(of: tab) { _, current in
+            if current != .messages { pendingConversationId = nil }
+            Task { await refreshUnread() }
         }
         .task {
             #if DEBUG
@@ -166,8 +163,27 @@ public struct RootView: View {
         }
     }
 
+    /// 底栏「消息」角标；私信页本身走 WebSocket，这里只做低频兜底。
+    private func pollUnread() async {
+        while !Task.isCancelled {
+            await refreshUnread()
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+        }
+    }
+
+    private func refreshUnread() async {
+        let userID = auth.profile?.id
+        let revision = auth.authenticationRevision
+        guard userID != nil else { unreadCount = 0; return }
+        if let count = try? await APIClient.shared.unreadCount(),
+           auth.profile?.id == userID, auth.authenticationRevision == revision {
+            unreadCount = count
+        }
+    }
+
     private func clearPrivatePresentation() {
-        showMessages = false
+        if tab == .messages { tab = .home }
+        unreadCount = 0
         showCompose = false
         pendingConversationId = nil
         RealtimeClient.shared.onEvent = nil

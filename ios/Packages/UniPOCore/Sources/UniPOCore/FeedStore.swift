@@ -76,6 +76,11 @@ public final class FeedStore {
         isLoadingMore = false
     }
 
+    /// 本人删除帖子后就地移除，不打断当前分页位置。
+    public func remove(postID: Int64) {
+        posts.removeAll { $0.id == postID }
+    }
+
     private func unique(_ items: [PostView]) -> [PostView] {
         var ids = Set<Int64>()
         return items.filter { ids.insert($0.id).inserted }

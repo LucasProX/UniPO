@@ -12,6 +12,7 @@ struct ProfileView: View {
     @State private var likedPosts: [PostView] = []
     @State private var favoritePosts: [PostView] = []
     @State private var tab = 0
+    @State private var followList: FollowListTarget?
     @State private var isLoading = true
     @State private var loadGeneration = 0
     @State private var dataUserID: Int64?
@@ -61,6 +62,15 @@ struct ProfileView: View {
         .onChange(of: backgroundPhoto) { _, item in
             guard let item else { return }
             Task { await uploadBackground(item) }
+        }
+        .sheet(item: $followList) { target in
+            FollowListView(target: target).environment(auth)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoPostDeleted)) { note in
+            guard let id = note.object as? Int64 else { return }
+            myPosts.removeAll { $0.id == id }
+            likedPosts.removeAll { $0.id == id }
+            favoritePosts.removeAll { $0.id == id }
         }
         .sheet(item: $selectedPost) { post in
             PostDetailView(post: post)
@@ -297,9 +307,9 @@ struct ProfileView: View {
 
     private var statsCard: some View {
         HStack(spacing: 0) {
-            statItem(stats?.following ?? 0, "关注")
+            followStat(stats?.following ?? 0, .following)
             statDivider
-            statItem(stats?.followers ?? 0, "粉丝")
+            followStat(stats?.followers ?? 0, .followers)
             statDivider
             statItem(stats?.posts ?? myPosts.count, "作品")
         }
@@ -310,6 +320,16 @@ struct ProfileView: View {
                 .stroke(.white.opacity(0.95), lineWidth: 1)
         )
         .shadow(color: UniColor.ink.opacity(0.05), radius: 18, y: 8)
+    }
+
+    private func followStat(_ value: Int, _ kind: FollowListKind) -> some View {
+        Button {
+            if let uid = auth.profile?.publicUid { followList = FollowListTarget(uid: uid, kind: kind) }
+        } label: {
+            statItem(value, kind.title).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("查看\(kind.title)列表")
     }
 
     private func statItem(_ value: Int, _ label: String) -> some View {

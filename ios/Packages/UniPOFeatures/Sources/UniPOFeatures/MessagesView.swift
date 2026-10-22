@@ -13,6 +13,9 @@ struct MessagesView: View {
     @State private var nearBottom = true
 
     private let initialConversationId: Int64?
+    /// 作为「消息」Tab 嵌入时不显示关闭按钮，也不自己弹登录页（RootView 统一处理）。
+    private let embedded: Bool
+    private let onThreadChange: ((Bool) -> Void)?
 
     private var conversations: [ConversationView] { store.conversations }
     private var selected: ConversationView? { store.selected }
@@ -24,8 +27,11 @@ struct MessagesView: View {
         "\(auth.authenticationRevision):\(auth.profile?.id ?? 0):\(auth.isSessionRecoveryPending)"
     }
 
-    init(initialConversation: ConversationView? = nil, initialConversationId: Int64? = nil) {
+    init(initialConversation: ConversationView? = nil, initialConversationId: Int64? = nil,
+         embedded: Bool = false, onThreadChange: ((Bool) -> Void)? = nil) {
         self.initialConversationId = initialConversation?.id ?? initialConversationId
+        self.embedded = embedded
+        self.onThreadChange = onThreadChange
     }
 
     var body: some View {
@@ -41,6 +47,8 @@ struct MessagesView: View {
             }
             .navigationTitle(selected == nil ? "消息" : "私信")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(embedded && selected == nil ? .hidden : .automatic, for: .navigationBar)
+            .onChange(of: selected?.id) { _, id in onThreadChange?(id != nil) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if selected != nil {
@@ -51,8 +59,10 @@ struct MessagesView: View {
                         }
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("关闭") { dismiss() }
+                if !embedded {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("关闭") { dismiss() }
+                    }
                 }
             }
             .task(id: identityKey) { await bootstrap() }
@@ -93,7 +103,7 @@ struct MessagesView: View {
                 }
             }
             .fullScreenCover(isPresented: Binding(
-                get: { auth.loginRequested },
+                get: { !embedded && auth.loginRequested },
                 set: { auth.loginRequested = $0 }
             )) {
                 LoginView()
@@ -204,6 +214,8 @@ struct MessagesView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(embedded ? .hidden : .automatic)
+        .background(embedded ? UniColor.paper : Color.clear)
         .refreshable { await store.loadConversations() }
     }
 

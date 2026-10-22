@@ -11,7 +11,7 @@ struct OnboardingView: View {
     @State private var nickname = ""
     @State private var gender = ""
     @State private var birthYear = 2006
-    @State private var grade = "大一"
+    @State private var background = GrowthBackgroundStore()
     @State private var showGender = true
     @State private var showAge = true
     @State private var showGrade = true
@@ -25,7 +25,6 @@ struct OnboardingView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    private let grades = ["大一", "大二", "大三", "大四", "研一", "研二", "研三"]
     private let zodiacs = ["白羊", "金牛", "双子", "巨蟹", "狮子", "处女", "天秤", "天蝎", "射手", "摩羯", "水瓶", "双鱼"]
     private let mbtis = ["INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP",
                          "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP"]
@@ -47,8 +46,9 @@ struct OnboardingView: View {
                 progressBar
                 TabView(selection: $step) {
                     stepOne.tag(0)
-                    stepTwo.tag(1)
-                    stepThree.tag(2)
+                    stepBackground.tag(1)
+                    stepTwo.tag(2)
+                    stepThree.tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(.spring(response: 0.42, dampingFraction: 0.88), value: step)
@@ -63,7 +63,7 @@ struct OnboardingView: View {
             let args = ProcessInfo.processInfo.arguments
             if let index = args.firstIndex(of: "-ob-step"), args.indices.contains(index + 1),
                let value = Int(args[index + 1]) {
-                step = min(2, max(0, value))
+                step = min(lastStep, max(0, value))
             }
             #endif
         }
@@ -102,7 +102,7 @@ struct OnboardingView: View {
             .buttonStyle(.plain)
             .disabled(step == 0)
             Spacer()
-            Text("\(step + 1) / 3")
+            Text("\(step + 1) / \(lastStep + 1)")
                 .font(.uniLabel(11))
                 .foregroundStyle(.white.opacity(0.35))
         }
@@ -112,7 +112,7 @@ struct OnboardingView: View {
 
     private var progressBar: some View {
         HStack(spacing: 6) {
-            ForEach(0..<3, id: \.self) { index in
+            ForEach(0...lastStep, id: \.self) { index in
                 Capsule()
                     .fill(index <= step ? .white : .white.opacity(0.15))
                     .frame(height: 3)
@@ -155,40 +155,43 @@ struct OnboardingView: View {
                     visibilityToggle("在主页展示性别", isOn: $showGender)
                 }
 
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("出生年份").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
-                        Picker("出生年份", selection: $birthYear) {
-                            ForEach(1990...2012, id: \.self) { year in
-                                Text(String(year) + " 年").tag(year)
-                            }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("出生年份").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Picker("出生年份", selection: $birthYear) {
+                        ForEach(1990...2012, id: \.self) { year in
+                            Text(String(year) + " 年").tag(year)
                         }
-                        .pickerStyle(.menu)
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .frame(height: 50)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("年级").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
-                        Picker("年级", selection: $grade) {
-                            ForEach(grades, id: \.self) { Text($0).tag($0) }
-                        }
-                        .pickerStyle(.menu)
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .frame(height: 50)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
+                    .pickerStyle(.menu)
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .frame(height: 50)
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
                     visibilityToggle("在主页展示年龄", isOn: $showAge)
                     visibilityToggle("在主页展示年级", isOn: $showGrade)
                 }
+            }
+            .padding(24)
+        }
+        .scrollIndicators(.hidden)
+    }
+
+    private var stepBackground: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("你在哪所学校、哪一级？")
+                        .font(.system(size: 26, weight: .heavy))
+                        .foregroundStyle(.white)
+                    Text("我们按入学年份推算你现在所处的阶段，给出这个阶段该做的事")
+                        .font(.uniBody(13))
+                        .foregroundStyle(.white.opacity(0.45))
+                }
+                GrowthBackgroundForm(store: background, dark: true)
             }
             .padding(24)
         }
@@ -337,7 +340,7 @@ struct OnboardingView: View {
     private var bottomBar: some View {
         VStack(spacing: 8) {
             Button {
-                if step < 2 {
+                if step < lastStep {
                     withAnimation { step += 1 }
                 } else {
                     Task { await finish() }
@@ -347,7 +350,7 @@ struct OnboardingView: View {
                     if isSaving {
                         ProgressView().tint(.black)
                     } else {
-                        Text(step == 2 ? "进入 PO 世界" : "下一步")
+                        Text(step == lastStep ? "进入 PO 世界" : "下一步")
                             .font(.system(size: 17, weight: .semibold))
                     }
                 }
@@ -357,11 +360,21 @@ struct OnboardingView: View {
                 .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.plain)
-            .disabled(isSaving || (step == 0 && nickname.trimmingCharacters(in: .whitespaces).isEmpty))
-            .opacity(step == 0 && nickname.trimmingCharacters(in: .whitespaces).isEmpty ? 0.4 : 1)
+            .disabled(isSaving || !canAdvance)
+            .opacity(canAdvance ? 1 : 0.4)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
+    }
+
+    private let lastStep = 3
+
+    private var canAdvance: Bool {
+        switch step {
+        case 0: return !nickname.trimmingCharacters(in: .whitespaces).isEmpty
+        case 1: return background.schoolID != nil
+        default: return true
+        }
     }
 
     private func visibilityToggle(_ title: String, isOn: Binding<Bool>) -> some View {
@@ -406,7 +419,7 @@ struct OnboardingView: View {
         nickname = profile.nickname
         if let value = profile.gender { gender = value }
         if let value = profile.birthYear { birthYear = value }
-        if let value = profile.grade { grade = value }
+        background = GrowthBackgroundStore(profile: profile)
     }
 
     private func finish() async {
@@ -448,12 +461,19 @@ struct OnboardingView: View {
             return
         }
 
+        // 先保存成长背景：它决定年级与当前阶段，失败时停在最后一步并可重试。
+        guard let saved = await background.save() else {
+            errorMessage = background.errorMessage ?? "成长背景保存失败，请返回上一步检查"
+            return
+        }
+        auth.applyProfile(saved)
+
         do {
             try await auth.completeOnboarding(OnboardingInput(
                 nickname: nickname.trimmingCharacters(in: .whitespaces),
                 gender: gender.isEmpty ? nil : gender,
                 birthYear: birthYear,
-                grade: grade,
+                grade: nil,
                 zodiac: zodiac.isEmpty ? nil : zodiac,
                 mbti: mbti.isEmpty ? nil : mbti,
                 signature: signature.isEmpty ? nil : signature,

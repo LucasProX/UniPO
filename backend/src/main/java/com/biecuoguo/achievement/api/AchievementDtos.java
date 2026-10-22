@@ -43,6 +43,13 @@ public final class AchievementDtos {
             int totalTasks,
             String currentStageCode,
             List<StageView> stages,
-            List<BadgeView> badges
+            List<BadgeView> badges,
+            /** CALENDAR = 按入学年份与日期推算；PROGRESS = 尚无入学年份，取第一个未完成阶段。 */
+            String stageBasis,
+            Integer entryYear,
+            /** 例如「大一上学期」；没有入学年份时为空。 */
+            String termLabel,
+            /** 当前阶段里第一个未完成的任务；当前阶段已全部完成时为空。 */
+            TaskView nextTask
     ) {}
 }

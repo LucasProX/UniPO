@@ -24,4 +24,9 @@ public class AchievementController {
     public ApiResponse<AchievementDtos.AchievementView> complete(@PathVariable Long taskId) {
         return ApiResponse.ok(achievementService.complete(taskId, SecurityUtils.currentUser().id()));
     }
+
+    @DeleteMapping("/tasks/{taskId}/complete")
+    public ApiResponse<AchievementDtos.AchievementView> undo(@PathVariable Long taskId) {
+        return ApiResponse.ok(achievementService.undo(taskId, SecurityUtils.currentUser().id()));
+    }
 }

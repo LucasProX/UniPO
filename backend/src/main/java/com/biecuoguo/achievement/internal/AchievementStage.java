@@ -15,4 +15,6 @@ public class AchievementStage {
     private String subtitle;
     private Integer stageOrder;
     private Boolean boss;
+    private Integer termFrom;
+    private Integer termTo;
 }

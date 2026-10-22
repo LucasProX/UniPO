@@ -45,13 +45,19 @@ public struct UserProfile: Codable, Identifiable, Hashable {
     public let onboardingCompleted: Bool?
     public let backgroundUrl: String?
     public let status: String?
+    public let schoolId: Int64?
+    public let collegeId: Int64?
+    public let majorId: Int64?
+    /** 入学年份；为空表示成长背景尚未补充。 */
+    public let entryYear: Int?
 
     public init(id: Int64, publicUid: String, nickname: String, avatarUrl: String?, role: String,
                 level: Int, levelTitle: String?, xp: Int?, bio: String?, college: String?,
                 major: String?, grade: String?, online: Bool?,
                 gender: String? = nil, birthYear: Int? = nil, zodiac: String? = nil, mbti: String? = nil,
                 showGender: Bool? = nil, showAge: Bool? = nil, showGrade: Bool? = nil,
-                onboardingCompleted: Bool? = nil, backgroundUrl: String? = nil, status: String? = nil) {
+                onboardingCompleted: Bool? = nil, backgroundUrl: String? = nil, status: String? = nil,
+                schoolId: Int64? = nil, collegeId: Int64? = nil, majorId: Int64? = nil, entryYear: Int? = nil) {
         self.id = id
         self.publicUid = publicUid
         self.nickname = nickname
@@ -75,6 +81,10 @@ public struct UserProfile: Codable, Identifiable, Hashable {
         self.onboardingCompleted = onboardingCompleted
         self.backgroundUrl = backgroundUrl
         self.status = status
+        self.schoolId = schoolId
+        self.collegeId = collegeId
+        self.majorId = majorId
+        self.entryYear = entryYear
     }
 }
 
@@ -346,4 +356,83 @@ public struct AchievementView: Codable {
     public let currentStageCode: String?
     public let stages: [AchievementStageView]
     public let badges: [AchievementBadgeView]
+    /** CALENDAR：按入学年份推算；PROGRESS：缺入学年份，按第一个未完成阶段。旧服务端为空。 */
+    public let stageBasis: String?
+    public let entryYear: Int?
+    public let termLabel: String?
+    public let nextTask: AchievementTaskView?
+
+    public var currentStage: AchievementStageView? { stages.first { $0.code == currentStageCode } }
+    public var needsBackground: Bool { stageBasis != "CALENDAR" }
+}
+
+public struct SchoolOption: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let name: String
+    public let code: String?
+    public let city: String?
+}
+
+public struct CollegeOption: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let schoolId: Int64
+    public let name: String
+    public let code: String?
+}
+
+public struct MajorOption: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let schoolId: Int64
+    public let collegeId: Int64?
+    public let name: String
+    public let code: String?
+}
+
+public struct InteractionNoticeView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    /** like / favorite / comment / reply */
+    public let type: String
+    public let actor: AuthorView
+    public let post: PostView?
+    public let commentContent: String?
+    public let parentCommentId: Int64?
+    public let createdAt: String?
+
+    /** 不同类型来自不同表，数字 id 可能重复；列表用类型加 id 区分。 */
+    public var listID: String { "\(type)-\(id)" }
+}
+
+public struct FollowUserView: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let publicUid: String
+    public let nickname: String
+    public let avatarUrl: String?
+    public let level: Int?
+    public let levelTitle: String?
+    public let college: String?
+    public let major: String?
+    public let grade: String?
+    public let following: Bool
+    public let followedAt: String?
+}
+
+public struct ShareResponse: Codable {
+    public let url: String
+    public let shareCount: Int?
+}
+
+/** 举报分类的稳定 key 由后端校验；标题只用于展示。 */
+public enum ReportCategory: String, CaseIterable, Identifiable {
+    case spam, fraud, harassment, porn, impersonation, other
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .spam: return "垃圾广告"
+        case .fraud: return "诈骗或虚假信息"
+        case .harassment: return "骚扰或人身攻击"
+        case .porn: return "色情低俗"
+        case .impersonation: return "冒充他人"
+        case .other: return "其他问题"
+        }
+    }
 }

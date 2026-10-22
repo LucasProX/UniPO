@@ -35,6 +35,7 @@ public class User {
     private String college;
     private String major;
     private String grade;
+    private Integer entryYear;
     private String bio;
     private String verifiedStatus;
     @TableField(updateStrategy = FieldStrategy.NEVER)

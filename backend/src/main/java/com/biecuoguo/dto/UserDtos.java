@@ -37,6 +37,17 @@ public final class UserDtos {
             @Size(max = 500) String avatarUrl
     ) {}
 
+    /**
+     * 成长背景：入学年份必填（阶段推算依据）；学校缺省时沿用当前学校，学院、专业可跳过。
+     * 换学校而不给学院、专业时，旧学院和专业会被清空，避免挂在另一所学校下面。
+     */
+    public record GrowthBackgroundRequest(
+            Long schoolId,
+            Long collegeId,
+            Long majorId,
+            @jakarta.validation.constraints.NotNull Integer entryYear
+    ) {}
+
     public record UpdatePreferencesRequest(
             String goalTags,
             String interestCategories,

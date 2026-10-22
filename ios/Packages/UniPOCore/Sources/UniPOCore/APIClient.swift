@@ -268,6 +268,70 @@ public actor APIClient {
         try await request(path: "achievements/tasks/\(id)/complete", method: "POST")
     }
 
+    public func undoTask(id: Int64) async throws -> AchievementView {
+        try await request(path: "achievements/tasks/\(id)/complete", method: "DELETE")
+    }
+
+    // MARK: 成长背景
+
+    public func schoolOptions() async throws -> [SchoolOption] {
+        try await request(path: "options/schools")
+    }
+
+    public func collegeOptions(schoolId: Int64) async throws -> [CollegeOption] {
+        try await request(path: "options/colleges", query: [URLQueryItem(name: "schoolId", value: String(schoolId))])
+    }
+
+    public func majorOptions(schoolId: Int64, collegeId: Int64?) async throws -> [MajorOption] {
+        var query = [URLQueryItem(name: "schoolId", value: String(schoolId))]
+        if let collegeId { query.append(URLQueryItem(name: "collegeId", value: String(collegeId))) }
+        return try await request(path: "options/majors", query: query)
+    }
+
+    public func updateGrowthBackground(schoolId: Int64?, collegeId: Int64?, majorId: Int64?,
+                                       entryYear: Int) async throws -> UserProfile {
+        var body: [String: Any] = ["entryYear": entryYear]
+        if let schoolId { body["schoolId"] = schoolId }
+        if let collegeId { body["collegeId"] = collegeId }
+        if let majorId { body["majorId"] = majorId }
+        return try await request(path: "users/me/growth-background", method: "PUT", body: body)
+    }
+
+    // MARK: 互动与社交
+
+    public func interactionNotices() async throws -> [InteractionNoticeView] {
+        try await request(path: "posts/interaction-notices")
+    }
+
+    @discardableResult
+    public func likeComment(id: Int64, liked: Bool) async throws -> Bool {
+        try await request(path: "posts/comments/\(id)/like", method: liked ? "DELETE" : "POST")
+    }
+
+    @discardableResult
+    public func deletePost(id: Int64) async throws -> Bool {
+        try await request(path: "posts/\(id)", method: "DELETE")
+    }
+
+    public func sharePost(id: Int64, requestKey: String = UUID().uuidString) async throws -> ShareResponse {
+        try await request(path: "posts/\(id)/share", method: "POST", headers: ["Idempotency-Key": requestKey])
+    }
+
+    @discardableResult
+    public func reportUser(uid: String, category: ReportCategory, detail: String?) async throws -> Int64 {
+        var body: [String: Any] = ["category": category.rawValue]
+        if let detail, !detail.isEmpty { body["detail"] = detail }
+        return try await request(path: userPath(uid) + "/report", method: "POST", body: body)
+    }
+
+    public func followers(uid: String) async throws -> [FollowUserView] {
+        try await request(path: userPath(uid) + "/followers")
+    }
+
+    public func following(uid: String) async throws -> [FollowUserView] {
+        try await request(path: userPath(uid) + "/following")
+    }
+
     public func uploadImage(data: Data, filename: String = "photo.jpg",
                             mimeType: String = "image/jpeg", purpose: String = "post") async throws -> UploadResponse {
         guard var components = URLComponents(string: AppConfig.apiBaseURL.absoluteString + "/media/upload") else {

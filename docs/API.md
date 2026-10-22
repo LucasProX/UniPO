@@ -339,9 +339,15 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 |---|---|---|
 | GET | `/api/achievements/me` | 当前用户阶段、任务、进度、徽章（需登录） |
 | POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章 |
+| DELETE | `/api/achievements/tasks/{taskId}/complete` | 撤回自报完成，幂等；按累计经验回退，并收回只由该任务授予的徽章 |
+| PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 
-返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[] }`。
-任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。
+返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[], stageBasis, entryYear, termLabel, nextTask }`（后四个字段 2026-10-23 加）。
+任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。完成与撤回都先锁用户行，串行同一用户的进度和经验。
+
+**当前阶段**：用户有 `entryYear` 时 `stageBasis=CALENDAR`，按学期序号（9 月开学，1 月仍算上学期，2–8 月为下学期；0 = 大一上）匹配 V26 的 `achievement_stages.term_from/term_to`；没有入学年份时 `stageBasis=PROGRESS`，沿用「第一个未完成阶段」。`nextTask` 是当前阶段第一个未完成任务，全部完成时为空。
+
+**成长背景**：`entryYear` 必填，允许当年往前 10 年到明年。学校缺省沿用当前学校；学院、专业必须属于所选学校，专业有学院时必须与学院一致，只给专业会自动补学院。换学校不传学院专业时二者被清空。保存时按学期序号重算 `grade`（准大一 / 大一…大四 / 已毕业）。`UserProfile.entryYear` 对他人可见性跟随 `showGrade`。
 
 ```json
 {
@@ -379,7 +385,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 
 ### 9.7 新用户资料完善（onboarding）
 
-`PUT /api/users/me/onboarding`（需登录），3 步引导最后一次性提交：
+`PUT /api/users/me/onboarding`（需登录），引导最后一次性提交。2026-10-23 起 iOS 引导为 4 步，先调 `PUT /api/users/me/growth-background` 保存学校与入学年份，再提交本接口且不再传 `grade`（年级由成长背景推算）：
 
 ```json
 {

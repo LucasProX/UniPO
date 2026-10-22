@@ -19,6 +19,8 @@ struct PublicProfileView: View {
     @State private var messageRequestID: UUID?
     @State private var blockRequestID: UUID?
     @State private var blockConfirmation: BlockConfirmation?
+    @State private var reporting = false
+    @State private var followList: FollowListTarget?
     @State private var selectedPost: PostView?
     @State private var conversation: ConversationView?
     @State private var generation = 0
@@ -63,9 +65,12 @@ struct PublicProfileView: View {
             .navigationTitle("个人主页")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if let value, !value.mine, value.canManageBlock {
+                if let value, !value.mine {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
+                            Button("举报", systemImage: "exclamationmark.bubble") {
+                                if auth.isAuthenticated { reporting = true } else { auth.requireLogin() }
+                            }
                             if value.blocked {
                                 Button("取消拉黑", systemImage: "person.crop.circle.badge.checkmark") {
                                     requestBlockChange(blocked: false)
@@ -77,7 +82,7 @@ struct PublicProfileView: View {
                             }
                         } label: {
                             Image(systemName: "ellipsis")
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .contentShape(Rectangle())
                         }
                         .accessibilityLabel("更多用户操作")
@@ -85,6 +90,12 @@ struct PublicProfileView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } }
+            }
+            .sheet(item: $followList) { target in
+                FollowListView(target: target).environment(auth)
+            }
+            .sheet(isPresented: $reporting) {
+                if let value { ReportSheet(uid: value.profile.publicUid, name: value.profile.nickname) }
             }
             .task(id: auth.profile?.id) {
                 if let previousViewer, previousViewer != auth.profile?.id {
@@ -160,8 +171,12 @@ struct PublicProfileView: View {
             }
             if let bio = clean(user.bio) { Text(bio).font(.uniBody(13)).foregroundStyle(UniColor.inkSoft).lineSpacing(4) }
             HStack(spacing: 0) {
-                statistic(value.stats.following, "关注")
-                statistic(value.stats.followers, "粉丝")
+                Button { followList = FollowListTarget(uid: value.profile.publicUid, kind: .following) } label: {
+                    statistic(value.stats.following, "关注").contentShape(Rectangle())
+                }.buttonStyle(.plain)
+                Button { followList = FollowListTarget(uid: value.profile.publicUid, kind: .followers) } label: {
+                    statistic(value.stats.followers, "粉丝").contentShape(Rectangle())
+                }.buttonStyle(.plain)
                 statistic(value.stats.posts, "作品")
             }
             .padding(.vertical, 13)

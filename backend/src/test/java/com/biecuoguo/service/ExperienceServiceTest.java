@@ -23,4 +23,15 @@ class ExperienceServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> ExperienceService.progress(1, 0, -1));
     }
+
+    @Test
+    void revokingReturnsToTheSameCumulativeTotalAcrossLevels() {
+        ExperienceService.Progress up = ExperienceService.progress(1, 540, 30);
+        assertEquals(new ExperienceService.Progress(2, 22, "萌新探路员"), up);
+        assertEquals(new ExperienceService.Progress(1, 540, "萌新探路员"),
+                ExperienceService.reverted(up.level(), up.xp(), 30));
+        assertEquals(new ExperienceService.Progress(1, 0, "萌新探路员"),
+                ExperienceService.reverted(1, 10, 500));
+        assertThrows(IllegalArgumentException.class, () -> ExperienceService.reverted(1, 0, -1));
+    }
 }

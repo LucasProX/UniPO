@@ -4895,3 +4895,15 @@ Outbox 的数据库专项直接调用 worker，能证事务与租约，但没有
 生成出来的差异比预想多：除了 DP15 的分页和 `clientMessageId`，share/comment 两个接口的 `Idempotency-Key` 请求头也是新的——这是 DP03/DP17 那次（`eb3dda4`）就加了、但一直没重生成的。也就是说从那次提交起，CI 的 `check:api` 应该就是红的；本机没装 `gh`，没能去 Actions 页核实。`types.ts` 只需给 `MessageView` 补一个可选的 `clientMessageId`，`api-contract.ts` 的断言就重新对齐了。
 
 以后判断“有没有 DTO 变更”不看记录、看 `git diff --cached -- '*Dtos.java' '*Controller.java'`；生成时确认 api-docs 来自当前源码打出来的 jar，而不是机器上碰巧开着的那个后端。
+
+## 2026-10-23 成长阶段改按入学年份推算，顺手撞到的几个坑
+
+用户说工具页先不要，重点放成长系统、PO 流和社交。成长卡的根子在「当前阶段 = 第一个没做完的阶段」：一个大三学生如果没点过大一的任务，首页永远劝他去「完成报到」。改成按入学年份推学期序号（9 月开学、1 月还算上学期、2 到 8 月算下学期），再用 V26 给阶段表加 `term_from/term_to` 去匹配；没填入学年份的老用户继续走原来的进度规则，接口用 `stageBasis` 告诉客户端是哪一种，界面提示补充，而不是替他默认大一。
+
+经验撤回第一反应是「把 xp 减掉」，但 `users.xp` 存的是当前级内经验，跨级时直接减会变负数。最后按 `totalXpForLevel(level) + xp` 算累计值，减完再从 1 级往上找所在级，单测覆盖了从 2 级退回 1 级。完成和撤回都先锁用户行，不然两个请求同时看到「未完成」会各插一条进度、各加一次经验（唯一键能挡住第二条插入，但会把 500 抛给用户）。
+
+成长背景本来想塞进 `UserService.completeOnboarding` 同一个事务，后来发现 `userMapper.lockById` 是 MyBatis 注解查询，同一事务第二次调用会命中一级缓存拿回旧对象，再 `updateById` 就把刚写的学校覆盖回去。最终拆成独立的 `GrowthBackgroundService` 和接口，用 `LambdaUpdateWrapper` 只更新背景列，iOS 引导先存背景再提交 onboarding，且不再传 grade（否则会把推算出的年级改回引导页那个下拉值）。
+
+消息改成 Tab 后，`MessagesView` 里原来那层 `fullScreenCover(auth.loginRequested)` 会和 RootView 的登录 cover 同时触发；嵌入模式下关掉了自己的那层。互动通知的 id 分别来自点赞表、收藏表和评论表，SwiftUI `ForEach` 用数字 id 会撞，改用「类型 + id」。
+
+发帖原来只取 `loadTransferable(Data)` 直接上传，相册里的 HEIC 原图过不了服务端的文件头校验（只认 JPEG/PNG/GIF/WebP），表现是「图片上传失败」却看不出原因。现在上传前统一转成最长边 2048 的 JPEG，多选最多 9 张。

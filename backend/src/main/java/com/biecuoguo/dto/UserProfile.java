@@ -46,7 +46,9 @@ public record UserProfile(
         Boolean showAge,
         Boolean showGrade,
         Boolean onboardingCompleted,
-        String backgroundUrl
+        String backgroundUrl,
+        /** 入学年份；他人可见性跟随年级展示开关。 */
+        Integer entryYear
 ) {
     public static UserProfile from(User user, UserPreference preference) {
         return from(user, preference, false);
@@ -101,7 +103,8 @@ public record UserProfile(
                 Boolean.TRUE.equals(user.getShowAge()),
                 Boolean.TRUE.equals(user.getShowGrade()),
                 owner ? Boolean.TRUE.equals(user.getOnboardingCompleted()) : null,
-                user.getBackgroundUrl()
+                user.getBackgroundUrl(),
+                owner || Boolean.TRUE.equals(user.getShowGrade()) ? user.getEntryYear() : null
         );
     }
 }

@@ -52,6 +52,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/growth-background": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users/{id}/status": {
         parameters: {
             query?: never;
@@ -92,7 +108,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update"];
+        put: operations["update_1"];
         post?: never;
         delete: operations["delete_1"];
         options?: never;
@@ -574,7 +590,7 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["complete"];
-        delete?: never;
+        delete: operations["undo"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1343,6 +1359,8 @@ export interface components {
             showGrade?: boolean;
             onboardingCompleted?: boolean;
             backgroundUrl?: string;
+            /** Format: int32 */
+            entryYear?: number;
         };
         UpdatePreferencesRequest: {
             goalTags?: string;
@@ -1368,6 +1386,16 @@ export interface components {
             showAge?: boolean;
             showGrade?: boolean;
             avatarUrl?: string;
+        };
+        GrowthBackgroundRequest: {
+            /** Format: int64 */
+            schoolId?: number;
+            /** Format: int64 */
+            collegeId?: number;
+            /** Format: int64 */
+            majorId?: number;
+            /** Format: int32 */
+            entryYear: number;
         };
         UserStatusRequest: {
             status: string;
@@ -1396,6 +1424,8 @@ export interface components {
             college?: string;
             major?: string;
             grade?: string;
+            /** Format: int32 */
+            entryYear?: number;
             bio?: string;
             verifiedStatus?: string;
             role?: string;
@@ -1807,6 +1837,11 @@ export interface components {
             currentStageCode?: string;
             stages?: components["schemas"]["StageView"][];
             badges?: components["schemas"]["BadgeView"][];
+            stageBasis?: string;
+            /** Format: int32 */
+            entryYear?: number;
+            termLabel?: string;
+            nextTask?: components["schemas"]["TaskView"];
         };
         ApiResponseAchievementView: {
             code?: string;
@@ -2360,6 +2395,30 @@ export interface operations {
             };
         };
     };
+    update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowthBackgroundRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseUserProfile"];
+                };
+            };
+        };
+    };
     updateUserStatus: {
         parameters: {
             query?: never;
@@ -2412,7 +2471,7 @@ export interface operations {
             };
         };
     };
-    update: {
+    update_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -3404,6 +3463,28 @@ export interface operations {
         };
     };
     complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAchievementView"];
+                };
+            };
+        };
+    };
+    undo: {
         parameters: {
             query?: never;
             header?: never;

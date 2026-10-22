@@ -27,6 +27,13 @@ struct PostDetailView: View {
     @State private var commentsLoadID: UUID?
     @State private var isLiking = false
     @State private var isFavoriting = false
+    @State private var replyTarget: CommentView?
+    @State private var commentLikes: [Int64: (liked: Bool, count: Int)] = [:]
+    @State private var likingComment: Int64?
+    @State private var shareItem: ShareItem?
+    @State private var reporting = false
+    @State private var confirmingDelete = false
+    @State private var isDeleting = false
     @FocusState private var commentFocused: Bool
 
     private let commentLimit = 1_000
@@ -63,9 +70,41 @@ struct PostDetailView: View {
             .navigationTitle("帖子")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button("关闭") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("分享", systemImage: "square.and.arrow.up") {
+                            shareItem = ShareItem(text: shareText)
+                        }
+                        if isMine {
+                            Button("删除这条 PO", systemImage: "trash", role: .destructive) { confirmingDelete = true }
+                        } else {
+                            Button("举报作者", systemImage: "exclamationmark.bubble") {
+                                if auth.isAuthenticated { reporting = true } else { auth.requireLogin() }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("更多操作")
+                    .disabled(isDeleting)
+                }
+            }
+            .sheet(item: $shareItem) { item in
+                ShareSheet(items: [item.text]) { Task { await recordShare() } }
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $reporting) {
+                ReportSheet(uid: post.author.uid, name: post.author.nickname)
+            }
+            .confirmationDialog("删除后无法恢复，评论与点赞也会一起隐藏。", isPresented: $confirmingDelete,
+                                titleVisibility: .visible) {
+                Button("删除", role: .destructive) { Task { await deletePost() } }
+                Button("取消", role: .cancel) {}
             }
             .task(id: identityKey) { await loadComments() }
             .onChange(of: identityKey) { _, _ in
@@ -74,6 +113,9 @@ struct PostDetailView: View {
                     self.conversationOwnerID = nil
                 }
                 commentRequestID = nil
+                replyTarget = nil
+                commentLikes = [:]
+                likingComment = nil
                 isSending = false
                 isLiking = false
                 isFavoriting = false
@@ -235,39 +277,118 @@ struct PostDetailView: View {
                     .foregroundStyle(UniColor.secondary)
                     .padding(.vertical, 20)
             } else {
-                ForEach(comments) { comment in
-                    HStack(alignment: .top, spacing: 10) {
-                        UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
-                            UniAvatar(url: comment.author.avatarUrl, name: comment.author.nickname, size: 34)
-                                .frame(width: 44, height: 44, alignment: .topLeading)
-                                .contentShape(Rectangle())
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
-                                    Text(comment.author.nickname)
-                                        .font(.uniLabel(12))
-                                        .foregroundStyle(UniColor.ink)
-                                }
-                                Text(RelativeTime.text(from: comment.createdAt))
-                                    .font(.uniLabel(10))
-                                    .foregroundStyle(UniColor.tertiary)
-                            }
-                            Text(comment.content)
-                                .font(.uniBody(13))
-                                .foregroundStyle(UniColor.inkSoft)
-                        }
+                ForEach(threads, id: \.root.id) { thread in
+                    commentRow(thread.root, isReply: false)
+                    ForEach(thread.replies) { reply in
+                        commentRow(reply, isReply: true)
+                            .padding(.leading, 44)
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
         .padding(.top, 4)
     }
 
+    /// 后端返回扁平列表；按 parentId 归到最上层评论下，楼中楼只缩进一级。
+    private var threads: [(root: CommentView, replies: [CommentView])] {
+        let byID = Dictionary(comments.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func rootID(_ comment: CommentView) -> Int64 {
+            var current = comment
+            var guardCount = 0
+            while let parent = current.parentId, let next = byID[parent], guardCount < 20 {
+                current = next
+                guardCount += 1
+            }
+            return current.id
+        }
+        var replies: [Int64: [CommentView]] = [:]
+        var roots: [CommentView] = []
+        for comment in comments {
+            let root = rootID(comment)
+            if root == comment.id { roots.append(comment) } else { replies[root, default: []].append(comment) }
+        }
+        return roots.map { ($0, replies[$0.id] ?? []) }
+    }
+
+    private func commentRow(_ comment: CommentView, isReply: Bool) -> some View {
+        let likeState = commentLikes[comment.id] ?? (comment.liked ?? false, comment.likeCount ?? 0)
+        let parentName = comment.parentId.flatMap { id in comments.first { $0.id == id } }
+            .flatMap { parent in parent.parentId == nil ? nil : parent.author.nickname }
+        return HStack(alignment: .top, spacing: 10) {
+            UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
+                UniAvatar(url: comment.author.avatarUrl, name: comment.author.nickname, size: isReply ? 28 : 34)
+                    .frame(width: 44, height: 44, alignment: .topLeading)
+                    .contentShape(Rectangle())
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
+                        Text(comment.author.nickname)
+                            .font(.uniLabel(12))
+                            .foregroundStyle(UniColor.ink)
+                    }
+                    if comment.author.uid == post.author.uid {
+                        Text("作者").font(.uniLabel(9)).foregroundStyle(UniColor.blue)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(UniColor.blue.opacity(0.1), in: Capsule())
+                    }
+                    Text(RelativeTime.text(from: comment.createdAt))
+                        .font(.uniLabel(10))
+                        .foregroundStyle(UniColor.tertiary)
+                }
+                (parentName.map { Text("回复 @\($0)：").foregroundColor(UniColor.secondary) } ?? Text(""))
+                    + Text(comment.content)
+                Button("回复") {
+                    guard auth.isAuthenticated else { auth.requireLogin(); return }
+                    replyTarget = comment
+                    commentIntentKey = UUID().uuidString
+                    commentFocused = true
+                }
+                .font(.uniLabel(11))
+                .foregroundStyle(UniColor.secondary)
+                .frame(minHeight: 28)
+            }
+            .font(.uniBody(13))
+            .foregroundStyle(UniColor.inkSoft)
+            Spacer(minLength: 4)
+            Button {
+                Task { await toggleCommentLike(comment, current: likeState) }
+            } label: {
+                VStack(spacing: 2) {
+                    Image(systemName: likeState.liked ? "heart.fill" : "heart")
+                        .font(.system(size: 13, weight: .semibold))
+                    if likeState.count > 0 { Text("\(likeState.count)").font(.uniLabel(10)) }
+                }
+                .foregroundStyle(likeState.liked ? UniColor.danger : UniColor.tertiary)
+                .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .disabled(likingComment == comment.id)
+            .accessibilityLabel(likeState.liked ? "取消点赞评论" : "点赞评论")
+        }
+        .padding(.vertical, 2)
+    }
+
     private var commentComposer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if composerExpanded {
+            if let replyTarget {
+                HStack(spacing: 6) {
+                    Text("回复 @\(replyTarget.author.nickname)")
+                        .font(.uniLabel(11))
+                        .foregroundStyle(UniColor.blue)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        self.replyTarget = nil
+                        commentIntentKey = UUID().uuidString
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(UniColor.tertiary)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("取消回复")
+                }
+            } else if composerExpanded {
                 HStack(spacing: 6) {
                     Circle().fill(UniColor.blue).frame(width: 5, height: 5)
                     Text("参与讨论")
@@ -429,7 +550,8 @@ struct PostDetailView: View {
             if commentRequestID == requestID { isSending = false; commentRequestID = nil }
         }
         do {
-            let created = try await APIClient.shared.addComment(postId: post.id, content: text, requestKey: intentKey)
+            let created = try await APIClient.shared.addComment(postId: post.id, content: text,
+                                                                parentId: replyTarget?.id, requestKey: intentKey)
             guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
             if !comments.contains(where: { $0.id == created.id }) {
                 comments.append(created)
@@ -437,7 +559,7 @@ struct PostDetailView: View {
             }
             if commentIntentKey == intentKey {
                 commentIntentKey = UUID().uuidString
-                if trimmedComment == text { commentText = ""; commentFocused = false }
+                if trimmedComment == text { commentText = ""; commentFocused = false; replyTarget = nil }
             }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
@@ -482,6 +604,49 @@ struct PostDetailView: View {
                 guard isCurrentIdentity(userID: userID, revision: revision) else { return }
                 errorMessage = (error as? LocalizedError)?.errorDescription
             }
+        }
+    }
+
+    private var isMine: Bool { post.author.uid == auth.profile?.publicUid }
+
+    private var shareText: String {
+        let summary = post.excerpt ?? String(post.content.prefix(80))
+        return "\(post.title)\n\(summary)\n—— 来自 UniPO"
+    }
+
+    private func recordShare() async {
+        _ = try? await APIClient.shared.sharePost(id: post.id)
+    }
+
+    private func deletePost() async {
+        guard let userID = auth.profile?.id else { return }
+        let revision = auth.authenticationRevision
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            try await APIClient.shared.deletePost(id: post.id)
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            NotificationCenter.default.post(name: .unipoPostDeleted, object: post.id)
+            dismiss()
+        } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "删除失败，请重试"
+        }
+    }
+
+    private func toggleCommentLike(_ comment: CommentView, current: (liked: Bool, count: Int)) async {
+        guard let userID = auth.profile?.id else { auth.requireLogin(); return }
+        guard likingComment == nil else { return }
+        let revision = auth.authenticationRevision
+        likingComment = comment.id
+        defer { if isCurrentIdentity(userID: userID, revision: revision) { likingComment = nil } }
+        do {
+            try await APIClient.shared.likeComment(id: comment.id, liked: current.liked)
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            commentLikes[comment.id] = (!current.liked, max(0, current.count + (current.liked ? -1 : 1)))
+        } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            errorMessage = (error as? LocalizedError)?.errorDescription
         }
     }
 

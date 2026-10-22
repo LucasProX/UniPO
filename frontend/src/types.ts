@@ -159,6 +159,8 @@ export interface UserProfile {
   showGrade?: boolean;
   onboardingCompleted?: boolean;
   backgroundUrl?: string | null;
+  /** 入学年份；他人可见性跟随年级展示开关。 */
+  entryYear?: number | null;
 }
 
 /** 登录 / 注册 / 刷新三处共用的返回包（后端 AuthResponse）。 */
