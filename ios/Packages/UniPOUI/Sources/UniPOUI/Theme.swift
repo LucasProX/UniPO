@@ -22,8 +22,11 @@ public enum UniSpace {
     public static let xxl: CGFloat = 32
 }
 
+/// 圆角只用这几档：12 输入框与小按钮、16 按钮与小卡、18 图块、22 卡片、30 头图面板。
 public enum UniRadius {
     public static let control: CGFloat = 12
+    public static let button: CGFloat = 16
+    public static let tile: CGFloat = 18
     public static let card: CGFloat = 22
     public static let panel: CGFloat = 30
 }
@@ -40,6 +43,8 @@ public extension Color {
     }
 }
 
+/// 固定点数字体，只给必须返回 `Text` 的场合（例如 `Text + Text` 拼接）用；
+/// 其他地方一律用会随 Dynamic Type 缩放的 `.uniFont(_:weight:)`。
 public extension Font {
     static func uniTitle(_ size: CGFloat = 28) -> Font {
         .system(size: size, weight: .bold, design: .default)

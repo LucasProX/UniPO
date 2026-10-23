@@ -81,16 +81,16 @@ struct AchievementsView: View {
         Button { editingBackground = true } label: {
             HStack(spacing: 12) {
                 Image(systemName: "graduationcap.fill")
-                    .font(.system(size: 18, weight: .semibold))
+                    .uniFont(18, weight: .semibold)
                     .foregroundStyle(UniColor.blue)
                     .frame(width: 40, height: 40)
                     .background(UniColor.blue.opacity(0.1), in: Circle())
                 VStack(alignment: .leading, spacing: 3) {
                     Text("补充入学年份")
-                        .font(.system(size: 15, weight: .bold))
+                        .uniFont(15, weight: .bold)
                         .foregroundStyle(UniColor.ink)
                     Text("现在按完成进度显示阶段；补充后按你所在的学期推荐任务")
-                        .font(.uniBody(12))
+                        .uniFont(12)
                         .foregroundStyle(UniColor.secondary)
                         .multilineTextAlignment(.leading)
                 }
@@ -135,16 +135,16 @@ struct AchievementsView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("成长")
-                        .font(.system(size: 30, weight: .heavy))
+                        .uniFont(30, weight: .heavy)
                         .foregroundStyle(.white)
                     Text(heroSubtitle)
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(.white.opacity(0.62))
                 }
                 Spacer()
                 if auth.isAuthenticated, achievement != nil {
                     Button("成长背景") { editingBackground = true }
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .frame(minHeight: 32)
@@ -162,10 +162,10 @@ struct AchievementsView: View {
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: 1) {
                         Text("\(Int(progress * 100))%")
-                            .font(.system(size: 20, weight: .heavy))
+                            .uniFont(20, weight: .heavy)
                             .foregroundStyle(.white)
                         Text(currentStage?.title ?? "—")
-                            .font(.uniLabel(10))
+                            .uniFont(10, weight: .semibold)
                             .foregroundStyle(.white.opacity(0.6))
                     }
                 }
@@ -173,16 +173,16 @@ struct AchievementsView: View {
 
                 VStack(alignment: .leading, spacing: 7) {
                     Text(achievement.map { "Lv.\($0.level) · \($0.completedTasks)/\($0.totalTasks) 个任务" } ?? "登录后同步进度")
-                        .font(.system(size: 16, weight: .bold))
+                        .uniFont(16, weight: .bold)
                         .foregroundStyle(.white)
                     Text(currentStage.map { "当前阶段：\($0.title)" } ?? (isLoading ? "加载中…" : "还没有阶段数据"))
-                        .font(.uniBody(12))
+                        .uniFont(12)
                         .foregroundStyle(.white.opacity(0.62))
                     HStack(spacing: 6) {
                         Image(systemName: "bolt.fill")
                         Text("\(achievement?.xp ?? 0) XP")
                     }
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.gold)
                 }
             }
@@ -192,7 +192,7 @@ struct AchievementsView: View {
                     auth.requireLogin()
                 } label: {
                     Text("登录后同步进度")
-                        .font(.system(size: 13, weight: .semibold))
+                        .uniFont(13, weight: .semibold)
                         .foregroundStyle(.black)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
@@ -203,7 +203,7 @@ struct AchievementsView: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(.white.opacity(0.8))
             }
         }
@@ -211,7 +211,7 @@ struct AchievementsView: View {
         .background(
             LinearGradient(colors: [UniColor.ink, Color(hex: 0x14264A), UniColor.blue.opacity(0.9)],
                            startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 30, style: .continuous)
+            in: RoundedRectangle(cornerRadius: UniRadius.panel, style: .continuous)
         )
         .overlay(alignment: .topTrailing) {
             Circle()
@@ -221,13 +221,13 @@ struct AchievementsView: View {
                 .offset(x: 50, y: -60)
                 .allowsHitTesting(false)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.panel, style: .continuous))
     }
 
     private var stagePath: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("成长路径")
-                .font(.system(size: 18, weight: .bold))
+                .uniFont(18, weight: .bold)
                 .foregroundStyle(UniColor.ink)
 
             VStack(spacing: 0) {
@@ -242,7 +242,7 @@ struct AchievementsView: View {
                                     .fill([.locked, .past].contains(nodeState(stage)) ? UniColor.mist : UniColor.ink)
                                     .frame(width: 30, height: 30)
                                 Image(systemName: nodeState(stage).icon)
-                                    .font(.system(size: 12, weight: .bold))
+                                    .uniFont(12, weight: .bold)
                                     .foregroundStyle(nodeState(stage) == .locked ? UniColor.tertiary : nodeState(stage) == .past ? UniColor.secondary : .white)
                             }
                             if index < (achievement?.stages.count ?? 0) - 1 {
@@ -254,11 +254,11 @@ struct AchievementsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
                                 Text(stage.title)
-                                    .font(.system(size: 15, weight: .bold))
+                                    .uniFont(15, weight: .bold)
                                     .foregroundStyle(nodeState(stage) == .locked ? UniColor.tertiary : UniColor.ink)
                                 if stage.code == achievement?.currentStageCode {
                                     Text("进行中")
-                                        .font(.uniLabel(9))
+                                        .uniFont(9, weight: .semibold)
                                         .foregroundStyle(UniColor.blue)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -266,21 +266,21 @@ struct AchievementsView: View {
                                 }
                                 if stage.boss {
                                     Text("关键阶段")
-                                        .font(.uniLabel(9))
+                                        .uniFont(9, weight: .semibold)
                                         .foregroundStyle(UniColor.gold)
                                 }
                             }
                             Text(stage.subtitle ?? "")
-                                .font(.uniBody(12))
+                                .uniFont(12)
                                 .foregroundStyle(UniColor.secondary)
                             Text("\(stage.completedCount)/\(stage.totalCount)")
-                                .font(.uniLabel(10))
+                                .uniFont(10, weight: .semibold)
                                 .foregroundStyle(UniColor.tertiary)
                         }
                         Spacer()
                         if stage.code == shownStage?.code {
                             Image(systemName: "eye")
-                                .font(.system(size: 12, weight: .semibold))
+                                .uniFont(12, weight: .semibold)
                                 .foregroundStyle(UniColor.blue)
                                 .accessibilityLabel("正在查看")
                         }
@@ -292,9 +292,9 @@ struct AchievementsView: View {
                 }
             }
             .padding(18)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                     .stroke(UniColor.mist.opacity(0.7), lineWidth: 1)
             )
         }
@@ -304,12 +304,12 @@ struct AchievementsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(shownStage?.code == currentStage?.code ? "当前阶段任务" : "\(shownStage?.title ?? "") 的任务")
-                    .font(.system(size: 18, weight: .bold))
+                    .uniFont(18, weight: .bold)
                     .foregroundStyle(UniColor.ink)
                 Spacer()
                 if let shownStage {
                     Text("\(shownStage.completedCount)/\(shownStage.totalCount)")
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
             }
@@ -322,7 +322,7 @@ struct AchievementsView: View {
                                 if task.completed { undoCandidate = task } else { Task { await complete(task) } }
                             } label: {
                                 Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .uniFont(20, weight: .semibold)
                                     .foregroundStyle(task.completed ? UniColor.blue : UniColor.tertiary)
                                     .frame(width: 44, height: 44)
                             }
@@ -332,19 +332,19 @@ struct AchievementsView: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(task.title)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .uniFont(14, weight: .semibold)
                                     .foregroundStyle(task.completed ? UniColor.secondary : UniColor.ink)
                                     .strikethrough(task.completed, color: UniColor.tertiary)
                                 if let description = task.description, !description.isEmpty {
                                     Text(description)
-                                        .font(.uniLabel(11))
+                                        .uniFont(11, weight: .semibold)
                                         .foregroundStyle(UniColor.tertiary)
                                         .lineLimit(2)
                                 }
                             }
                             Spacer()
                             Text("+\(task.xp)")
-                                .font(.uniLabel(10))
+                                .uniFont(10, weight: .semibold)
                                 .foregroundStyle(UniColor.gold)
                         }
                         .padding(.vertical, 10)
@@ -354,14 +354,14 @@ struct AchievementsView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .stroke(UniColor.mist.opacity(0.7), lineWidth: 1)
                 )
             } else {
                 Text(isLoading ? "加载中…" : "登录后查看你的阶段任务")
-                    .font(.uniBody(13))
+                    .uniFont(13)
                     .foregroundStyle(UniColor.secondary)
                     .padding(.vertical, 20)
             }
@@ -372,12 +372,12 @@ struct AchievementsView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("徽章墙")
-                    .font(.system(size: 18, weight: .bold))
+                    .uniFont(18, weight: .bold)
                     .foregroundStyle(UniColor.ink)
                 Spacer()
                 if let achievement {
                     Text("\(achievement.badges.filter(\.earned).count) / \(achievement.badges.count)")
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
             }
@@ -386,26 +386,26 @@ struct AchievementsView: View {
                 ForEach((achievement?.badges ?? []).prefix(12)) { badge in
                     VStack(spacing: 8) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
                                 .fill(badgeTint(badge.rarity).opacity(badge.earned ? 0.12 : 0.05))
                                 .frame(width: 58, height: 58)
                             Image(systemName: badge.icon)
-                                .font(.system(size: 22, weight: .semibold))
+                                .uniFont(22, weight: .semibold)
                                 .foregroundStyle(badge.earned ? badgeTint(badge.rarity) : UniColor.tertiary.opacity(0.6))
                         }
                         Text(badge.earned ? badge.title : "未解锁")
-                            .font(.uniLabel(11))
+                            .uniFont(11, weight: .semibold)
                             .foregroundStyle(badge.earned ? UniColor.ink : UniColor.tertiary)
                             .lineLimit(1)
                         Text(rarityLabel(badge.rarity))
-                            .font(.uniLabel(9))
+                            .uniFont(9, weight: .semibold)
                             .foregroundStyle(badgeTint(badge.rarity))
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
                             .stroke(badgeTint(badge.rarity).opacity(badge.earned ? 0.2 : 0.08), lineWidth: 1)
                     )
                     .scaleEffect(appeared ? 1 : 0.92)

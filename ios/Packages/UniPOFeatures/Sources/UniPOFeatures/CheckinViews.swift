@@ -61,14 +61,14 @@ struct CheckinSheet: View {
     private var form: some View {
         VStack(spacing: 22) {
             VStack(spacing: 6) {
-                Text("输入现场签到码").font(.system(size: 22, weight: .heavy)).foregroundStyle(UniColor.ink)
+                Text("输入现场签到码").uniFont(22, weight: .heavy).foregroundStyle(UniColor.ink)
                 Text("签到码由组织者在现场公布，也可以直接扫现场的二维码")
-                    .font(.uniBody(13)).foregroundStyle(UniColor.secondary).multilineTextAlignment(.center)
+                    .uniFont(13).foregroundStyle(UniColor.secondary).multilineTextAlignment(.center)
             }
             TextField("", text: $code, prompt: Text("4 位数字"))
                 .keyboardType(.numberPad)
                 .textContentType(.oneTimeCode)
-                .font(.system(size: 34, weight: .bold, design: .monospaced))
+                .uniFont(34, weight: .bold, design: .monospaced)
                 .multilineTextAlignment(.center)
                 .frame(height: 72)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
@@ -81,13 +81,13 @@ struct CheckinSheet: View {
                 }
                 .accessibilityLabel("签到码")
             if let errorMessage {
-                Text(errorMessage).font(.uniLabel(13)).foregroundStyle(UniColor.danger).multilineTextAlignment(.center)
+                Text(errorMessage).uniFont(13, weight: .semibold).foregroundStyle(UniColor.danger).multilineTextAlignment(.center)
             }
             if isSubmitting { ProgressView() }
             if QRScannerSheet.isAvailable {
                 Button { scanning = true } label: {
                     Label("扫码签到", systemImage: "qrcode.viewfinder")
-                        .font(.system(size: 16, weight: .semibold))
+                        .uniFont(16, weight: .semibold)
                         .frame(maxWidth: .infinity, minHeight: 50)
                 }
                 .buttonStyle(UniPrimaryButtonStyle())
@@ -99,19 +99,19 @@ struct CheckinSheet: View {
     private func success(_ result: ActivityCheckinResult) -> some View {
         VStack(spacing: 18) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 64))
+                .uniFont(64)
                 .foregroundStyle(UniColor.blue)
                 .symbolEffectIfAvailable(reduceMotion: reduceMotion)
             Text(result.alreadyCheckedIn ? "你已经签到过了" : "签到成功")
-                .font(.system(size: 24, weight: .heavy)).foregroundStyle(UniColor.ink)
-            Text(result.activity.title).font(.uniBody(14)).foregroundStyle(UniColor.secondary)
+                .uniFont(24, weight: .heavy).foregroundStyle(UniColor.ink)
+            Text(result.activity.title).uniFont(14).foregroundStyle(UniColor.secondary)
             if result.rewardXp > 0 || result.rewardCoins > 0 {
                 HStack(spacing: 12) {
                     if result.rewardXp > 0 { reward("+\(result.rewardXp)", "经验", "bolt.fill") }
                     if result.rewardCoins > 0 { reward("+\(result.rewardCoins)", "金币", "circle.hexagongrid.fill") }
                 }
                 Text(result.alreadyCheckedIn ? "奖励已在首次签到时发放" : "奖励已到账")
-                    .font(.uniLabel(12)).foregroundStyle(UniColor.tertiary)
+                    .uniFont(12, weight: .semibold).foregroundStyle(UniColor.tertiary)
             }
         }
         .padding(.top, 40)
@@ -120,8 +120,8 @@ struct CheckinSheet: View {
     private func reward(_ value: String, _ unit: String, _ icon: String) -> some View {
         VStack(spacing: 4) {
             Image(systemName: icon).foregroundStyle(UniColor.gold)
-            Text(value).font(.system(size: 26, weight: .heavy)).foregroundStyle(UniColor.ink)
-            Text(unit).font(.uniLabel(11)).foregroundStyle(UniColor.secondary)
+            Text(value).uniFont(26, weight: .heavy).foregroundStyle(UniColor.ink)
+            Text(unit).uniFont(11, weight: .semibold).foregroundStyle(UniColor.secondary)
         }
         .frame(width: 110, height: 110)
         .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
@@ -205,7 +205,7 @@ struct OrganizerCheckinView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 20) {
-                Text(activity.title).font(.system(size: 20, weight: .bold)).foregroundStyle(UniColor.ink)
+                Text(activity.title).uniFont(20, weight: .bold).foregroundStyle(UniColor.ink)
                     .multilineTextAlignment(.center)
                 if let state {
                     if state.windowOpen {
@@ -220,18 +220,18 @@ struct OrganizerCheckinView: View {
                                 .accessibilityLabel("签到二维码，约 30 秒刷新一次")
                         }
                         VStack(spacing: 4) {
-                            Text("签到码").font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                            Text("签到码").uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
                             Text(state.code)
-                                .font(.system(size: 44, weight: .heavy, design: .monospaced))
+                                .uniFont(44, weight: .heavy, design: .monospaced)
                                 .tracking(10)
                                 .foregroundStyle(UniColor.ink)
                         }
                     } else {
                         VStack(spacing: 8) {
-                            Image(systemName: "clock").font(.system(size: 36)).foregroundStyle(UniColor.tertiary)
-                            Text("签到尚未开放或已结束").font(.uniBody(15)).foregroundStyle(UniColor.secondary)
+                            Image(systemName: "clock").uniFont(36).foregroundStyle(UniColor.tertiary)
+                            Text("签到尚未开放或已结束").uniFont(15).foregroundStyle(UniColor.secondary)
                             if let opens = state.windowOpensAt {
-                                Text("开放时间：\(ActivityTime.short(opens)) 起").font(.uniLabel(12)).foregroundStyle(UniColor.tertiary)
+                                Text("开放时间：\(ActivityTime.short(opens)) 起").uniFont(12, weight: .semibold).foregroundStyle(UniColor.tertiary)
                             }
                         }
                         .padding(.vertical, 40)
@@ -239,10 +239,10 @@ struct OrganizerCheckinView: View {
                     HStack(spacing: 6) {
                         Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(UniColor.blue)
                         Text("已签到 \(state.checkedInCount) / \(state.registeredCount)")
-                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(UniColor.ink)
+                            .uniFont(17, weight: .semibold).foregroundStyle(UniColor.ink)
                     }
                 } else if let errorMessage {
-                    Text(errorMessage).font(.uniBody(14)).foregroundStyle(UniColor.danger)
+                    Text(errorMessage).uniFont(14).foregroundStyle(UniColor.danger)
                 } else {
                     ProgressView().padding(.top, 60)
                 }
@@ -301,32 +301,32 @@ struct WalletScreen: View {
             List {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("金币余额").font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                        Text("金币余额").uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
                         Text("\(wallet?.balance ?? 0)")
-                            .font(.system(size: 40, weight: .heavy)).monospacedDigit().foregroundStyle(UniColor.ink)
+                            .uniFont(40, weight: .heavy).monospacedDigit().foregroundStyle(UniColor.ink)
                         if let wallet {
                             Text("今日已获得 \(wallet.earnedToday) / \(wallet.dailyCap)")
-                                .font(.uniLabel(12)).foregroundStyle(UniColor.tertiary)
+                                .uniFont(12, weight: .semibold).foregroundStyle(UniColor.tertiary)
                         }
                         Text("参加认证组织者发布的活动并签到即可获得金币，用途即将开放。")
-                            .font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                            .uniFont(12).foregroundStyle(UniColor.secondary)
                     }
                     .padding(.vertical, 6)
                 }
                 Section("收支明细") {
                     if entries.isEmpty {
                         Text(errorMessage ?? (wallet == nil ? "加载中…" : "还没有金币记录"))
-                            .font(.uniBody(13)).foregroundStyle(UniColor.secondary)
+                            .uniFont(13).foregroundStyle(UniColor.secondary)
                     }
                     ForEach(entries) { entry in
                         HStack {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(entry.reason).font(.uniBody(14)).foregroundStyle(UniColor.ink).lineLimit(1)
-                                Text(RelativeTime.text(from: entry.createdAt)).font(.uniLabel(11)).foregroundStyle(UniColor.tertiary)
+                                Text(entry.reason).uniFont(14).foregroundStyle(UniColor.ink).lineLimit(1)
+                                Text(RelativeTime.text(from: entry.createdAt)).uniFont(11, weight: .semibold).foregroundStyle(UniColor.tertiary)
                             }
                             Spacer()
                             Text(entry.amount > 0 ? "+\(entry.amount)" : "\(entry.amount)")
-                                .font(.system(size: 16, weight: .bold)).monospacedDigit()
+                                .uniFont(16, weight: .bold).monospacedDigit()
                                 .foregroundStyle(entry.amount > 0 ? UniColor.gold : UniColor.secondary)
                         }
                         .onAppear { if entry.id == entries.last?.id { Task { await loadMore() } } }

@@ -32,15 +32,10 @@ struct FollowListView: View {
                 if isLoading && users.isEmpty {
                     UniLoadingState("加载中…").listRowSeparator(.hidden)
                 } else if let errorMessage, users.isEmpty {
-                    VStack(spacing: 10) {
-                        Text(errorMessage).font(.uniBody(13)).foregroundStyle(UniColor.secondary)
-                        Button("重试") { Task { await load() } }.foregroundStyle(UniColor.blue)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 40).listRowSeparator(.hidden)
+                    UniErrorState(errorMessage) { Task { await load() } }.listRowSeparator(.hidden)
                 } else if users.isEmpty {
-                    Text(target.kind == .following ? "还没有关注任何人" : "还没有粉丝")
-                        .font(.uniBody(13)).foregroundStyle(UniColor.secondary)
-                        .frame(maxWidth: .infinity).padding(.vertical, 40).listRowSeparator(.hidden)
+                    UniEmptyState(icon: "person.2", title: target.kind == .following ? "还没有关注任何人" : "还没有粉丝")
+                        .listRowSeparator(.hidden)
                 } else {
                     ForEach(users) { user in row(user) }
                 }
@@ -63,13 +58,13 @@ struct FollowListView: View {
                     UniAvatar(url: user.avatarUrl, name: user.nickname, size: 44)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(user.nickname)
-                            .font(.system(size: 15, weight: .bold))
+                            .uniFont(15, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                             .lineLimit(1)
                         let detail = [user.grade, user.major ?? user.college].compactMap { $0 }
                             .filter { !$0.isEmpty }.joined(separator: " · ")
                         Text(detail.isEmpty ? "Lv.\(user.level ?? 1) \(user.levelTitle ?? "")" : detail)
-                            .font(.uniLabel(11))
+                            .uniFont(11, weight: .semibold)
                             .foregroundStyle(UniColor.secondary)
                             .lineLimit(1)
                     }
@@ -86,7 +81,7 @@ struct FollowListView: View {
                         if busyUID == user.publicUid { ProgressView() }
                         else { Text(user.following ? "已关注" : (target.kind == .followers ? "回关" : "关注")) }
                     }
-                    .font(.uniLabel(12))
+                    .uniFont(12, weight: .semibold)
                     .foregroundStyle(user.following ? UniColor.ink : .white)
                     .frame(minWidth: 68, minHeight: 34)
                     .background(user.following ? UniColor.mist : UniColor.blue, in: Capsule())

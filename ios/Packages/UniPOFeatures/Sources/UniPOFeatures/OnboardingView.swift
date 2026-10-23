@@ -94,7 +94,7 @@ struct OnboardingView: View {
                 if step > 0 { withAnimation { step -= 1 } }
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 15, weight: .semibold))
+                    .uniFont(15, weight: .semibold)
                     .foregroundStyle(.white.opacity(step > 0 ? 0.8 : 0))
                     .frame(width: 36, height: 36)
                     .background(.white.opacity(step > 0 ? 0.08 : 0), in: Circle())
@@ -103,7 +103,7 @@ struct OnboardingView: View {
             .disabled(step == 0)
             Spacer()
             Text("\(step + 1) / \(lastStep + 1)")
-                .font(.uniLabel(11))
+                .uniFont(11, weight: .semibold)
                 .foregroundStyle(.white.opacity(0.35))
         }
         .padding(.horizontal, 18)
@@ -128,25 +128,25 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("先让同学认识你吧")
-                        .font(.system(size: 26, weight: .heavy))
+                        .uniFont(26, weight: .heavy)
                         .foregroundStyle(.white)
                     Text("这些信息会帮你找到同校、同专业的人")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(.white.opacity(0.45))
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("用户名").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("用户名").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     TextField("", text: $nickname, prompt: Text("给自己起个名字").foregroundStyle(.white.opacity(0.3)))
-                        .font(.system(size: 17, weight: .semibold))
+                        .uniFont(17, weight: .semibold)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 14)
                         .frame(height: 54)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("性别").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("性别").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     HStack(spacing: 8) {
                         choiceChip("男生", selected: gender == "male") { gender = "male" }
                         choiceChip("女生", selected: gender == "female") { gender = "female" }
@@ -156,7 +156,7 @@ struct OnboardingView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("出生年份").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("出生年份").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     Picker("出生年份", selection: $birthYear) {
                         ForEach(1990...2012, id: \.self) { year in
                             Text(String(year) + " 年").tag(year)
@@ -167,7 +167,7 @@ struct OnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .frame(height: 50)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
@@ -185,10 +185,10 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("你在哪所学校、哪一级？")
-                        .font(.system(size: 26, weight: .heavy))
+                        .uniFont(26, weight: .heavy)
                         .foregroundStyle(.white)
                     Text("我们按入学年份推算你现在所处的阶段，给出这个阶段该做的事")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(.white.opacity(0.45))
                 }
                 GrowthBackgroundForm(store: background, dark: true)
@@ -203,15 +203,15 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("你的校园人设是什么？")
-                        .font(.system(size: 26, weight: .heavy))
+                        .uniFont(26, weight: .heavy)
                         .foregroundStyle(.white)
                     Text("星座、MBTI、一句话签名，让主页有点你自己")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(.white.opacity(0.45))
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("星座").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("星座").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                         ForEach(zodiacs, id: \.self) { item in
                             choiceChip(item, selected: zodiac == item) { zodiac = item }
@@ -221,7 +221,7 @@ struct OnboardingView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("MBTI").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("MBTI").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                         ForEach(mbtis, id: \.self) { item in
                             choiceChip(item, selected: mbti == item) { mbti = item }
@@ -231,14 +231,14 @@ struct OnboardingView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("一句话签名").font(.uniLabel(11)).foregroundStyle(.white.opacity(0.45))
+                    Text("一句话签名").uniFont(11, weight: .semibold).foregroundStyle(.white.opacity(0.45))
                     TextEditor(text: $signature)
-                        .font(.uniBody(14))
+                        .uniFont(14)
                         .foregroundStyle(.white)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 90)
                         .padding(10)
-                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                 }
             }
             .padding(24)
@@ -251,10 +251,10 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("挑选一个最喜欢的头像吧！")
-                        .font(.system(size: 26, weight: .heavy))
+                        .uniFont(26, weight: .heavy)
                         .foregroundStyle(.white)
                     Text("选好之后，就可以正式进入 PO 世界了")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(.white.opacity(0.45))
                 }
 
@@ -274,7 +274,7 @@ struct OnboardingView: View {
                                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                                     .frame(width: 120, height: 120)
                                 Text(avatars[avatarIndex].emoji)
-                                    .font(.system(size: 64))
+                                    .uniFont(64)
                             }
                         }
                     }
@@ -285,11 +285,11 @@ struct OnboardingView: View {
 
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label(pickedAvatar == nil ? "从相册选一张" : "重新从相册选", systemImage: "photo.on.rectangle")
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 46)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                 }
                 .onChange(of: photoItem) { _, newValue in
                     guard let newValue else { return }
@@ -314,7 +314,7 @@ struct OnboardingView: View {
                                     .fill(LinearGradient(colors: [Color(hex: avatar.color1), Color(hex: avatar.color2)],
                                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                                     .frame(width: 76, height: 76)
-                                Text(avatar.emoji).font(.system(size: 40))
+                                Text(avatar.emoji).uniFont(40)
                             }
                             .overlay(
                                 Circle().stroke(avatarIndex == index ? .white : .white.opacity(0.1),
@@ -328,7 +328,7 @@ struct OnboardingView: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(.red.opacity(0.9))
                 }
             }
@@ -351,13 +351,13 @@ struct OnboardingView: View {
                         ProgressView().tint(.black)
                     } else {
                         Text(step == lastStep ? "进入 PO 世界" : "下一步")
-                            .font(.system(size: 17, weight: .semibold))
+                            .uniFont(17, weight: .semibold)
                     }
                 }
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
-                .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(.white, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(isSaving || !canAdvance)
@@ -380,7 +380,7 @@ struct OnboardingView: View {
     private func visibilityToggle(_ title: String, isOn: Binding<Bool>) -> some View {
         HStack {
             Text(title)
-                .font(.uniLabel(11))
+                .uniFont(11, weight: .semibold)
                 .foregroundStyle(.white.opacity(0.6))
             Spacer()
             Button {
@@ -405,7 +405,7 @@ struct OnboardingView: View {
     private func choiceChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.uniLabel(12))
+                .uniFont(12, weight: .semibold)
                 .foregroundStyle(selected ? .black : .white.opacity(0.6))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)

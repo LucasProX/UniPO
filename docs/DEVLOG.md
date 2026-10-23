@@ -4983,3 +4983,13 @@ A4 要给活动发徽章（1 / 5 / 15 场）。第一反应是在签到事务里
 另一个小坑：自定义任务「完成」接口连调两次，第二次返回的 `completedAt` 和第一次不一样，看起来像幂等坏了。其实是第一次返回的是 Java 里 `LocalDateTime.now()` 带纳秒的值，落库时 `DATETIME` 把小数秒舍掉（还可能四舍五入进一秒），第二次读回来的是库里的值。现在成长模块写时间前统一 `truncatedTo(SECONDS)`。别的模块的时间也有同样问题，只是没有「先返回再读回比较」的场景，暂时没暴露。
 
 iOS 那边，`DELETE /growth/tasks/{id}` 一开始返回 `data: null`，结果客户端解码直接抛错——`APIClient.request` 要求 `data` 非空。改成返回被删掉的那条任务，顺便让客户端能确认删的是哪条。
+
+## 2026-10-23 动态字体：Font 本身做不到，得用 ViewModifier
+
+C09 要让文字跟着系统字号走。全项目 370 多处写的是 `.font(.uniBody(13))` 或 `.font(.system(size: 13, weight: .semibold))`，都是固定点数。第一反应是在 `Font.uniBody` 里面用 `UIFontMetrics.default.scaledValue(for:)` 换算一下，改一个函数全站生效。但它只在算的那一刻读当前字号，系统设置改了以后视图不一定重算（body 没读任何会变的环境值），表现是「重启 App 才变」。又想过 `Font.custom(系统字体名, size:, relativeTo:)`，那个能实时跟随，可系统字体名是私有的，苹果明说可能退化成 Times，不敢用。
+
+最后改成 `.uniFont(13, weight:)` 这个修饰符，里面是 `@ScaledMetric(relativeTo:)`，按点数挂到最接近的系统样式（13 → footnote、17 → body、28 → title），会跟着环境实时刷新。代价是返回的是 `some View` 而不是 `Text`，`Text + Text` 拼接的地方用不了，所以 `Font.uniBody` 那几个保留给拼接用。用正则批量替换了 376 处字体、42 处圆角，编译一次过。
+
+在模拟器上用 `xcrun simctl ui booted content_size accessibility-extra-large` 切到 AX3 看了一圈，几个坑：首页本周活动卡片是写死 240 宽的，奖励胶囊被挤成一个字一行；成长页「参加 1 场 · +30 经验 · +25 金币」从中间断行；「我的」三个快捷入口没有上下内边距，图标顶到卡片边。分别用 `@ScaledMetric` 的卡宽（最宽 320）、`ViewThatFits` 横排放不下改竖排、胶囊 `.fixedSize()`、加 padding 解决。
+
+放大上限也是看了 AX5 才定的：不设上限时 64pt 的大数字会放到接近 200pt，把头图和圆环撑破，而这类文字本来就够大。所以正文最多 2 倍、标题 1.6 倍、28pt 以上 1.35 倍，根视图再限制到 accessibility3。底栏没有跟着放大——系统 Tab 栏也不放大，而是长按出大内容预览，放大了会把内容区挤没，这里照着做了 `accessibilityShowsLargeContentViewer`。

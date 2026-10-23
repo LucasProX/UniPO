@@ -15,17 +15,17 @@ struct PostCardView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
                                 Text(post.author.nickname)
-                                    .font(.system(size: 14, weight: .bold))
+                                    .uniFont(14, weight: .bold)
                                     .foregroundStyle(UniColor.ink)
                                     .lineLimit(1)
                                 if post.author.role != "USER" {
                                     Image(systemName: "checkmark.seal.fill")
-                                        .font(.system(size: 11))
+                                        .uniFont(11)
                                         .foregroundStyle(UniColor.blue)
                                 }
                             }
                             Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
-                                .font(.uniLabel(11))
+                                .uniFont(11, weight: .semibold)
                                 .foregroundStyle(UniColor.secondary)
                                 .lineLimit(1)
                         }
@@ -40,12 +40,12 @@ struct PostCardView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(post.title)
-                            .font(.system(size: 18, weight: .bold))
+                            .uniFont(18, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
                         Text(post.excerpt?.isEmpty == false ? post.excerpt! : post.content)
-                            .font(.uniBody(13))
+                            .uniFont(13)
                             .foregroundStyle(UniColor.secondary)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
@@ -61,7 +61,7 @@ struct PostCardView: View {
                         }
                         .frame(height: 168)
                         .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                     }
 
                     if !post.tagList.isEmpty {
@@ -78,7 +78,7 @@ struct PostCardView: View {
                         metric("bookmark", post.favoriteTotal)
                         Spacer()
                         Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
-                            .font(.uniLabel(11))
+                            .uniFont(11, weight: .semibold)
                             .foregroundStyle(UniColor.tertiary)
                     }
                     .padding(.top, 2)
@@ -90,12 +90,12 @@ struct PostCardView: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(Color.white)
                 .shadow(color: UniColor.ink.opacity(0.05), radius: 18, y: 8)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(UniColor.mist.opacity(0.6), lineWidth: 1)
         )
     }
@@ -103,9 +103,9 @@ struct PostCardView: View {
     private func metric(_ icon: String, _ value: Int) -> some View {
         HStack(spacing: 4) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .uniFont(12, weight: .semibold)
             Text("\(value)")
-                .font(.uniLabel(12))
+                .uniFont(12, weight: .semibold)
         }
         .foregroundStyle(UniColor.secondary)
     }

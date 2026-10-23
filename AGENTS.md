@@ -243,6 +243,7 @@ xcrun simctl launch booted com.unipo.app
 - **首页请求状态**统一走 `UniPOCore.FeedStore`：分页只允许一条在途请求，切板块/刷新/切账号作废旧响应；保留失败重试与按帖子 ID 去重。改动后运行 `swift test --package-path ios/Packages/UniPOCore`。
 - **改动必须同时考虑 iOS 17**：新 API 用 `if #available`；本机 iOS 26 模拟器不代表最低版本。
 - **Liquid Glass**：`glassEffect` 只在 iOS 26+，旧系统退化 `.ultraThinMaterial`，统一走 `UniPOUI.GlassSurface`。
+- **字体与圆角 token（C09，2026-10-23）**：文字一律 `.uniFont(点数, weight:)`（`UniPOUI/Typography.swift`），按最接近的系统文字样式随 Dynamic Type 缩放，正文上限 2 倍、20pt 以上 1.6 倍、28pt 以上 1.35 倍；**不要再写 `.font(.system(size:))`**，它是固定点数。`Font.uniBody/uniLabel/uniTitle` 只留给必须返回 `Text` 的拼接。底栏 `DockBar` 刻意固定字号并提供大内容预览，与系统 Tab 栏一致。根视图支持到 `accessibility3`。圆角只用 `UniRadius.control/button/tile/card/panel`（12/16/18/22/30），主页网格的 13pt 是例外。列表空态与错误态用 `UniEmptyState` / `UniErrorState`。固定宽度的横向卡片和一行排不下的胶囊用 `ViewThatFits` 或 `@ScaledMetric` 宽度，`dynamicTypeSize.isAccessibilitySize` 时把右侧状态挪到标题下。
 - **不要手改 `UniPO.xcodeproj`**：改 `ios/project.yml` 后跑 `xcodegen generate`。
 - **Feature 不直接建 URLSession**：一律走 `UniPOCore.APIClient`，鉴权和错误映射只维护一份。
 - **APNs**：`AppDelegate` 请求权限并把 device token 存 `PushTokenStore`，登录后 POST `/push/tokens`；

@@ -8,34 +8,42 @@ import UniPOUI
 struct ActivityCard: View {
     let activity: ActivityView
     var compact = false
+    /// 首页横条的卡宽随字号放大，最宽 320，避免大字体下奖励和状态被挤成竖排。
+    @ScaledMetric(relativeTo: .body) private var compactWidth: CGFloat = 240
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             cover
             VStack(alignment: .leading, spacing: 6) {
                 Text(activity.title)
-                    .font(.system(size: compact ? 15 : 17, weight: .bold))
+                    .uniFont(compact ? 15 : 17, weight: .bold)
                     .foregroundStyle(UniColor.ink)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 Label(ActivityTime.range(activity.startsAt, activity.endsAt), systemImage: "calendar")
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.secondary)
                     .lineLimit(1)
                 Label(activity.location, systemImage: "mappin.and.ellipse")
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.secondary)
                     .lineLimit(1)
-                HStack(spacing: 6) {
-                    if activity.hasReward { RewardChips(activity: activity) }
-                    Spacer(minLength: 0)
-                    statusTag
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        if activity.hasReward { RewardChips(activity: activity) }
+                        Spacer(minLength: 0)
+                        statusTag
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        if activity.hasReward { RewardChips(activity: activity) }
+                        statusTag
+                    }
                 }
             }
             .padding(.horizontal, compact ? 12 : 14)
             .padding(.bottom, compact ? 12 : 14)
         }
-        .frame(width: compact ? 240 : nil, alignment: .leading)
+        .frame(width: compact ? min(compactWidth, 320) : nil, alignment: .leading)
         .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous).stroke(UniColor.mist, lineWidth: 1))
         .accessibilityElement(children: .combine)
@@ -55,7 +63,7 @@ struct ActivityCard: View {
                 Text("·")
                 Text(activity.organizerName).lineLimit(1)
             }
-            .font(.uniLabel(10))
+            .uniFont(10, weight: .semibold)
             .foregroundStyle(.white)
             .padding(.horizontal, 8).padding(.vertical, 4)
             .background(.black.opacity(0.35), in: Capsule())
@@ -71,7 +79,7 @@ struct ActivityCard: View {
         LinearGradient(colors: [UniColor.ink, UniColor.blue], startPoint: .topLeading, endPoint: .bottomTrailing)
             .overlay(alignment: .bottomTrailing) {
                 Image(systemName: ActivityIcon.symbol(activity.category))
-                    .font(.system(size: 40, weight: .semibold))
+                    .uniFont(40, weight: .semibold)
                     .foregroundStyle(.white.opacity(0.22))
                     .padding(12)
             }
@@ -90,7 +98,9 @@ struct ActivityCard: View {
             return activity.phaseLabel
         }()
         Text(text)
-            .font(.uniLabel(10))
+            .uniFont(10, weight: .semibold)
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(activity.isRegistered ? UniColor.blue : UniColor.secondary)
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background((activity.isRegistered ? UniColor.blue : UniColor.mist).opacity(activity.isRegistered ? 0.1 : 0.8),
@@ -102,16 +112,24 @@ struct RewardChips: View {
     let activity: ActivityView
 
     var body: some View {
-        HStack(spacing: 4) {
-            if activity.rewardXp > 0 { chip("+\(activity.rewardXp) 经验", "bolt.fill") }
-            if activity.rewardCoins > 0 { chip("+\(activity.rewardCoins) 金币", "circle.hexagongrid.fill") }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 4) { chips }
+            VStack(alignment: .leading, spacing: 4) { chips }
         }
+    }
+
+    @ViewBuilder
+    private var chips: some View {
+        if activity.rewardXp > 0 { chip("+\(activity.rewardXp) 经验", "bolt.fill") }
+        if activity.rewardCoins > 0 { chip("+\(activity.rewardCoins) 金币", "circle.hexagongrid.fill") }
     }
 
     private func chip(_ text: String, _ icon: String) -> some View {
         Label(text, systemImage: icon)
-            .font(.uniLabel(10))
+            .uniFont(10, weight: .semibold)
             .foregroundStyle(UniColor.gold)
+            .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 7).padding(.vertical, 3)
             .background(UniColor.gold.opacity(0.12), in: Capsule())
     }
@@ -145,12 +163,12 @@ struct WeeklyActivitiesStrip: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text("本周活动")
-                            .font(.system(size: 17, weight: .bold))
+                            .uniFont(17, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                         Spacer()
                         Button { showAll = true } label: {
                             HStack(spacing: 3) { Text("全部"); Image(systemName: "chevron.right") }
-                                .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                                .uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                                 .frame(minHeight: 44)
                         }
                         .buttonStyle(.plain)
@@ -169,10 +187,10 @@ struct WeeklyActivitiesStrip: View {
                 // .task 被取消后又重新出现，形成「请求—取消」死循环。
                 Button { showAll = true } label: {
                     HStack {
-                        Label("校园活动", systemImage: "sparkles").font(.uniLabel(13)).foregroundStyle(UniColor.ink)
+                        Label("校园活动", systemImage: "sparkles").uniFont(13, weight: .semibold).foregroundStyle(UniColor.ink)
                         Spacer()
-                        Text(store.isLoading ? "加载中…" : "本周暂无，看看全部").font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
-                        Image(systemName: "chevron.right").font(.system(size: 11)).foregroundStyle(UniColor.tertiary)
+                        Text(store.isLoading ? "加载中…" : "本周暂无，看看全部").uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
+                        Image(systemName: "chevron.right").uniFont(11).foregroundStyle(UniColor.tertiary)
                     }
                     .padding(.horizontal, 16).frame(minHeight: 48)
                     .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
@@ -225,15 +243,10 @@ struct ActivityListView: View {
                 if store.isLoading && store.items.isEmpty {
                     UniLoadingState("加载活动…").listRowSeparator(.hidden).listRowBackground(Color.clear)
                 } else if let error = store.errorMessage, store.items.isEmpty {
-                    VStack(spacing: 10) {
-                        Text(error).font(.uniBody(13)).foregroundStyle(UniColor.secondary)
-                        Button("重试") { Task { await store.refresh() } }.foregroundStyle(UniColor.blue)
-                    }
-                    .frame(maxWidth: .infinity).padding(.vertical, 40)
-                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                    UniErrorState(error) { Task { await store.refresh() } }
+                        .listRowSeparator(.hidden).listRowBackground(Color.clear)
                 } else if store.items.isEmpty {
-                    Text(emptyText).font(.uniBody(13)).foregroundStyle(UniColor.secondary)
-                        .frame(maxWidth: .infinity).padding(.vertical, 48)
+                    UniEmptyState(icon: "calendar", title: emptyText)
                         .listRowSeparator(.hidden).listRowBackground(Color.clear)
                 } else {
                     ForEach(store.items) { activity in
@@ -313,7 +326,7 @@ struct ActivityDetailView: View {
                 content(activity)
             } else if let loadError {
                 VStack(spacing: 12) {
-                    Text(loadError).font(.uniBody(14)).foregroundStyle(UniColor.secondary)
+                    Text(loadError).uniFont(14).foregroundStyle(UniColor.secondary)
                     Button("重新加载") { Task { await load() } }.foregroundStyle(UniColor.blue)
                 }
                 .padding(.top, 120)
@@ -394,7 +407,7 @@ struct ActivityDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             if activity.phase == "CANCELLED" {
                 Label("活动已取消" + (activity.cancelReason.map { "：\($0)" } ?? ""), systemImage: "xmark.octagon.fill")
-                    .font(.uniLabel(13)).foregroundStyle(UniColor.danger)
+                    .uniFont(13, weight: .semibold).foregroundStyle(UniColor.danger)
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                     .background(UniColor.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
             }
@@ -413,13 +426,13 @@ struct ActivityDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Text(activity.categoryLabel)
-                    .font(.uniLabel(11)).foregroundStyle(UniColor.blue)
+                    .uniFont(11, weight: .semibold).foregroundStyle(UniColor.blue)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(UniColor.blue.opacity(0.1), in: Capsule())
-                Text(activity.phaseLabel).font(.uniLabel(11)).foregroundStyle(UniColor.secondary)
+                Text(activity.phaseLabel).uniFont(11, weight: .semibold).foregroundStyle(UniColor.secondary)
             }
             Text(activity.title)
-                .font(.system(size: 24, weight: .heavy))
+                .uniFont(24, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
             HStack(spacing: 8) {
                 if let organizer = activity.organizer {
@@ -427,14 +440,14 @@ struct ActivityDetailView: View {
                         UniAvatar(url: organizer.avatarUrl, name: activity.organizerName, size: 28, shape: .circle)
                     }
                 }
-                Text(activity.organizerName).font(.uniLabel(13)).foregroundStyle(UniColor.ink)
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 12)).foregroundStyle(UniColor.blue)
+                Text(activity.organizerName).uniFont(13, weight: .semibold).foregroundStyle(UniColor.ink)
+                Image(systemName: "checkmark.seal.fill").uniFont(12).foregroundStyle(UniColor.blue)
                     .accessibilityLabel("认证组织者")
             }
             if activity.hasReward {
                 HStack(spacing: 6) {
                     RewardChips(activity: activity)
-                    Text("签到后发放").font(.uniLabel(10)).foregroundStyle(UniColor.tertiary)
+                    Text("签到后发放").uniFont(10, weight: .semibold).foregroundStyle(UniColor.tertiary)
                 }
             }
         }
@@ -454,9 +467,9 @@ struct ActivityDetailView: View {
 
     private func infoRow(_ icon: String, _ title: String, _ value: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon).font(.system(size: 14)).foregroundStyle(UniColor.blue).frame(width: 20)
-            Text(title).font(.uniLabel(12)).foregroundStyle(UniColor.secondary).frame(width: 56, alignment: .leading)
-            Text(value).font(.uniBody(14)).foregroundStyle(UniColor.ink)
+            Image(systemName: icon).uniFont(14).foregroundStyle(UniColor.blue).frame(width: 20)
+            Text(title).uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary).frame(width: 56, alignment: .leading)
+            Text(value).uniFont(14).foregroundStyle(UniColor.ink)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
@@ -467,11 +480,11 @@ struct ActivityDetailView: View {
         let ratio = min(1, Double(activity.registeredCount) / Double(capacity))
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("名额").font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                Text("名额").uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
                 Spacer()
-                Text("\(activity.registeredCount)/\(capacity)").font(.uniLabel(12)).foregroundStyle(UniColor.ink)
+                Text("\(activity.registeredCount)/\(capacity)").uniFont(12, weight: .semibold).foregroundStyle(UniColor.ink)
                 if activity.waitlistCount > 0 {
-                    Text("候补 \(activity.waitlistCount)").font(.uniLabel(11)).foregroundStyle(UniColor.tertiary)
+                    Text("候补 \(activity.waitlistCount)").uniFont(11, weight: .semibold).foregroundStyle(UniColor.tertiary)
                 }
             }
             GeometryReader { proxy in
@@ -489,15 +502,15 @@ struct ActivityDetailView: View {
 
     private func section(_ title: String, _ text: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 16, weight: .bold)).foregroundStyle(UniColor.ink)
-            Text(text).font(.uniBody(14)).foregroundStyle(UniColor.inkSoft).lineSpacing(4)
+            Text(title).uniFont(16, weight: .bold).foregroundStyle(UniColor.ink)
+            Text(text).uniFont(14).foregroundStyle(UniColor.inkSoft).lineSpacing(4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func attendees(_ activity: ActivityView) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("已报名 \(activity.registeredCount) 人").font(.system(size: 16, weight: .bold)).foregroundStyle(UniColor.ink)
+            Text("已报名 \(activity.registeredCount) 人").uniFont(16, weight: .bold).foregroundStyle(UniColor.ink)
             HStack(spacing: -8) {
                 ForEach(activity.recentAttendees, id: \.uid) { person in
                     UniAvatar(url: person.avatarUrl, name: person.nickname, size: 32, shape: .circle)
@@ -511,9 +524,9 @@ struct ActivityDetailView: View {
     private func actionBar(_ activity: ActivityView) -> some View {
         VStack(spacing: 6) {
             if let actionError {
-                Text(actionError).font(.uniLabel(12)).foregroundStyle(UniColor.danger)
+                Text(actionError).uniFont(12, weight: .semibold).foregroundStyle(UniColor.danger)
             } else if let hint = hint(activity) {
-                Text(hint).font(.uniLabel(12)).foregroundStyle(UniColor.secondary).multilineTextAlignment(.center)
+                Text(hint).uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary).multilineTextAlignment(.center)
             }
             Button {
                 Task { await primaryAction(activity) }
@@ -521,18 +534,18 @@ struct ActivityDetailView: View {
                 Group {
                     if isWorking { ProgressView().tint(.white) } else { Text(primaryTitle(activity)) }
                 }
-                .font(.system(size: 16, weight: .semibold))
+                .uniFont(16, weight: .semibold)
                 .foregroundStyle(primaryEnabled(activity) ? .white : UniColor.tertiary)
                 .frame(maxWidth: .infinity, minHeight: 52)
                 .background(primaryEnabled(activity) ? primaryColor(activity) : UniColor.mist,
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!primaryEnabled(activity) || isWorking)
             if activity.isRegistered, activity.checkinOpen, !activity.checkedIn,
                activity.phase == "OPEN" || activity.phase == "CLOSED" {
                 Button("取消报名") { confirmCancel = true }
-                    .font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                    .uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
                     .frame(minHeight: 36)
             }
         }

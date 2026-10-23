@@ -36,7 +36,7 @@ struct TermPlanSection: View {
             }
             if store.plan != nil, let message = store.errorMessage {
                 Text(message)
-                    .font(.uniLabel(12))
+                    .uniFont(12, weight: .semibold)
                     .foregroundStyle(UniColor.danger)
             }
         }
@@ -90,10 +90,10 @@ struct TermPlanSection: View {
                 }
                 VStack(spacing: 2) {
                     Text(plan.termLabel)
-                        .font(.system(size: 17, weight: .bold))
+                        .uniFont(17, weight: .bold)
                         .foregroundStyle(UniColor.ink)
                     Text(termRange(plan))
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
                 .frame(maxWidth: .infinity)
@@ -105,12 +105,12 @@ struct TermPlanSection: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("已完成 \(plan.summary.done)/\(plan.summary.total)")
-                        .font(.system(size: 15, weight: .bold))
+                        .uniFont(15, weight: .bold)
                         .foregroundStyle(UniColor.ink)
                     Spacer()
                     if !plan.current {
                         Button("回到本学期") { Task { await store.showCurrent() } }
-                            .font(.uniLabel(12))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(UniColor.blue)
                             .frame(minHeight: 44)
                     }
@@ -119,10 +119,9 @@ struct TermPlanSection: View {
                     .tint(UniColor.blue)
                     .accessibilityLabel("本学期完成度")
                     .accessibilityValue("\(Int(plan.summary.fraction * 100))%")
-                HStack(spacing: 14) {
-                    statPill("figure.walk", "参加 \(plan.summary.attended) 场")
-                    if plan.summary.activityXp > 0 { statPill("bolt.fill", "+\(plan.summary.activityXp) 经验") }
-                    if plan.summary.activityCoins > 0 { statPill("circle.hexagongrid.fill", "+\(plan.summary.activityCoins) 金币") }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) { statPills(plan.summary) }
+                    VStack(alignment: .leading, spacing: 6) { statPills(plan.summary) }
                 }
             }
         }
@@ -137,7 +136,7 @@ struct TermPlanSection: View {
                            action: @escaping () async -> Void) -> some View {
         Button { Task { await action() } } label: {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .bold))
+                .uniFont(14, weight: .bold)
                 .foregroundStyle(enabled ? UniColor.ink : UniColor.mist)
                 .frame(width: 44, height: 44)
                 .background(UniColor.paper, in: Circle())
@@ -147,10 +146,19 @@ struct TermPlanSection: View {
         .accessibilityLabel(label)
     }
 
+    @ViewBuilder
+    private func statPills(_ summary: TermSummary) -> some View {
+        statPill("figure.walk", "参加 \(summary.attended) 场")
+        if summary.activityXp > 0 { statPill("bolt.fill", "+\(summary.activityXp) 经验") }
+        if summary.activityCoins > 0 { statPill("circle.hexagongrid.fill", "+\(summary.activityCoins) 金币") }
+    }
+
     private func statPill(_ icon: String, _ text: String) -> some View {
         Label(text, systemImage: icon)
-            .font(.uniLabel(11))
+            .uniFont(11, weight: .semibold)
             .foregroundStyle(UniColor.secondary)
+            .lineLimit(1)
+            .fixedSize()
     }
 
     private func termRange(_ plan: TermPlan) -> String {
@@ -191,14 +199,14 @@ struct TermPlanSection: View {
                         PlanTitle(text: task.title, done: done)
                         if let description = task.description, !description.isEmpty {
                             Text(description)
-                                .font(.uniLabel(11))
+                                .uniFont(11, weight: .semibold)
                                 .foregroundStyle(UniColor.tertiary)
                                 .lineLimit(2)
                         }
                     }
                     Spacer()
                     Text("+\(task.xp)")
-                        .font(.uniLabel(10))
+                        .uniFont(10, weight: .semibold)
                         .foregroundStyle(UniColor.gold)
                 }
                 .padding(.vertical, 4)
@@ -227,7 +235,7 @@ struct TermPlanSection: View {
                     editor = PersonalTaskEditorTarget(task: nil, termStart: plan.termStart)
                 } label: {
                     Label("添加", systemImage: "plus")
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(UniColor.blue)
                         .frame(minWidth: 44, minHeight: 44)
                 }
@@ -254,13 +262,13 @@ struct TermPlanSection: View {
                                     PlanTitle(text: task.title, done: done)
                                     if let note = task.note, !note.isEmpty {
                                         Text(note)
-                                            .font(.uniLabel(11))
+                                            .uniFont(11, weight: .semibold)
                                             .foregroundStyle(UniColor.tertiary)
                                             .lineLimit(2)
                                     }
                                     if let due = task.dueAt, !done {
                                         Label("截止 \(ActivityTime.short(due))", systemImage: "clock")
-                                            .font(.uniLabel(10))
+                                            .uniFont(10, weight: .semibold)
                                             .foregroundStyle(task.isOverdue ? UniColor.danger : UniColor.secondary)
                                     }
                                 }
@@ -293,17 +301,8 @@ struct TermPlanSection: View {
     }
 
     private var retryCard: some View {
-        VStack(spacing: 10) {
-            Text(store.errorMessage ?? "清单暂时没有加载出来")
-                .font(.uniBody(13))
-                .foregroundStyle(UniColor.secondary)
-                .multilineTextAlignment(.center)
-            Button("重试") { Task { await store.load(termStart: store.termStart) } }
-                .buttonStyle(UniGhostButtonStyle())
-        }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+        UniErrorState(store.errorMessage) { Task { await store.load(termStart: store.termStart) } }
+            .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
     }
 }
 
@@ -328,10 +327,10 @@ private struct PlanBlock<Trailing: View, Content: View>: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(.system(size: 17, weight: .bold))
+                        .uniFont(17, weight: .bold)
                         .foregroundStyle(UniColor.ink)
                     Text(caption)
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
                 Spacer()
@@ -356,7 +355,7 @@ private struct PlanCheckButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 20, weight: .semibold))
+                .uniFont(20, weight: .semibold)
                 .foregroundStyle(done ? UniColor.blue : UniColor.tertiary)
                 .frame(width: 44, height: 44)
         }
@@ -372,7 +371,7 @@ private struct PlanTitle: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 14, weight: .semibold))
+            .uniFont(14, weight: .semibold)
             .foregroundStyle(done ? UniColor.secondary : UniColor.ink)
             .strikethrough(done, color: UniColor.tertiary)
             .multilineTextAlignment(.leading)
@@ -386,11 +385,11 @@ private struct PlanEmptyRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(text)
-                .font(.uniBody(13))
+                .uniFont(13)
                 .foregroundStyle(UniColor.secondary)
             if let action {
                 Button(action.0, action: action.1)
-                    .font(.uniLabel(12))
+                    .uniFont(12, weight: .semibold)
                     .foregroundStyle(UniColor.blue)
                     .frame(minHeight: 44)
             }
@@ -402,41 +401,53 @@ private struct PlanEmptyRow: View {
 
 /// 活动行：状态图标代替勾选框——活动只能靠现场签到完成，不能手动打勾。
 private struct ActivityPlanRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let item: GrowthParticipation
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(alignment: typeSize.isAccessibilitySize ? .top : .center, spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
+                .uniFont(18, weight: .semibold)
                 .foregroundStyle(tint)
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 PlanTitle(text: item.title, done: item.checkedIn)
                 Text("\(ActivityTime.range(item.startsAt, item.endsAt)) · \(item.location)")
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.tertiary)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+                // 辅助功能大字体下状态移到标题下面，给标题留出整行宽度。
+                if typeSize.isAccessibilitySize { status }
             }
             Spacer(minLength: 6)
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(item.statusLabel)
-                    .font(.uniLabel(10))
-                    .foregroundStyle(tint)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(tint.opacity(0.1), in: Capsule())
-                if item.checkedIn, item.xpGranted > 0 {
-                    Text("+\(item.xpGranted) 经验")
-                        .font(.uniLabel(10))
-                        .foregroundStyle(UniColor.gold)
-                }
+            if !typeSize.isAccessibilitySize {
+                VStack(alignment: .trailing, spacing: 3) { status }
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint("查看活动详情")
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        Text(item.statusLabel)
+            .uniFont(10, weight: .semibold)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.1), in: Capsule())
+        if item.checkedIn, item.xpGranted > 0 {
+            Text("+\(item.xpGranted) 经验")
+                .uniFont(10, weight: .semibold)
+                .foregroundStyle(UniColor.gold)
+                .lineLimit(1)
+                .fixedSize()
+        }
     }
 
     private var icon: String {
@@ -499,7 +510,7 @@ private struct PersonalTaskEditor: View {
                 }
                 if failed {
                     Text("保存没有成功，请稍后再试")
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(UniColor.danger)
                 }
             }
@@ -572,15 +583,8 @@ struct GrowthArchiveSection: View {
                 UniLoadingState("正在翻开成长档案")
                     .frame(maxWidth: .infinity, minHeight: 160)
             } else {
-                VStack(spacing: 10) {
-                    Text(errorMessage ?? "档案暂时没有加载出来")
-                        .font(.uniBody(13))
-                        .foregroundStyle(UniColor.secondary)
-                    Button("重试") { Task { await load() } }
-                        .buttonStyle(UniGhostButtonStyle())
-                }
-                .frame(maxWidth: .infinity)
-                .padding(24)
+                UniErrorState(errorMessage) { Task { await load() } }
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
             }
         }
         .task { await load() }
@@ -593,14 +597,14 @@ struct GrowthArchiveSection: View {
     private func totalCard(value: Int, title: String, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .uniFont(15, weight: .semibold)
                 .foregroundStyle(UniColor.blue)
             Text("\(value)")
-                .font(.system(size: 26, weight: .heavy))
+                .uniFont(26, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
                 .monospacedDigit()
             Text(title)
-                .font(.uniLabel(11))
+                .uniFont(11, weight: .semibold)
                 .foregroundStyle(UniColor.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -613,11 +617,11 @@ struct GrowthArchiveSection: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Text(term.termLabel)
-                    .font(.system(size: 16, weight: .bold))
+                    .uniFont(16, weight: .bold)
                     .foregroundStyle(UniColor.ink)
                 if term.current {
                     Text("本学期")
-                        .font(.uniLabel(9))
+                        .uniFont(9, weight: .semibold)
                         .foregroundStyle(UniColor.blue)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -626,14 +630,14 @@ struct GrowthArchiveSection: View {
                 Spacer()
                 if term.activityXp > 0 {
                     Text("+\(term.activityXp) 经验 · +\(term.activityCoins) 金币")
-                        .font(.uniLabel(10))
+                        .uniFont(10, weight: .semibold)
                         .foregroundStyle(UniColor.gold)
                 }
             }
 
             if term.isEmpty {
                 Text(term.current ? "这个学期刚开始，参加活动、完成任务后会记在这里" : "这个学期没有记录")
-                    .font(.uniBody(12))
+                    .uniFont(12)
                     .foregroundStyle(UniColor.tertiary)
             } else {
                 HStack(spacing: 16) {
@@ -647,7 +651,7 @@ struct GrowthArchiveSection: View {
                         HStack(spacing: 8) {
                             ForEach(term.badges) { badge in
                                 Label(badge.title, systemImage: badge.icon)
-                                    .font(.uniLabel(11))
+                                    .uniFont(11, weight: .semibold)
                                     .foregroundStyle(UniColor.ink)
                                     .padding(.horizontal, 10)
                                     .frame(minHeight: 30)
@@ -663,16 +667,16 @@ struct GrowthArchiveSection: View {
                             Button { openedActivity = ActivityRef(id: item.activityId) } label: {
                                 HStack(spacing: 10) {
                                     Text(GrowthDate.monthDay(item.startsAt))
-                                        .font(.uniLabel(11))
+                                        .uniFont(11, weight: .semibold)
                                         .foregroundStyle(UniColor.tertiary)
                                         .frame(width: 52, alignment: .leading)
                                     Text(item.title)
-                                        .font(.system(size: 14, weight: .semibold))
+                                        .uniFont(14, weight: .semibold)
                                         .foregroundStyle(UniColor.ink)
                                         .lineLimit(1)
                                     Spacer(minLength: 6)
                                     Image(systemName: "chevron.right")
-                                        .font(.system(size: 11))
+                                        .uniFont(11)
                                         .foregroundStyle(UniColor.tertiary)
                                 }
                                 .frame(minHeight: 44)
@@ -693,11 +697,11 @@ struct GrowthArchiveSection: View {
     private func archiveStat(_ value: String, _ title: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
-                .font(.system(size: 16, weight: .bold))
+                .uniFont(16, weight: .bold)
                 .foregroundStyle(UniColor.ink)
                 .monospacedDigit()
             Text(title)
-                .font(.uniLabel(10))
+                .uniFont(10, weight: .semibold)
                 .foregroundStyle(UniColor.tertiary)
         }
         .accessibilityElement(children: .combine)

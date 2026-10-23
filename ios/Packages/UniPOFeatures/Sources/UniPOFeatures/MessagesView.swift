@@ -89,7 +89,7 @@ struct MessagesView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 if store.hasVerifiedIdentity, let error = selected == nil ? store.conversationError : store.syncError {
                     HStack {
-                        Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                        Text(error).uniFont(12).foregroundStyle(UniColor.secondary)
                         Spacer()
                         Button("重试") {
                             Task {
@@ -97,7 +97,7 @@ struct MessagesView: View {
                                 else { await store.synchronizeMessages() }
                             }
                         }
-                            .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                            .uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                     }
                     .padding(14).background(UniColor.paper)
                 }
@@ -115,16 +115,16 @@ struct MessagesView: View {
     private var signedOut: some View {
         VStack(spacing: 14) {
             Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 34))
+                .uniFont(34)
                 .foregroundStyle(UniColor.tertiary)
             Text(auth.isSessionRecoveryPending ? "正在确认登录状态" : "登录后查看私信")
-                .font(.system(size: 18, weight: .bold))
+                .uniFont(18, weight: .bold)
                 .foregroundStyle(UniColor.ink)
             if auth.isRestoring {
                 ProgressView().tint(UniColor.blue)
             } else if auth.isSessionRecoveryPending {
                 Text(auth.recoveryError ?? "请稍后重试")
-                    .font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                    .uniFont(12).foregroundStyle(UniColor.secondary)
                 Button("重试") { Task { await auth.restore() } }
                     .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40)
             } else {
@@ -142,19 +142,8 @@ struct MessagesView: View {
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             } else if conversations.isEmpty && store.conversationError == nil && !store.hasMoreConversations {
-                VStack(spacing: 8) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 30))
-                        .foregroundStyle(UniColor.tertiary)
-                    Text("还没有会话")
-                        .font(.uniBody(14))
-                        .foregroundStyle(UniColor.secondary)
-                    Text("从帖子详情或作者主页发起私信")
-                        .font(.uniLabel(11))
-                        .foregroundStyle(UniColor.tertiary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
+                UniEmptyState(icon: "bubble.left.and.bubble.right", title: "还没有会话",
+                              message: "从帖子详情或作者主页发起私信")
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             } else {
@@ -171,21 +160,21 @@ struct MessagesView: View {
                                 VStack(alignment: .leading, spacing: 3) {
                                     HStack {
                                         Text(conversation.peer.nickname)
-                                            .font(.system(size: 15, weight: .bold))
+                                            .uniFont(15, weight: .bold)
                                             .foregroundStyle(UniColor.ink)
                                         Spacer()
                                         Text(RelativeTime.text(from: conversation.lastMessageAt))
-                                            .font(.uniLabel(10))
+                                            .uniFont(10, weight: .semibold)
                                             .foregroundStyle(UniColor.tertiary)
                                     }
                                     Text(conversation.lastMessage ?? "开始聊天")
-                                        .font(.uniBody(12))
+                                        .uniFont(12)
                                         .foregroundStyle(UniColor.secondary)
                                         .lineLimit(1)
                                 }
                                 if (conversation.unreadCount ?? 0) > 0 {
                                     Text("\(conversation.unreadCount ?? 0)")
-                                        .font(.uniLabel(10))
+                                        .uniFont(10, weight: .semibold)
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 3)
@@ -202,14 +191,14 @@ struct MessagesView: View {
             if store.hasMoreConversations {
                 VStack(spacing: 8) {
                     if let error = store.conversationPageError {
-                        Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                        Text(error).uniFont(12).foregroundStyle(UniColor.secondary)
                     }
                     if store.isLoadingMoreConversations { ProgressView() }
                     else {
                         Button(store.conversationPageError == nil ? "加载更多会话" : "重新加载") {
                             Task { await store.loadMoreConversations() }
                         }
-                        .font(.uniLabel(13)).foregroundStyle(UniColor.blue)
+                        .uniFont(13, weight: .semibold).foregroundStyle(UniColor.blue)
                     }
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 14)
@@ -230,15 +219,15 @@ struct MessagesView: View {
                     UniAvatar(url: conversation.peer.avatarUrl, name: conversation.peer.nickname, size: 36, shape: .circle)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(conversation.peer.nickname)
-                            .font(.uniLabel(13))
+                            .uniFont(13, weight: .semibold)
                             .foregroundStyle(UniColor.ink)
                         Text("UID \(conversation.peer.uid)")
-                            .font(.uniLabel(10))
+                            .uniFont(10, weight: .semibold)
                             .foregroundStyle(UniColor.secondary)
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
                 .frame(minHeight: 44)
@@ -252,13 +241,13 @@ struct MessagesView: View {
                         if store.isLoadingMessages {
                             UniLoadingState("加载消息…")
                         } else if let error = store.messageError {
-                            Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                            Text(error).uniFont(12).foregroundStyle(UniColor.secondary)
                             Button("重新加载消息") { Task { await store.loadMessages(conversation.id) } }
-                                .font(.uniLabel(13)).foregroundStyle(UniColor.blue)
+                                .uniFont(13, weight: .semibold).foregroundStyle(UniColor.blue)
                         }
                         if store.hasOlderMessages {
                             if let error = store.historyError {
-                                Text(error).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                                Text(error).uniFont(12).foregroundStyle(UniColor.secondary)
                             }
                             if store.isLoadingHistory { ProgressView().padding(10) }
                             else {
@@ -270,7 +259,7 @@ struct MessagesView: View {
                                         if let anchor { proxy.scrollTo(anchor, anchor: .top) }
                                     }
                                 }
-                                .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                                .uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                                 .padding(.vertical, 10)
                             }
                         }
@@ -301,13 +290,13 @@ struct MessagesView: View {
                     .lineLimit(1...3)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(UniColor.paper, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(UniColor.paper, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
                 Button {
                     Task { await store.send() }
                 } label: {
                     if isSending { ProgressView() } else { Image(systemName: "arrow.up.circle.fill") }
                 }
-                .font(.system(size: 28))
+                .uniFont(28)
                 .foregroundStyle(draft.trimmingCharacters(in: .whitespaces).isEmpty ? UniColor.tertiary : UniColor.ink)
                 .disabled(isSending || draft.trimmingCharacters(in: .whitespaces).isEmpty)
             }
@@ -323,16 +312,16 @@ struct MessagesView: View {
             if mine { Spacer(minLength: 40) }
             VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
-                .font(.uniBody(14))
+                .uniFont(14)
                 .foregroundStyle(mine ? .white : UniColor.ink)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
                     mine ? AnyShapeStyle(UniColor.ink) : AnyShapeStyle(UniColor.paper),
-                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
                 )
                 if mine && message.id == messages.last?.id {
-                    Text("已发送").font(.uniLabel(10)).foregroundStyle(UniColor.tertiary)
+                    Text("已发送").uniFont(10, weight: .semibold).foregroundStyle(UniColor.tertiary)
                 }
             }
             if !mine { Spacer(minLength: 40) }
@@ -344,25 +333,25 @@ struct MessagesView: View {
             Spacer(minLength: 40)
             VStack(alignment: .trailing, spacing: 7) {
                 Text(pending.content)
-                    .font(.uniBody(14)).foregroundStyle(UniColor.ink)
+                    .uniFont(14).foregroundStyle(UniColor.ink)
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(UniColor.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
-                    .overlay(RoundedRectangle(cornerRadius: 18).stroke(UniColor.blue.opacity(0.24), lineWidth: 1))
+                    .background(UniColor.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: UniRadius.tile))
+                    .overlay(RoundedRectangle(cornerRadius: UniRadius.tile).stroke(UniColor.blue.opacity(0.24), lineWidth: 1))
                 if pending.isSending {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
-                        Text("正在发送").font(.uniLabel(11))
+                        Text("正在发送").uniFont(11, weight: .semibold)
                     }.foregroundStyle(UniColor.secondary)
                 } else {
                     Text(pending.errorMessage ?? "未确认发送，请重试")
-                        .font(.uniBody(11)).foregroundStyle(UniColor.secondary)
+                        .uniFont(11).foregroundStyle(UniColor.secondary)
                     HStack(spacing: 18) {
                         Button("不再重试") { store.discardRetry(pending.id) }
                             .foregroundStyle(UniColor.secondary)
                         Button("重试") { Task { await store.retryMessage(pending.id) } }
                             .foregroundStyle(UniColor.blue).disabled(isSending)
                     }
-                    .font(.uniLabel(12)).frame(minHeight: 44)
+                    .uniFont(12, weight: .semibold).frame(minHeight: 44)
                 }
             }
         }

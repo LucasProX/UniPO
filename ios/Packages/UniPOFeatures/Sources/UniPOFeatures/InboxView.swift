@@ -39,7 +39,7 @@ struct InboxView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("消息")
-                .font(.system(size: 30, weight: .heavy))
+                .uniFont(30, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
             Picker("消息类型", selection: $section) {
                 ForEach(Section.allCases) { Text($0.rawValue).tag($0) }
@@ -66,21 +66,12 @@ struct InteractionNoticesView: View {
             if isLoading && notices.isEmpty {
                 UniLoadingState("加载互动…").listRowSeparator(.hidden).listRowBackground(Color.clear)
             } else if let errorMessage, notices.isEmpty {
-                VStack(spacing: 10) {
-                    Text(errorMessage).font(.uniBody(13)).foregroundStyle(UniColor.secondary)
-                    Button("重试") { Task { await load() } }.font(.uniLabel(13)).foregroundStyle(UniColor.blue)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 40)
-                .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                UniErrorState(errorMessage) { Task { await load() } }
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
             } else if notices.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "heart.text.square").font(.system(size: 30)).foregroundStyle(UniColor.tertiary)
-                    Text("还没有互动").font(.system(size: 16, weight: .bold)).foregroundStyle(UniColor.ink)
-                    Text("别人点赞、收藏或评论你的 PO 时会出现在这里")
-                        .font(.uniBody(12)).foregroundStyle(UniColor.secondary)
-                }
-                .frame(maxWidth: .infinity).padding(.vertical, 48)
-                .listRowSeparator(.hidden).listRowBackground(Color.clear)
+                UniEmptyState(icon: "heart.text.square", title: "还没有互动",
+                              message: "别人点赞、收藏或评论你的 PO 时会出现在这里")
+                    .listRowSeparator(.hidden).listRowBackground(Color.clear)
             } else {
                 ForEach(notices, id: \.listID) { notice in
                     row(notice)
@@ -115,34 +106,34 @@ struct InteractionNoticesView: View {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         Text(notice.actor.nickname)
-                            .font(.system(size: 14, weight: .bold))
+                            .uniFont(14, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                             .lineLimit(1)
                         Text(action(notice.type))
-                            .font(.uniBody(13))
+                            .uniFont(13)
                             .foregroundStyle(UniColor.secondary)
                         Spacer(minLength: 4)
                         Image(systemName: icon(notice.type))
-                            .font(.system(size: 12, weight: .semibold))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(tint(notice.type))
                     }
                     if let comment = notice.commentContent, !comment.isEmpty {
                         Text(comment)
-                            .font(.uniBody(14))
+                            .uniFont(14)
                             .foregroundStyle(UniColor.ink)
                             .lineLimit(3)
                     }
                     if let post = notice.post {
                         Text(post.title)
-                            .font(.uniLabel(12))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(UniColor.secondary)
                             .lineLimit(1)
                             .padding(.horizontal, 10).padding(.vertical, 7)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(UniColor.mist.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .background(UniColor.mist.opacity(0.6), in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
                     }
                     Text(RelativeTime.text(from: notice.createdAt))
-                        .font(.uniLabel(10))
+                        .uniFont(10, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
                 .contentShape(Rectangle())

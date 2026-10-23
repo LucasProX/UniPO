@@ -96,7 +96,7 @@ struct LoginView: View {
                 auth.loginRequested = false
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 15, weight: .semibold))
+                    .uniFont(15, weight: .semibold)
                     .foregroundStyle(.white.opacity(0.8))
                     .frame(width: 36, height: 36)
                     .background(.white.opacity(0.08), in: Circle())
@@ -107,7 +107,7 @@ struct LoginView: View {
                 Button("完成") {
                     focusedField = nil
                 }
-                .font(.system(size: 14, weight: .semibold))
+                .uniFont(14, weight: .semibold)
                 .foregroundStyle(.white.opacity(0.8))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -121,23 +121,23 @@ struct LoginView: View {
     private var brand: some View {
         VStack(spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                     .fill(.white)
                     .frame(width: 76, height: 76)
                     .shadow(color: .white.opacity(0.18), radius: 30, y: 10)
                 Text("PO")
-                    .font(.system(size: 24, weight: .heavy))
+                    .uniFont(24, weight: .heavy)
                     .foregroundStyle(.black)
             }
             .scaleEffect(appeared ? 1 : 0.9)
 
             Text("UniPO")
-                .font(.system(size: 32, weight: .heavy))
+                .uniFont(32, weight: .heavy)
                 .foregroundStyle(.white)
                 .tracking(1)
 
             Text("大学生活缤纷多彩，开始探索吧")
-                .font(.uniBody(13))
+                .uniFont(13)
                 .foregroundStyle(.white.opacity(0.5))
         }
     }
@@ -146,11 +146,11 @@ struct LoginView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(spacing: 5) {
                 Text("手机号登录")
-                    .font(.system(size: 24, weight: .heavy))
+                    .uniFont(24, weight: .heavy)
                     .foregroundStyle(.white)
                     .accessibilityIdentifier("login.phone.title")
                 Text("未注册的手机号会自动创建账号")
-                    .font(.uniBody(12))
+                    .uniFont(12)
                     .foregroundStyle(.white.opacity(0.45))
             }
             .multilineTextAlignment(.center)
@@ -158,7 +158,7 @@ struct LoginView: View {
 
             HStack(spacing: 0) {
                 Text("+86")
-                    .font(.system(size: 16, weight: .semibold))
+                    .uniFont(16, weight: .semibold)
                     .foregroundStyle(.white.opacity(0.6))
                     .padding(.horizontal, 14)
                 Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 22)
@@ -166,7 +166,7 @@ struct LoginView: View {
                     .focused($focusedField, equals: .phone)
                     .keyboardType(.numberPad)
                     .textContentType(.telephoneNumber)
-                    .font(.system(size: 17, weight: .semibold))
+                    .uniFont(17, weight: .semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .accessibilityIdentifier("login.phone")
@@ -175,9 +175,9 @@ struct LoginView: View {
                     }
             }
             .frame(height: 54)
-            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous)
                     .stroke(.white.opacity(0.14), lineWidth: 1)
             )
 
@@ -186,7 +186,7 @@ struct LoginView: View {
                     .focused($focusedField, equals: .code)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
-                    .font(.system(size: 17, weight: .semibold))
+                    .uniFont(17, weight: .semibold)
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .accessibilityIdentifier("login.code")
@@ -194,7 +194,7 @@ struct LoginView: View {
                         code = String(newValue.filter { $0 >= "0" && $0 <= "9" }.prefix(4))
                     }
                     .frame(height: 54)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
 
                 Button {
                     Task { await sendCode() }
@@ -204,14 +204,14 @@ struct LoginView: View {
                             ProgressView().tint(.white)
                         } else {
                             Text(countdown > 0 ? "\(countdown)s" : "获取验证码")
-                                .font(.system(size: 13, weight: .semibold))
+                                .uniFont(13, weight: .semibold)
                         }
                     }
                     .foregroundStyle(countdown > 0 ? .white.opacity(0.35) : .white)
                     .frame(width: 100, height: 54)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous)
                             .stroke(.white.opacity(0.14), lineWidth: 1)
                     )
                 }
@@ -222,7 +222,7 @@ struct LoginView: View {
 
             if let error = auth.errorMessage {
                 Text(error)
-                    .font(.uniLabel(12))
+                    .uniFont(12, weight: .semibold)
                     .foregroundStyle(.red.opacity(0.9))
                     .accessibilityIdentifier("login.error")
             }
@@ -235,13 +235,13 @@ struct LoginView: View {
                         ProgressView().tint(.black)
                     } else {
                         Text("登录 / 注册")
-                            .font(.system(size: 16, weight: .semibold))
+                            .uniFont(16, weight: .semibold)
                     }
                 }
                 .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
-                .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .background(.white, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!canSubmitPhone)
@@ -266,13 +266,13 @@ struct LoginView: View {
     private func socialButton(label: String, name: String) -> some View {
         VStack(spacing: 5) {
             Text(label)
-                .font(.system(size: 17, weight: .bold))
+                .uniFont(17, weight: .bold)
                 .foregroundStyle(.white.opacity(0.45))
                 .frame(width: 46, height: 46)
                 .background(.white.opacity(0.06), in: Circle())
                 .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 1))
             Text(name)
-                .font(.uniLabel(9))
+                .uniFont(9, weight: .semibold)
                 .foregroundStyle(.white.opacity(0.28))
         }
         .opacity(0.75)
@@ -284,7 +284,7 @@ struct LoginView: View {
                 agreed.toggle()
             } label: {
                 Image(systemName: agreed ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18, weight: .semibold))
+                    .uniFont(18, weight: .semibold)
                     .foregroundStyle(agreed ? .white : .white.opacity(0.35))
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
@@ -350,7 +350,7 @@ struct LoginView: View {
 
     private var footer: some View {
         Text("UniPO · 让大学每一步都有答案")
-            .font(.uniLabel(10))
+            .uniFont(10, weight: .semibold)
             .foregroundStyle(.white.opacity(0.2))
             .padding(.top, 10)
     }
@@ -442,10 +442,10 @@ private struct AgreementSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text("协议内容暂不可用")
-                        .font(.uniBody(14))
+                        .uniFont(14)
                         .foregroundStyle(UniColor.secondary)
                     Text("请稍后再试。")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(UniColor.secondary)
                         .lineSpacing(5)
                 }

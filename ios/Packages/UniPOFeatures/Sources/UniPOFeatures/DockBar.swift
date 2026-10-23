@@ -70,5 +70,9 @@ struct DockBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(badge > 0 ? "\(label)，\(badge) 条未读" : label)
+        // 底栏和系统 Tab 栏一样不随字号放大（会挤掉内容区），大字体下长按显示放大预览。
+        .accessibilityShowsLargeContentViewer {
+            Label(label, systemImage: icon)
+        }
     }
 }

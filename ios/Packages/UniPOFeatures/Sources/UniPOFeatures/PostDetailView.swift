@@ -161,10 +161,10 @@ struct PostDetailView: View {
                     UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 42)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(post.author.nickname)
-                            .font(.system(size: 15, weight: .bold))
+                            .uniFont(15, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                         Text("Lv.\(post.author.level) \(post.author.levelTitle ?? "")")
-                            .font(.uniLabel(11))
+                            .uniFont(11, weight: .semibold)
                             .foregroundStyle(UniColor.secondary)
                     }
                 }
@@ -176,7 +176,7 @@ struct PostDetailView: View {
                 Task { await startChat() }
             } label: {
                 Image(systemName: "bubble.left")
-                    .font(.system(size: 14, weight: .semibold))
+                    .uniFont(14, weight: .semibold)
                     .foregroundStyle(UniColor.ink)
                     .frame(width: 34, height: 34)
                     .background(UniColor.paper, in: Circle())
@@ -189,11 +189,11 @@ struct PostDetailView: View {
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(post.title)
-                .font(.system(size: 24, weight: .heavy))
+                .uniFont(24, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
 
             Text(post.content)
-                .font(.uniBody(15))
+                .uniFont(15)
                 .foregroundStyle(UniColor.inkSoft)
                 .lineSpacing(5)
 
@@ -204,11 +204,11 @@ struct PostDetailView: View {
                             if case .success(let image) = phase {
                                 image.resizable().scaledToFit()
                             } else {
-                                RoundedRectangle(cornerRadius: 16).fill(UniColor.mist)
+                                RoundedRectangle(cornerRadius: UniRadius.button).fill(UniColor.mist)
                                     .frame(height: 200)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
                     }
                 }
             }
@@ -220,7 +220,7 @@ struct PostDetailView: View {
             }
 
             Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
-                .font(.uniLabel(11))
+                .uniFont(11, weight: .semibold)
                 .foregroundStyle(UniColor.tertiary)
         }
     }
@@ -252,8 +252,8 @@ struct PostDetailView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(title).font(.uniLabel(12))
+                    .uniFont(13, weight: .semibold)
+                Text(title).uniFont(12, weight: .semibold)
             }
             .foregroundStyle(tint)
             .padding(.horizontal, 12)
@@ -266,14 +266,14 @@ struct PostDetailView: View {
     private var commentsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("评论 \(comments.count)")
-                .font(.system(size: 17, weight: .bold))
+                .uniFont(17, weight: .bold)
                 .foregroundStyle(UniColor.ink)
 
             if isLoading {
                 UniLoadingState("加载评论…")
             } else if comments.isEmpty {
                 Text("还没有评论，来说两句")
-                    .font(.uniBody(13))
+                    .uniFont(13)
                     .foregroundStyle(UniColor.secondary)
                     .padding(.vertical, 20)
             } else {
@@ -324,16 +324,16 @@ struct PostDetailView: View {
                 HStack(spacing: 6) {
                     UserProfileLink(uid: comment.author.uid, name: comment.author.nickname) {
                         Text(comment.author.nickname)
-                            .font(.uniLabel(12))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(UniColor.ink)
                     }
                     if comment.author.uid == post.author.uid {
-                        Text("作者").font(.uniLabel(9)).foregroundStyle(UniColor.blue)
+                        Text("作者").uniFont(9, weight: .semibold).foregroundStyle(UniColor.blue)
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(UniColor.blue.opacity(0.1), in: Capsule())
                     }
                     Text(RelativeTime.text(from: comment.createdAt))
-                        .font(.uniLabel(10))
+                        .uniFont(10, weight: .semibold)
                         .foregroundStyle(UniColor.tertiary)
                 }
                 (parentName.map { Text("回复 @\($0)：").foregroundColor(UniColor.secondary) } ?? Text(""))
@@ -344,11 +344,11 @@ struct PostDetailView: View {
                     commentIntentKey = UUID().uuidString
                     commentFocused = true
                 }
-                .font(.uniLabel(11))
+                .uniFont(11, weight: .semibold)
                 .foregroundStyle(UniColor.secondary)
                 .frame(minHeight: 28)
             }
-            .font(.uniBody(13))
+            .uniFont(13)
             .foregroundStyle(UniColor.inkSoft)
             Spacer(minLength: 4)
             Button {
@@ -356,8 +356,8 @@ struct PostDetailView: View {
             } label: {
                 VStack(spacing: 2) {
                     Image(systemName: likeState.liked ? "heart.fill" : "heart")
-                        .font(.system(size: 13, weight: .semibold))
-                    if likeState.count > 0 { Text("\(likeState.count)").font(.uniLabel(10)) }
+                        .uniFont(13, weight: .semibold)
+                    if likeState.count > 0 { Text("\(likeState.count)").uniFont(10, weight: .semibold) }
                 }
                 .foregroundStyle(likeState.liked ? UniColor.danger : UniColor.tertiary)
                 .frame(width: 44, height: 44)
@@ -374,7 +374,7 @@ struct PostDetailView: View {
             if let replyTarget {
                 HStack(spacing: 6) {
                     Text("回复 @\(replyTarget.author.nickname)")
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.blue)
                         .lineLimit(1)
                     Spacer()
@@ -392,11 +392,11 @@ struct PostDetailView: View {
                 HStack(spacing: 6) {
                     Circle().fill(UniColor.blue).frame(width: 5, height: 5)
                     Text("参与讨论")
-                        .font(.uniLabel(11))
+                        .uniFont(11, weight: .semibold)
                         .foregroundStyle(UniColor.blue)
                     Spacer()
                     Text("\(commentLength)/\(commentLimit)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .uniFont(10, weight: .medium, design: .monospaced)
                         .foregroundStyle(commentOverLimit ? UniColor.danger : UniColor.tertiary)
                         .accessibilityLabel("评论长度 \(commentLength)，上限 \(commentLimit)")
                 }
@@ -405,14 +405,14 @@ struct PostDetailView: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 Image(systemName: "square.and.pencil")
-                    .font(.system(size: 15, weight: .semibold))
+                    .uniFont(15, weight: .semibold)
                     .foregroundStyle(UniColor.blue)
                     .frame(width: 34, height: 44)
-                    .background(UniColor.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+                    .background(UniColor.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: UniRadius.control))
                     .accessibilityHidden(true)
 
                 TextField("写下你的想法…", text: $commentText, axis: .vertical)
-                    .font(.uniBody(14))
+                    .uniFont(14)
                     .foregroundStyle(UniColor.ink)
                     .tint(UniColor.blue)
                     .lineLimit(1...5)
@@ -435,16 +435,16 @@ struct PostDetailView: View {
                             ProgressView().tint(.white)
                         } else {
                             Text(commentError == nil ? (auth.isAuthenticated ? "发送" : "登录发送") : "重试")
-                                .font(.uniLabel(12))
+                                .uniFont(12, weight: .semibold)
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 11, weight: .bold))
+                                .uniFont(11, weight: .bold)
                         }
                     }
                     .foregroundStyle(canSendComment || isSending ? .white : UniColor.tertiary)
                     .padding(.horizontal, 13)
                     .frame(minWidth: 58, minHeight: 44)
                     .background(canSendComment || isSending ? UniColor.blue : UniColor.mist.opacity(0.7),
-                                in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSendComment)
@@ -454,20 +454,20 @@ struct PostDetailView: View {
 
             if let commentError {
                 Text(commentError)
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.danger)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("comment.error")
             } else if commentOverLimit {
                 Text("评论最多 \(commentLimit) 个字符，请精简后发送")
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.danger)
             }
         }
         .padding(12)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(commentFocused ? UniColor.blue.opacity(0.6) : UniColor.mist, lineWidth: commentFocused ? 1.2 : 1)
         }
         .shadow(color: UniColor.ink.opacity(0.04), radius: 14, y: 5)

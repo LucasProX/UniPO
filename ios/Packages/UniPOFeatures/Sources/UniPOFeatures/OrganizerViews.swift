@@ -34,10 +34,10 @@ struct ActivityRosterView: View {
                 .pickerStyle(.segmented)
                 .listRowBackground(Color.clear)
                 if let errorMessage {
-                    Text(errorMessage).font(.uniLabel(12)).foregroundStyle(UniColor.danger)
+                    Text(errorMessage).uniFont(12, weight: .semibold).foregroundStyle(UniColor.danger)
                 }
                 if entries.isEmpty {
-                    Text(isLoading ? "加载中…" : "暂无").font(.uniBody(13)).foregroundStyle(UniColor.secondary)
+                    Text(isLoading ? "加载中…" : "暂无").uniFont(13).foregroundStyle(UniColor.secondary)
                         .frame(maxWidth: .infinity).padding(.vertical, 30)
                 }
                 ForEach(entries) { entry in row(entry) }
@@ -76,8 +76,8 @@ struct ActivityRosterView: View {
 
     private func stat(_ title: String, _ value: Int) -> some View {
         VStack(spacing: 2) {
-            Text("\(value)").font(.system(size: 20, weight: .bold)).monospacedDigit().foregroundStyle(UniColor.ink)
-            Text(title).font(.uniLabel(10)).foregroundStyle(UniColor.secondary)
+            Text("\(value)").uniFont(20, weight: .bold).monospacedDigit().foregroundStyle(UniColor.ink)
+            Text(title).uniFont(10, weight: .semibold).foregroundStyle(UniColor.secondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -86,8 +86,8 @@ struct ActivityRosterView: View {
         HStack(spacing: 12) {
             UniAvatar(url: entry.avatarUrl, name: entry.nickname, size: 40, shape: .circle)
             VStack(alignment: .leading, spacing: 3) {
-                Text(entry.nickname).font(.system(size: 15, weight: .semibold)).foregroundStyle(UniColor.ink)
-                Text(detail(entry)).font(.uniLabel(11)).foregroundStyle(UniColor.secondary).lineLimit(2)
+                Text(entry.nickname).uniFont(15, weight: .semibold).foregroundStyle(UniColor.ink)
+                Text(detail(entry)).uniFont(11, weight: .semibold).foregroundStyle(UniColor.secondary).lineLimit(2)
             }
             Spacer(minLength: 6)
             if busyID == entry.id {
@@ -108,7 +108,7 @@ struct ActivityRosterView: View {
                 Button("通过") { Task { await perform(entry, "approve") } }
                     .buttonStyle(.borderedProminent).tint(UniColor.blue)
             }
-            .font(.uniLabel(12))
+            .uniFont(12, weight: .semibold)
         } else if entry.checkedInAt != nil {
             Menu {
                 if entry.revocable {
@@ -118,16 +118,16 @@ struct ActivityRosterView: View {
                     }
                 }
             } label: {
-                Label("已签到", systemImage: "checkmark.circle.fill").font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                Label("已签到", systemImage: "checkmark.circle.fill").uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                     .frame(minHeight: 44)
             }
             .disabled(!entry.revocable)
         } else if entry.status == "REGISTERED", entry.checkinRevokedAt == nil,
                   activity.checkinOpen || activity.phase == "ENDED" {
             Button("补签") { Task { await perform(entry, "checkin") } }
-                .buttonStyle(.bordered).tint(UniColor.blue).font(.uniLabel(12))
+                .buttonStyle(.bordered).tint(UniColor.blue).uniFont(12, weight: .semibold)
         } else {
-            Text(statusText(entry)).font(.uniLabel(11)).foregroundStyle(UniColor.tertiary)
+            Text(statusText(entry)).uniFont(11, weight: .semibold).foregroundStyle(UniColor.tertiary)
         }
     }
 
@@ -281,32 +281,34 @@ struct NotificationsView: View {
     var body: some View {
         List {
             if items.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "bell").font(.system(size: 30)).foregroundStyle(UniColor.tertiary)
-                    Text(errorMessage ?? (page == nil ? "加载中…" : "还没有通知")).font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(UniColor.ink)
-                    Text("活动审核、变更、取消、开始提醒和签到结果会出现在这里")
-                        .font(.uniBody(12)).foregroundStyle(UniColor.secondary).multilineTextAlignment(.center)
+                Group {
+                    if let errorMessage {
+                        UniErrorState(errorMessage) { Task { await load() } }
+                    } else if page == nil {
+                        UniLoadingState("加载通知…")
+                    } else {
+                        UniEmptyState(icon: "bell", title: "还没有通知",
+                                      message: "活动审核、变更、取消、开始提醒和签到结果会出现在这里")
+                    }
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 48)
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
             ForEach(items) { item in
                 Button { selected = item.activityId } label: {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: icon(item.type))
-                            .font(.system(size: 15, weight: .semibold))
+                            .uniFont(15, weight: .semibold)
                             .foregroundStyle(tint(item.type))
                             .frame(width: 34, height: 34)
                             .background(tint(item.type).opacity(0.1), in: Circle())
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text(item.title).font(.system(size: 15, weight: .bold)).foregroundStyle(UniColor.ink)
+                                Text(item.title).uniFont(15, weight: .bold).foregroundStyle(UniColor.ink)
                                 if !item.read { Circle().fill(UniColor.danger).frame(width: 7, height: 7) }
                                 Spacer()
-                                Text(RelativeTime.text(from: item.createdAt)).font(.uniLabel(10)).foregroundStyle(UniColor.tertiary)
+                                Text(RelativeTime.text(from: item.createdAt)).uniFont(10, weight: .semibold).foregroundStyle(UniColor.tertiary)
                             }
-                            Text(item.body).font(.uniBody(13)).foregroundStyle(UniColor.inkSoft).multilineTextAlignment(.leading)
+                            Text(item.body).uniFont(13).foregroundStyle(UniColor.inkSoft).multilineTextAlignment(.leading)
                         }
                     }
                     .padding(.vertical, 4)

@@ -87,19 +87,19 @@ struct HomeView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous)
                     .fill(UniColor.ink)
                     .frame(width: 44, height: 44)
                 Text("PO")
-                    .font(.system(size: 15, weight: .heavy))
+                    .uniFont(15, weight: .heavy)
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("UniPO")
-                    .font(.system(size: 22, weight: .heavy))
+                    .uniFont(22, weight: .heavy)
                     .foregroundStyle(UniColor.ink)
                 Text(Self.todayText)
-                    .font(.uniLabel(11))
+                    .uniFont(11, weight: .semibold)
                     .foregroundStyle(UniColor.secondary)
             }
             Spacer()
@@ -111,7 +111,7 @@ struct HomeView: View {
             } else {
                 Button(action: onRequestAuth) {
                     Text("登录")
-                        .font(.uniLabel(13))
+                        .uniFont(13, weight: .semibold)
                         .foregroundStyle(UniColor.ink)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 9)
@@ -130,7 +130,7 @@ struct HomeView: View {
                     Task { await feed.refresh(board: item.0) }
                 } label: {
                     Text(item.1)
-                        .font(.uniLabel(13))
+                        .uniFont(13, weight: .semibold)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                         .foregroundStyle(board == item.0 ? .white : UniColor.secondary)
@@ -159,10 +159,10 @@ struct HomeView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(stageEyebrow)
-                            .font(.uniLabel(11))
+                            .uniFont(11, weight: .semibold)
                             .foregroundStyle(UniColor.blue)
                         Text(growthTitle)
-                            .font(.system(size: 20, weight: .bold))
+                            .uniFont(20, weight: .bold)
                             .foregroundStyle(UniColor.ink)
                             .multilineTextAlignment(.leading)
                     }
@@ -175,7 +175,7 @@ struct HomeView: View {
                                 .stroke(UniColor.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                             Text("\(stage.completedCount)/\(stage.totalCount)")
-                                .font(.system(size: 12, weight: .bold))
+                                .uniFont(12, weight: .bold)
                                 .foregroundStyle(UniColor.ink)
                         }
                         .frame(width: 50, height: 50)
@@ -184,7 +184,7 @@ struct HomeView: View {
                         ProgressView().tint(UniColor.blue)
                     } else {
                         Image(systemName: "arrow.right")
-                            .font(.system(size: 13, weight: .bold))
+                            .uniFont(13, weight: .bold)
                             .foregroundStyle(UniColor.blue)
                     }
                 }
@@ -197,13 +197,13 @@ struct HomeView: View {
                     nextTaskRow(next)
                 } else {
                     Text(growth.totalTasks > 0 ? "这个阶段的任务都完成了，去「成长」看看下一阶段" : "暂时没有适用的成长任务")
-                        .font(.uniBody(13))
+                        .uniFont(13)
                         .foregroundStyle(UniColor.secondary)
                 }
                 if growth.needsBackground {
                     Button { editingBackground = true } label: {
                         Label("补充入学年份，按你所在的学期推荐任务", systemImage: "graduationcap")
-                            .font(.uniLabel(12))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(UniColor.blue)
                             .frame(minHeight: 44, alignment: .leading)
                     }
@@ -211,7 +211,7 @@ struct HomeView: View {
                 }
             } else {
                 Text(growthError ?? (auth.isAuthenticated ? "正在读取你的任务记录" : "登录后按你的入学年份推荐这个阶段该做的事"))
-                    .font(.uniBody(13))
+                    .uniFont(13)
                     .foregroundStyle(UniColor.secondary)
             }
         }
@@ -236,14 +236,14 @@ struct HomeView: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("下一步")
-                    .font(.uniLabel(10))
+                    .uniFont(10, weight: .semibold)
                     .foregroundStyle(UniColor.tertiary)
                 Text(task.title)
-                    .font(.system(size: 16, weight: .semibold))
+                    .uniFont(16, weight: .semibold)
                     .foregroundStyle(UniColor.ink)
                 if let detail = task.description, !detail.isEmpty {
                     Text(detail)
-                        .font(.uniBody(12))
+                        .uniFont(12)
                         .foregroundStyle(UniColor.secondary)
                         .lineLimit(2)
                 }
@@ -254,7 +254,7 @@ struct HomeView: View {
             } label: {
                 Group {
                     if completingTask { ProgressView().tint(.white) }
-                    else { Text("完成").font(.uniLabel(13)) }
+                    else { Text("完成").uniFont(13, weight: .semibold) }
                 }
                 .foregroundStyle(.white)
                 .frame(minWidth: 64, minHeight: 44)
@@ -289,22 +289,9 @@ struct HomeView: View {
         if isLoading && posts.isEmpty {
             UniLoadingState("正在加载校园动态…")
         } else if let errorMessage, posts.isEmpty {
-            VStack(spacing: 12) {
-                Text(errorMessage)
-                    .font(.uniBody(14))
-                    .foregroundStyle(UniColor.secondary)
-                Button("重试") { Task { await load(reset: true) } }
-                    .font(.uniLabel(13))
-                    .foregroundStyle(UniColor.blue)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 40)
+            UniErrorState(errorMessage) { Task { await load(reset: true) } }
         } else if posts.isEmpty {
-            Text("这个板块还没有内容")
-                .font(.uniBody(14))
-                .foregroundStyle(UniColor.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 40)
+            UniEmptyState(icon: "text.bubble", title: "这个板块还没有内容", message: "同校同学发的经验贴会出现在这里")
         } else {
             ForEach(posts) { post in
                 PostCardView(post: post, onOpen: { selectedPost = post })
@@ -316,13 +303,13 @@ struct HomeView: View {
             }
             if let errorMessage {
                 VStack(spacing: 8) {
-                    Text(errorMessage).font(.uniBody(12)).foregroundStyle(UniColor.secondary)
+                    Text(errorMessage).uniFont(12).foregroundStyle(UniColor.secondary)
                     Button("重新加载") {
                         Task {
                             if feed.hasMore { await feed.loadMore() } else { await feed.refresh() }
                         }
                     }
-                    .font(.uniLabel(13))
+                    .uniFont(13, weight: .semibold)
                     .foregroundStyle(UniColor.blue)
                 }
                 .padding(.vertical, 12)

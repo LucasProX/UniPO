@@ -47,7 +47,7 @@ struct AvatarCropView: View {
                         .frame(width: side, height: side)
 
                         Text("双指缩放 · 拖动调整位置")
-                            .font(.system(size: 12))
+                            .uniFont(12)
                             .foregroundStyle(.white.opacity(0.4))
 
                         Slider(value: $zoom, in: 1...4)
@@ -146,7 +146,7 @@ struct AvatarPickerButton<Label: View>: View {
             label()
                 .overlay(alignment: .bottomTrailing) {
                     Image(systemName: "camera.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .uniFont(10, weight: .bold)
                         .foregroundStyle(.white)
                         .frame(width: 24, height: 24)
                         .background(.black.opacity(0.7), in: Circle())

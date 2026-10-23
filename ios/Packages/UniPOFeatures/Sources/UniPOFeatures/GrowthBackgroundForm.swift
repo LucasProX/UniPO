@@ -36,14 +36,14 @@ struct GrowthBackgroundForm: View {
                 }
             }
             Text("入学年份决定你现在处在大学的哪个阶段；学校和专业决定你看到哪些校 PO 与专业 PO。之后可以在「成长」里修改。")
-                .font(.uniBody(12))
+                .uniFont(12)
                 .foregroundStyle(secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let error = store.errorMessage {
                 HStack(spacing: 10) {
-                    Text(error).font(.uniLabel(12)).foregroundStyle(dark ? .red.opacity(0.9) : UniColor.danger)
+                    Text(error).uniFont(12, weight: .semibold).foregroundStyle(dark ? .red.opacity(0.9) : UniColor.danger)
                     Button("重试") { Task { await store.load() } }
-                        .font(.uniLabel(12)).foregroundStyle(dark ? .white : UniColor.blue)
+                        .uniFont(12, weight: .semibold).foregroundStyle(dark ? .white : UniColor.blue)
                 }
             }
         }
@@ -53,18 +53,18 @@ struct GrowthBackgroundForm: View {
     private func picker<Content: View>(_ title: String, value: String,
                                        @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.uniLabel(11)).foregroundStyle(secondary)
+            Text(title).uniFont(11, weight: .semibold).foregroundStyle(secondary)
             Menu {
                 content()
             } label: {
                 HStack {
                     Text(value)
-                        .font(.system(size: 16, weight: .semibold))
+                        .uniFont(16, weight: .semibold)
                         .foregroundStyle(primary)
                         .lineLimit(1)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(secondary)
                 }
                 .padding(.horizontal, 14)
@@ -101,10 +101,10 @@ struct GrowthBackgroundSheet: View {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("你的成长背景")
-                            .font(.system(size: 24, weight: .heavy))
+                            .uniFont(24, weight: .heavy)
                             .foregroundStyle(UniColor.ink)
                         Text("按入学年份推算当前阶段，修改后已完成的任务记录会保留。")
-                            .font(.uniBody(13))
+                            .uniFont(13)
                             .foregroundStyle(UniColor.secondary)
                     }
                     GrowthBackgroundForm(store: store)

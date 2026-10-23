@@ -85,10 +85,10 @@ struct ProfileSegmentedControl: View {
                 } label: {
                     HStack(spacing: 5) {
                         Text(titles[index])
-                            .font(.system(size: 13, weight: selection == index ? .semibold : .medium))
+                            .uniFont(13, weight: selection == index ? .semibold : .medium)
                         if counts.indices.contains(index), counts[index] > 0 {
                             Text("\(counts[index])")
-                                .font(.system(size: 9, weight: .bold))
+                                .uniFont(9, weight: .bold)
                                 .monospacedDigit()
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)

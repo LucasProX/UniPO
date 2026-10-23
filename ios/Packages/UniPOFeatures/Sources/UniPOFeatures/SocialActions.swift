@@ -28,10 +28,10 @@ struct ReportSheet: View {
                 if submitted {
                     VStack(spacing: 14) {
                         Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 40)).foregroundStyle(UniColor.blue)
-                        Text("举报已提交").font(.system(size: 20, weight: .bold)).foregroundStyle(UniColor.ink)
+                            .uniFont(40).foregroundStyle(UniColor.blue)
+                        Text("举报已提交").uniFont(20, weight: .bold).foregroundStyle(UniColor.ink)
                         Text("我们会尽快核实处理。你也可以在对方主页选择拉黑，不再看到 TA 的内容。")
-                            .font(.uniBody(13)).foregroundStyle(UniColor.secondary)
+                            .uniFont(13).foregroundStyle(UniColor.secondary)
                             .multilineTextAlignment(.center).padding(.horizontal, 30)
                         Button("完成") { dismiss() }
                             .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40).padding(.top, 6)

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E31349C11B6B4DE68D19111 /* UniPOUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0FB3EBD6E17403279B705ED1 /* UniPOUI */; };
 		16CCA538742A3F9057546D39 /* UniPOUI in Frameworks */ = {isa = PBXBuildFile; productRef = 85A5251948318FABB115FE7C /* UniPOUI */; };
 		2A642742D031C87052C6068A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 95BC03F3FF806A144A02E195 /* Assets.xcassets */; };
 		2AEFD1CDE7887B87E4E05B76 /* UniPOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4665AFEDFB151FBF3C7F6F95 /* UniPOCore */; };
@@ -14,6 +15,7 @@
 		5E4B2F543FC72B46D24D8D2B /* KeychainPersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF05CEB13133339DCCB7EEF /* KeychainPersistenceTests.swift */; };
 		708C730686EEDF0CEDE50A9E /* UniPOFeatures in Frameworks */ = {isa = PBXBuildFile; productRef = 64083273EB1C35AE19A5E1B7 /* UniPOFeatures */; };
 		BF4F84B68C1F23932F0AAA99 /* UniPOApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A35459761C47973B8691E5C3 /* UniPOApp.swift */; };
+		C5ED32A2FE637F9A7C67D553 /* TypographyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73A4FC84618602A74D83589C /* TypographyTests.swift */; };
 		E72289B6885062A4ED62A550 /* UniPOCore in Frameworks */ = {isa = PBXBuildFile; productRef = 6C408DEC70C7F19C2E02DF36 /* UniPOCore */; };
 /* End PBXBuildFile section */
 
@@ -34,6 +36,7 @@
 		335ADA2EF4EBF18C9BCE16CA /* UniPO.personal.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UniPO.personal.entitlements; sourceTree = "<group>"; };
 		4F1686353A9B3100935D7BD7 /* UniPO.simulator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UniPO.simulator.entitlements; sourceTree = "<group>"; };
 		6002AFC6C0FFE2B9851AE2E9 /* UniPOCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = UniPOCore; path = Packages/UniPOCore; sourceTree = SOURCE_ROOT; };
+		73A4FC84618602A74D83589C /* TypographyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypographyTests.swift; sourceTree = "<group>"; };
 		8ED2D7A7DE499E38B05AC092 /* UniPOTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = UniPOTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		95BC03F3FF806A144A02E195 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A35459761C47973B8691E5C3 /* UniPOApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UniPOApp.swift; sourceTree = "<group>"; };
@@ -49,6 +52,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2AEFD1CDE7887B87E4E05B76 /* UniPOCore in Frameworks */,
+				0E31349C11B6B4DE68D19111 /* UniPOUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,6 +113,7 @@
 			isa = PBXGroup;
 			children = (
 				1BF05CEB13133339DCCB7EEF /* KeychainPersistenceTests.swift */,
+				73A4FC84618602A74D83589C /* TypographyTests.swift */,
 			);
 			path = UniPOTests;
 			sourceTree = "<group>";
@@ -172,6 +177,7 @@
 			name = UniPOTests;
 			packageProductDependencies = (
 				4665AFEDFB151FBF3C7F6F95 /* UniPOCore */,
+				0FB3EBD6E17403279B705ED1 /* UniPOUI */,
 			);
 			productName = UniPOTests;
 			productReference = 8ED2D7A7DE499E38B05AC092 /* UniPOTests.xctest */;
@@ -239,6 +245,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E4B2F543FC72B46D24D8D2B /* KeychainPersistenceTests.swift in Sources */,
+				C5ED32A2FE637F9A7C67D553 /* TypographyTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -527,6 +534,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0FB3EBD6E17403279B705ED1 /* UniPOUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UniPOUI;
+		};
 		4665AFEDFB151FBF3C7F6F95 /* UniPOCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UniPOCore;

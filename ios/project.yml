@@ -93,6 +93,7 @@ targets:
     dependencies:
       - target: UniPO
       - package: UniPOCore
+      - package: UniPOUI
 schemes:
   UniPO:
     build:

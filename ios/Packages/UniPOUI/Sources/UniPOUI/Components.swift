@@ -86,7 +86,7 @@ public struct UniChip: View {
 
     public var body: some View {
         Text(text)
-            .font(.uniLabel(11))
+            .uniFont(11, weight: .semibold)
             .foregroundStyle(tint)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
@@ -99,11 +99,11 @@ public struct UniPrimaryButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 16, weight: .semibold))
+            .uniFont(16, weight: .semibold)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
-            .background(UniColor.ink, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(UniColor.ink, in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: configuration.isPressed)
@@ -115,11 +115,11 @@ public struct UniGhostButtonStyle: ButtonStyle {
 
     public func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 15, weight: .semibold))
+            .uniFont(15, weight: .semibold)
             .foregroundStyle(UniColor.ink)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
-            .background(UniColor.mist.opacity(0.7), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(UniColor.mist.opacity(0.7), in: RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
             .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
@@ -136,10 +136,92 @@ public struct UniLoadingState: View {
             ProgressView()
                 .tint(UniColor.ink)
             Text(text)
-                .font(.uniBody(13))
+                .uniFont(13)
                 .foregroundStyle(UniColor.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 48)
+    }
+}
+
+/// 统一空态：图标 + 标题 + 说明 + 可选操作。用在列表为空、尚无记录的地方。
+public struct UniEmptyState: View {
+    private let icon: String
+    private let title: String
+    private let message: String?
+    private let actionTitle: String?
+    private let action: (() -> Void)?
+
+    public init(icon: String, title: String, message: String? = nil,
+                actionTitle: String? = nil, action: (() -> Void)? = nil) {
+        self.icon = icon
+        self.title = title
+        self.message = message
+        self.actionTitle = actionTitle
+        self.action = action
+    }
+
+    public var body: some View {
+        VStack(spacing: UniSpace.md) {
+            Image(systemName: icon)
+                .uniFont(26, weight: .semibold)
+                .foregroundStyle(UniColor.tertiary)
+                .accessibilityHidden(true)
+            Text(title)
+                .uniFont(15, weight: .semibold)
+                .foregroundStyle(UniColor.ink)
+                .multilineTextAlignment(.center)
+            if let message {
+                Text(message)
+                    .uniFont(13)
+                    .foregroundStyle(UniColor.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .uniFont(14, weight: .semibold)
+                    .foregroundStyle(UniColor.blue)
+                    .frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, UniSpace.xl)
+        .padding(.horizontal, UniSpace.lg)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// 统一错误态：说明发生了什么 + 重试。接口失败必须显式展示，不能假装有数据。
+public struct UniErrorState: View {
+    private let message: String
+    private let retryTitle: String
+    private let retry: () -> Void
+
+    public init(_ message: String?, retryTitle: String = "重试", retry: @escaping () -> Void) {
+        self.message = (message?.isEmpty == false ? message : nil) ?? "加载失败，请检查网络后重试"
+        self.retryTitle = retryTitle
+        self.retry = retry
+    }
+
+    public var body: some View {
+        VStack(spacing: UniSpace.md) {
+            Image(systemName: "wifi.exclamationmark")
+                .uniFont(24, weight: .semibold)
+                .foregroundStyle(UniColor.tertiary)
+                .accessibilityHidden(true)
+            Text(message)
+                .uniFont(13)
+                .foregroundStyle(UniColor.secondary)
+                .multilineTextAlignment(.center)
+            Button(retryTitle, action: retry)
+                .uniFont(14, weight: .semibold)
+                .foregroundStyle(UniColor.ink)
+                .padding(.horizontal, UniSpace.xl)
+                .frame(minHeight: 44)
+                .background(UniColor.mist.opacity(0.7), in: Capsule())
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, UniSpace.xl)
+        .padding(.horizontal, UniSpace.lg)
     }
 }

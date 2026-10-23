@@ -34,18 +34,18 @@ struct PublicProfileView: View {
                         header(value)
                         if let loadError { errorNotice(loadError) }
                         if value.isBlockedEitherWay {
-                            Text("暂时无法查看此用户的内容").font(.uniBody(14)).foregroundStyle(UniColor.secondary)
+                            Text("暂时无法查看此用户的内容").uniFont(14).foregroundStyle(UniColor.secondary)
                         } else if loading && posts.isEmpty {
                             UniLoadingState("正在加载作品…")
                         } else if posts.isEmpty && loadError == nil {
                             VStack(spacing: 10) {
-                                Image(systemName: "square.grid.2x2").font(.system(size: 26))
-                                Text("还没有公开作品").font(.uniBody(14))
+                                Image(systemName: "square.grid.2x2").uniFont(26)
+                                Text("还没有公开作品").uniFont(14)
                             }
                             .foregroundStyle(UniColor.secondary)
                             .padding(.vertical, 36)
                         } else {
-                            HStack { Text("作品").font(.system(size: 18, weight: .bold)); Spacer() }
+                            HStack { Text("作品").uniFont(18, weight: .bold); Spacer() }
                                 .padding(.horizontal, 20)
                             ForEach(posts) { post in
                                 PostCardView(post: post, onOpen: { selectedPost = post })
@@ -158,18 +158,18 @@ struct PublicProfileView: View {
                     .overlay(Circle().stroke(.white, lineWidth: 3))
                     .shadow(color: UniColor.blue.opacity(0.16), radius: 14, y: 6)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(user.nickname).font(.system(size: 27, weight: .bold)).foregroundStyle(UniColor.ink)
+                    Text(user.nickname).uniFont(27, weight: .bold).foregroundStyle(UniColor.ink)
                     Text("UID \(user.publicUid)")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced)).foregroundStyle(UniColor.secondary)
+                        .uniFont(11, weight: .medium, design: .monospaced).foregroundStyle(UniColor.secondary)
                     if user.showGrade != false, let grade = clean(user.grade) {
-                        Text(grade).font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                        Text(grade).uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
                     }
                     let schoolInfo = [clean(user.college), clean(user.major)].compactMap { $0 }.joined(separator: " · ")
-                    if !schoolInfo.isEmpty { Text(schoolInfo).font(.uniLabel(11)).foregroundStyle(UniColor.secondary) }
+                    if !schoolInfo.isEmpty { Text(schoolInfo).uniFont(11, weight: .semibold).foregroundStyle(UniColor.secondary) }
                 }
                 Spacer(minLength: 0)
             }
-            if let bio = clean(user.bio) { Text(bio).font(.uniBody(13)).foregroundStyle(UniColor.inkSoft).lineSpacing(4) }
+            if let bio = clean(user.bio) { Text(bio).uniFont(13).foregroundStyle(UniColor.inkSoft).lineSpacing(4) }
             HStack(spacing: 0) {
                 Button { followList = FollowListTarget(uid: value.profile.publicUid, kind: .following) } label: {
                     statistic(value.stats.following, "关注").contentShape(Rectangle())
@@ -180,7 +180,7 @@ struct PublicProfileView: View {
                 statistic(value.stats.posts, "作品")
             }
             .padding(.vertical, 13)
-            .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 20))
+            .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: UniRadius.card))
             if !value.mine {
                 HStack(spacing: 12) {
                     Button { Task { await toggleFollow() } } label: {
@@ -189,7 +189,7 @@ struct PublicProfileView: View {
                             else { Image(systemName: value.relationship.symbolName) }
                             Text(value.relationship.title)
                         }
-                        .font(.uniLabel(14))
+                        .uniFont(14, weight: .semibold)
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity, minHeight: 46)
                         .background(value.relationship == .notFollowing ? UniColor.blue : UniColor.ink, in: Capsule())
@@ -202,7 +202,7 @@ struct PublicProfileView: View {
                             if messageBusy { ProgressView() } else { Image(systemName: "bubble.left.and.bubble.right") }
                             Text("私信")
                         }
-                        .font(.uniLabel(14)).foregroundStyle(UniColor.ink)
+                        .uniFont(14, weight: .semibold).foregroundStyle(UniColor.ink)
                         .frame(maxWidth: .infinity, minHeight: 46)
                         .background(Color.white.opacity(0.9), in: Capsule())
                     }
@@ -217,8 +217,8 @@ struct PublicProfileView: View {
 
     private func statistic(_ count: Int, _ title: String) -> some View {
         VStack(spacing: 3) {
-            Text("\(count)").font(.system(size: 20, weight: .bold)).monospacedDigit().foregroundStyle(UniColor.ink)
-            Text(title).font(.uniLabel(10)).foregroundStyle(UniColor.secondary)
+            Text("\(count)").uniFont(20, weight: .bold).monospacedDigit().foregroundStyle(UniColor.ink)
+            Text(title).uniFont(10, weight: .semibold).foregroundStyle(UniColor.secondary)
         }.frame(maxWidth: .infinity)
     }
 
@@ -229,7 +229,7 @@ struct PublicProfileView: View {
 
     private func errorNotice(_ message: String) -> some View {
         VStack(spacing: 12) {
-            Text(message).font(.uniBody(14)).foregroundStyle(UniColor.secondary)
+            Text(message).uniFont(14).foregroundStyle(UniColor.secondary)
             Button("重新加载") { Task { await load() } }.foregroundStyle(UniColor.blue)
         }.frame(maxWidth: .infinity).padding(20)
     }

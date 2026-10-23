@@ -6,6 +6,7 @@ import UniPOUI
 struct ProfileView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var stats: UserStatsView?
     @State private var myPosts: [PostView] = []
@@ -135,7 +136,7 @@ struct ProfileView: View {
 
             if let bio = profile.bio, !bio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(bio)
-                    .font(.system(size: 13, weight: .regular))
+                    .uniFont(13, weight: .regular)
                     .foregroundStyle(UniColor.inkSoft.opacity(0.68))
                     .lineSpacing(3)
                     .lineLimit(3)
@@ -161,7 +162,7 @@ struct ProfileView: View {
                     .fill(UniColor.blue)
                     .frame(width: 6, height: 6)
                 Text("我的主页")
-                    .font(.system(size: 12, weight: .semibold))
+                    .uniFont(12, weight: .semibold)
                     .tracking(1.2)
                     .foregroundStyle(UniColor.secondary)
             }
@@ -174,9 +175,9 @@ struct ProfileView: View {
                         ProgressView().tint(UniColor.blue)
                     } else {
                         Image(systemName: "photo")
-                            .font(.system(size: 13, weight: .semibold))
+                            .uniFont(13, weight: .semibold)
                         Text("背景")
-                            .font(.system(size: 11, weight: .semibold))
+                            .uniFont(11, weight: .semibold)
                     }
                 }
                 .foregroundStyle(UniColor.inkSoft)
@@ -195,7 +196,7 @@ struct ProfileView: View {
                 showSettings = true
             } label: {
                 Image(systemName: "gearshape")
-                    .font(.system(size: 15, weight: .semibold))
+                    .uniFont(15, weight: .semibold)
                     .foregroundStyle(UniColor.inkSoft)
                     .frame(width: 38, height: 38)
                     .background(Color.white.opacity(0.78), in: Circle())
@@ -238,7 +239,7 @@ struct ProfileView: View {
     private func identity(_ profile: UserProfile) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(profile.nickname)
-                .font(.system(size: 28, weight: .bold))
+                .uniFont(28, weight: .bold)
                 .tracking(-0.6)
                 .foregroundStyle(UniColor.ink)
                 .lineLimit(1)
@@ -246,22 +247,22 @@ struct ProfileView: View {
 
             HStack(spacing: 5) {
                 Text("UID \(profile.publicUid)")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .uniFont(11, weight: .medium, design: .monospaced)
                     .foregroundStyle(UniColor.tertiary)
 
                 if profile.showGrade != false, let grade = profile.grade, !grade.isEmpty {
                     Text("·")
-                        .font(.system(size: 11, weight: .medium))
+                        .uniFont(11, weight: .medium)
                         .foregroundStyle(UniColor.tertiary.opacity(0.7))
                     Text(grade)
-                        .font(.system(size: 11, weight: .medium))
+                        .uniFont(11, weight: .medium)
                         .foregroundStyle(UniColor.secondary)
                 }
             }
 
             if let detail = educationLine(profile) {
                 Text(detail)
-                    .font(.system(size: 11, weight: .regular))
+                    .uniFont(11, weight: .regular)
                     .foregroundStyle(UniColor.secondary.opacity(0.82))
                     .lineLimit(1)
             }
@@ -303,7 +304,7 @@ struct ProfileView: View {
         let tint = isFemale ? Color(hex: 0xFF6B9A) : (isMale ? Color(hex: 0x2F6BFF) : UniColor.secondary)
 
         return Text(symbol)
-            .font(.system(size: 15, weight: .black))
+            .uniFont(15, weight: .black)
             .foregroundStyle(tint)
             .frame(width: 27, height: 24)
             .background(tint.opacity(0.12), in: Capsule())
@@ -312,7 +313,7 @@ struct ProfileView: View {
 
     private func metaChip(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
+            .uniFont(11, weight: .semibold)
             .foregroundStyle(UniColor.inkSoft.opacity(0.72))
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
@@ -329,16 +330,18 @@ struct ProfileView: View {
             statItem(stats?.posts ?? myPosts.count, "作品")
         }
         .padding(.vertical, 13)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(.white.opacity(0.95), lineWidth: 1)
         )
         .shadow(color: UniColor.ink.opacity(0.05), radius: 18, y: 8)
     }
 
     private var activityShortcuts: some View {
-        HStack(spacing: 8) {
+        // 默认一行放下全部入口；辅助功能大字体下每行至少 104pt，自动折成多行。
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 104 : 60), spacing: 8)],
+                  spacing: 8) {
             shortcut("我的活动", "ticket", tint: UniColor.blue) { activityList = "upcoming" }
             shortcut("参加过", "clock.arrow.circlepath", tint: UniColor.inkSoft) { activityList = "history" }
             shortcut("金币", "circle.hexagongrid.fill", tint: UniColor.gold) { showWallet = true }
@@ -352,9 +355,10 @@ struct ProfileView: View {
     private func shortcut(_ title: String, _ icon: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(tint)
-                Text(title).font(.uniLabel(11)).foregroundStyle(UniColor.ink).lineLimit(1).minimumScaleFactor(0.8)
+                Image(systemName: icon).uniFont(17, weight: .semibold).foregroundStyle(tint)
+                Text(title).uniFont(11, weight: .semibold).foregroundStyle(UniColor.ink).lineLimit(1).minimumScaleFactor(0.8)
             }
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, minHeight: 58)
             .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
@@ -374,11 +378,11 @@ struct ProfileView: View {
     private func statItem(_ value: Int, _ label: String) -> some View {
         VStack(spacing: 2) {
             Text("\(value)")
-                .font(.system(size: 20, weight: .bold))
+                .uniFont(20, weight: .bold)
                 .monospacedDigit()
                 .foregroundStyle(UniColor.ink)
             Text(label)
-                .font(.system(size: 10, weight: .medium))
+                .uniFont(10, weight: .medium)
                 .foregroundStyle(UniColor.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -452,11 +456,11 @@ struct ProfileView: View {
     private var sectionHeader: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(sectionTitle)
-                .font(.system(size: 13, weight: .semibold))
+                .uniFont(13, weight: .semibold)
                 .foregroundStyle(UniColor.ink)
             Spacer()
             Text("\(currentPosts.count) 篇")
-                .font(.system(size: 10, weight: .medium))
+                .uniFont(10, weight: .medium)
                 .foregroundStyle(UniColor.tertiary)
         }
         .padding(.horizontal, 20)
@@ -509,16 +513,16 @@ struct ProfileView: View {
                     )
                     .frame(width: 76, height: 76)
                 Image(systemName: emptyIcon)
-                    .font(.system(size: 26, weight: .semibold))
+                    .uniFont(26, weight: .semibold)
                     .foregroundStyle(UniColor.blue)
             }
 
             Text(emptyTitle)
-                .font(.system(size: 16, weight: .semibold))
+                .uniFont(16, weight: .semibold)
                 .foregroundStyle(UniColor.ink)
 
             Text(emptySubtitle)
-                .font(.system(size: 12))
+                .uniFont(12)
                 .foregroundStyle(UniColor.secondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -531,7 +535,7 @@ struct ProfileView: View {
 
     private var footer: some View {
         Text("UNIPO · CAMPUS")
-            .font(.system(size: 9, weight: .semibold))
+            .uniFont(9, weight: .semibold)
             .tracking(2.2)
             .foregroundStyle(UniColor.tertiary.opacity(0.7))
             .frame(maxWidth: .infinity)
@@ -580,14 +584,14 @@ struct ProfileView: View {
             LinearGradient(colors: palette, startPoint: .topLeading, endPoint: .bottomTrailing)
 
             Text("“")
-                .font(.system(size: 54, weight: .black, design: .serif))
+                .uniFont(54, weight: .black, design: .serif)
                 .foregroundStyle(.white.opacity(0.55))
                 .offset(x: 7, y: -7)
 
             VStack(alignment: .leading, spacing: 0) {
                 Spacer(minLength: 0)
                 Text(post.title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .uniFont(12, weight: .semibold)
                     .foregroundStyle(UniColor.ink.opacity(0.8))
                     .lineLimit(4)
                     .multilineTextAlignment(.leading)
@@ -606,7 +610,7 @@ struct ProfileView: View {
                 endPoint: .bottomTrailing
             )
             Image(systemName: "photo")
-                .font(.system(size: 19, weight: .medium))
+                .uniFont(19, weight: .medium)
                 .foregroundStyle(UniColor.tertiary)
         }
     }
@@ -614,9 +618,9 @@ struct ProfileView: View {
     private func likeBadge(_ post: PostView) -> some View {
         HStack(spacing: 3) {
             Image(systemName: "heart.fill")
-                .font(.system(size: 8, weight: .semibold))
+                .uniFont(8, weight: .semibold)
             Text("\(post.likeTotal)")
-                .font(.system(size: 9, weight: .semibold))
+                .uniFont(9, weight: .semibold)
                 .monospacedDigit()
         }
         .foregroundStyle(.white)
@@ -682,10 +686,10 @@ struct ProfileView: View {
                                 UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 46, shape: .circle)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(profile.nickname)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .uniFont(15, weight: .semibold)
                                         .foregroundStyle(UniColor.ink)
                                     Text("UID \(profile.publicUid)")
-                                        .font(.system(size: 11, design: .monospaced))
+                                        .uniFont(11, design: .monospaced)
                                         .foregroundStyle(UniColor.tertiary)
                                 }
                             }

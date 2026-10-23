@@ -208,18 +208,18 @@ public struct RootView: View {
         HStack(spacing: 12) {
             if auth.isRestoring {
                 ProgressView().tint(UniColor.blue)
-                Text("正在确认登录状态…").font(.uniLabel(12))
+                Text("正在确认登录状态…").uniFont(12, weight: .semibold)
             } else {
                 Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(UniColor.blue)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("登录状态需要确认").font(.uniLabel(12))
+                    Text("登录状态需要确认").uniFont(12, weight: .semibold)
                     Text(auth.recoveryError ?? "请稍后重试")
-                        .font(.uniBody(11)).foregroundStyle(UniColor.secondary)
+                        .uniFont(11).foregroundStyle(UniColor.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 4)
                 Button("重试") { Task { await auth.restore() } }
-                    .font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                    .uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityIdentifier("session.recovery.retry")
             }

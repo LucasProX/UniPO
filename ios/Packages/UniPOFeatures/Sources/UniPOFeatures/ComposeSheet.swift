@@ -97,7 +97,7 @@ struct ComposeSheet: View {
                             board = item.0
                         } label: {
                             Text(item.1)
-                                .font(.uniLabel(12))
+                                .uniFont(12, weight: .semibold)
                                 .foregroundStyle(board == item.0 ? .white : UniColor.secondary)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
@@ -108,7 +108,7 @@ struct ComposeSheet: View {
                 }
 
                 TextField("标题：一句话说清楚", text: $title)
-                    .font(.system(size: 20, weight: .bold))
+                    .uniFont(20, weight: .bold)
                     .padding(.vertical, 8)
 
                 Divider()
@@ -116,13 +116,13 @@ struct ComposeSheet: View {
                 imageStrip
 
                 TextEditor(text: $content)
-                    .font(.uniBody(15))
+                    .uniFont(15)
                     .frame(minHeight: 220)
                     .scrollContentBackground(.hidden)
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(.uniLabel(12))
+                        .uniFont(12, weight: .semibold)
                         .foregroundStyle(UniColor.danger)
                 }
 
@@ -131,7 +131,7 @@ struct ComposeSheet: View {
                         content = template
                     } label: {
                         Label("用经验模板写：问题、做法、结果、适合谁", systemImage: "list.bullet.rectangle")
-                            .font(.uniLabel(12))
+                            .uniFont(12, weight: .semibold)
                             .foregroundStyle(UniColor.blue)
                             .frame(minHeight: 44, alignment: .leading)
                     }
@@ -162,7 +162,7 @@ struct ComposeSheet: View {
                             imageURLs.removeAll { $0 == url }
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 18))
+                                .uniFont(18)
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.white, UniColor.ink.opacity(0.7))
                                 .frame(width: 32, height: 32)
@@ -180,8 +180,8 @@ struct ComposeSheet: View {
                     PhotosPicker(selection: $pickerItems, maxSelectionCount: maxImages - imageURLs.count,
                                  selectionBehavior: .ordered, matching: .images) {
                         VStack(spacing: 4) {
-                            Image(systemName: "photo.badge.plus").font(.system(size: 20, weight: .semibold))
-                            Text("\(imageURLs.count)/\(maxImages)").font(.uniLabel(10))
+                            Image(systemName: "photo.badge.plus").uniFont(20, weight: .semibold)
+                            Text("\(imageURLs.count)/\(maxImages)").uniFont(10, weight: .semibold)
                         }
                         .foregroundStyle(UniColor.blue)
                         .frame(width: 76, height: 76)
@@ -206,9 +206,9 @@ struct ComposeSheet: View {
                             } label: {
                                 HStack(spacing: 4) {
                                     Text("#\(tag)")
-                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                    Image(systemName: "xmark").uniFont(9, weight: .bold)
                                 }
-                                .font(.uniLabel(12))
+                                .uniFont(12, weight: .semibold)
                                 .foregroundStyle(UniColor.ink)
                                 .padding(.horizontal, 10).frame(minHeight: 32)
                                 .background(UniColor.mist, in: Capsule())
@@ -223,12 +223,12 @@ struct ComposeSheet: View {
                 HStack(spacing: 8) {
                     Image(systemName: "number").foregroundStyle(UniColor.tertiary)
                     TextField("加标签，如 四级、选课（最多 \(maxTags) 个）", text: $tagDraft)
-                        .font(.uniBody(14))
+                        .uniFont(14)
                         .focused($tagFocused)
                         .submitLabel(.done)
                         .onSubmit(addTag)
                     if !tagDraft.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Button("添加", action: addTag).font(.uniLabel(12)).foregroundStyle(UniColor.blue)
+                        Button("添加", action: addTag).uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -250,17 +250,17 @@ struct ComposeSheet: View {
     private var signedOut: some View {
         VStack(spacing: 16) {
             Text(auth.isSessionRecoveryPending ? "正在确认登录状态" : "登录后才能发 PO")
-                .font(.system(size: 20, weight: .bold))
+                .uniFont(20, weight: .bold)
             if auth.isRestoring {
                 ProgressView().tint(UniColor.blue)
             } else if auth.isSessionRecoveryPending {
                 Text(auth.recoveryError ?? "请稍后重试")
-                    .font(.uniBody(13)).foregroundStyle(UniColor.secondary)
+                    .uniFont(13).foregroundStyle(UniColor.secondary)
                 Button("重试") { Task { await auth.restore() } }
                     .buttonStyle(UniPrimaryButtonStyle()).padding(.horizontal, 40)
             } else {
                 Text("登录后可以发帖、评论、关注同学。")
-                    .font(.uniBody(13))
+                    .uniFont(13)
                     .foregroundStyle(UniColor.secondary)
                 Button("去登录") {
                     dismiss()
