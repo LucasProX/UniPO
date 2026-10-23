@@ -98,7 +98,8 @@ public class AchievementService implements AchievementQueryApi {
                         task.getDescription(),
                         task.getXp() == null ? 0 : task.getXp(),
                         isDone,
-                        at == null ? null : AppTime.toOffset(at).toString()
+                        at == null ? null : AppTime.toOffset(at).toString(),
+                        task.getDueHint()
                 ));
             }
             if (firstUnfinished == null && stageDone < stageTotal) {
@@ -193,13 +194,67 @@ public class AchievementService implements AchievementQueryApi {
             AchievementProgress progress = new AchievementProgress();
             progress.setUserId(userId);
             progress.setTaskId(taskId);
-            progress.setCompletedAt(AppTime.nowLocal());
+            progress.setCompletedAt(AppTime.nowLocal().truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+            progress.setTaskVersion(task.getVersion() == null ? 1 : task.getVersion());
             progressMapper.insert(progress);
 
             experienceService.award(userId, task.getXp() == null ? 0 : task.getXp());
             awardBadge(userId, task.getBadgeCode());
         }
         return view(userId);
+    }
+
+    /** 任务详情：任何登录用户都能看全部主线任务（包括不在当前阶段的），完成状态只看自己。 */
+    public AchievementDtos.TaskDetailView detail(Long taskId, Long userId) {
+        AchievementTask task = taskMapper.selectById(taskId);
+        if (task == null) {
+            throw new NoSuchElementException("任务不存在");
+        }
+        AchievementStage stage = stageMapper.selectById(task.getStageId());
+        AchievementProgress progress = progressMapper.selectOne(new LambdaQueryWrapper<AchievementProgress>()
+                .eq(AchievementProgress::getUserId, userId)
+                .eq(AchievementProgress::getTaskId, taskId));
+        int version = task.getVersion() == null ? 1 : task.getVersion();
+        Integer completedVersion = progress == null ? null
+                : progress.getTaskVersion() == null ? 1 : progress.getTaskVersion();
+
+        AchievementDtos.BadgeView badge = null;
+        if (task.getBadgeCode() != null && !task.getBadgeCode().isBlank()) {
+            Badge meta = badgeMapper.selectById(task.getBadgeCode());
+            if (meta != null) {
+                UserBadge earned = userBadgeMapper.selectOne(new LambdaQueryWrapper<UserBadge>()
+                        .eq(UserBadge::getUserId, userId).eq(UserBadge::getBadgeCode, meta.getCode()));
+                badge = new AchievementDtos.BadgeView(meta.getCode(), meta.getTitle(), meta.getDescription(),
+                        meta.getRarity(), meta.getIcon(), earned != null,
+                        earned == null ? null : AppTime.toOffset(earned.getEarnedAt()).toString());
+            }
+        }
+        return new AchievementDtos.TaskDetailView(
+                task.getId(),
+                stage == null ? null : stage.getCode(),
+                stage == null ? null : stage.getTitle(),
+                task.getTitle(),
+                task.getDescription(),
+                task.getXp() == null ? 0 : task.getXp(),
+                steps(task.getSteps()),
+                task.getDueHint(),
+                task.getSourceType() == null ? "PLATFORM" : task.getSourceType(),
+                task.getSourceName() == null ? "UniPO 编辑部整理" : task.getSourceName(),
+                task.getSourceUrl(),
+                task.getReviewedAt() == null ? null : task.getReviewedAt().toString(),
+                version,
+                progress != null,
+                progress == null ? null : AppTime.toOffset(progress.getCompletedAt()).toString(),
+                completedVersion,
+                completedVersion != null && completedVersion < version,
+                badge
+        );
+    }
+
+    /** 每行一步；空行和首尾空白去掉。 */
+    static List<String> steps(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        return raw.lines().map(String::trim).filter(line -> !line.isEmpty()).toList();
     }
 
     /** 撤回自报完成：删除进度，按任务经验回退，并收回只由该任务授予的徽章。重复撤回无副作用。 */

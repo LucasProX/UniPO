@@ -264,6 +264,10 @@ public actor APIClient {
         try await request(path: "achievements/me")
     }
 
+    public func taskDetail(id: Int64) async throws -> AchievementTaskDetail {
+        try await request(path: "achievements/tasks/\(id)")
+    }
+
     public func completeTask(id: Int64) async throws -> AchievementView {
         try await request(path: "achievements/tasks/\(id)/complete", method: "POST")
     }

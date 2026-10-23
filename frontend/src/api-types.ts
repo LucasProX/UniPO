@@ -1604,6 +1604,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/achievements/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["task"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/achievements/me": {
         parameters: {
             query?: never;
@@ -2478,6 +2494,7 @@ export interface components {
             xp?: number;
             completed?: boolean;
             completedAt?: string;
+            dueHint?: string;
         };
         ModerateRequest: {
             pinned?: boolean;
@@ -3088,6 +3105,36 @@ export interface components {
             maxRewardXp?: number;
             /** Format: int32 */
             maxRewardCoins?: number;
+        };
+        ApiResponseTaskDetailView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TaskDetailView"];
+            requestId?: string;
+        };
+        TaskDetailView: {
+            /** Format: int64 */
+            id?: number;
+            stageCode?: string;
+            stageTitle?: string;
+            title?: string;
+            description?: string;
+            /** Format: int32 */
+            xp?: number;
+            steps?: string[];
+            dueHint?: string;
+            sourceType?: string;
+            sourceName?: string;
+            sourceUrl?: string;
+            reviewedAt?: string;
+            /** Format: int32 */
+            version?: number;
+            completed?: boolean;
+            completedAt?: string;
+            /** Format: int32 */
+            completedVersion?: number;
+            updatedSinceCompletion?: boolean;
+            badge?: components["schemas"]["BadgeView"];
         };
     };
     responses: never;
@@ -5802,6 +5849,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseActivityPage"];
+                };
+            };
+        };
+    };
+    task: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTaskDetailView"];
                 };
             };
         };

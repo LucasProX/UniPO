@@ -323,6 +323,40 @@ public struct AchievementTaskView: Codable, Identifiable, Hashable {
     public let xp: Int
     public let completed: Bool
     public let completedAt: String?
+    /// 期限提示，例如「退改选截止前」；具体日期以学校通知为准。
+    public let dueHint: String?
+}
+
+/// 主线任务详情（G05）：步骤、期限、来源与复核日期、内容版本。
+public struct AchievementTaskDetail: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let stageCode: String?
+    public let stageTitle: String?
+    public let title: String
+    public let description: String?
+    public let xp: Int
+    public let steps: [String]
+    public let dueHint: String?
+    /** PLATFORM / SCHOOL / COMMUNITY */
+    public let sourceType: String
+    public let sourceName: String
+    public let sourceUrl: String?
+    public let reviewedAt: String?
+    public let version: Int
+    public let completed: Bool
+    public let completedAt: String?
+    public let completedVersion: Int?
+    /// 完成之后任务内容又更新过；完成事实保留，只做提示。
+    public let updatedSinceCompletion: Bool
+    public let badge: AchievementBadgeView?
+
+    public var sourceLabel: String {
+        switch sourceType {
+        case "SCHOOL": return "学校官方"
+        case "COMMUNITY": return "同学经验"
+        default: return "平台整理"
+        }
+    }
 }
 
 public struct AchievementStageView: Codable, Identifiable, Hashable {

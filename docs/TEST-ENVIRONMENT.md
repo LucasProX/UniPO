@@ -97,3 +97,7 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 
 测试实例迁移到 V30（`user_tasks` 与三枚活动徽章元数据），部署前备份 `/var/backups/unipo/test-before-a4-20261023T044511Z/`，回退镜像 `unipo-backend:test-rollback-20261023T044511Z`。验收新建了尾号 200021 的测试号和「徽章测试：草坪音乐会」（补签后撤销，随后取消）；尾号 200002 的测试号留了一条「CET4 practice 20 sets」计划。
 
+## 2026-10-23 G05 任务详情更新
+
+测试实例迁移到 V31（任务步骤、期限提示、来源、复核日期、版本，完成记录的任务版本），部署前备份 `/var/backups/unipo/test-before-g05-20261023T091439Z/`，回退镜像 `unipo-backend:test-rollback-20261023T091439Z`。验收时临时把「确认本学期选课」的版本改到 2 再改回 1，尾号 200021 测试号的完成记录已撤回。
+

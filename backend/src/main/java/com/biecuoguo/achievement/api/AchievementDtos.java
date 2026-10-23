@@ -11,7 +11,36 @@ public final class AchievementDtos {
             String description,
             int xp,
             boolean completed,
-            String completedAt
+            String completedAt,
+            /** 期限提示，例如「退改选截止前」；具体日期以学校通知为准。 */
+            String dueHint
+    ) {}
+
+    /** 任务详情（G05）：步骤、期限、来源与复核日期、内容版本。 */
+    public record TaskDetailView(
+            Long id,
+            String stageCode,
+            String stageTitle,
+            String title,
+            String description,
+            int xp,
+            List<String> steps,
+            String dueHint,
+            /** PLATFORM 平台整理 / SCHOOL 学校官方 / COMMUNITY 同学经验 */
+            String sourceType,
+            String sourceName,
+            String sourceUrl,
+            /** 最近一次复核日期，yyyy-MM-dd。 */
+            String reviewedAt,
+            int version,
+            boolean completed,
+            String completedAt,
+            /** 完成时的内容版本；未完成为空。 */
+            Integer completedVersion,
+            /** 完成之后任务内容又更新过。完成事实保留，只做提示。 */
+            boolean updatedSinceCompletion,
+            /** 完成会得到的徽章；没有为空。 */
+            BadgeView badge
     ) {}
 
     public record StageView(

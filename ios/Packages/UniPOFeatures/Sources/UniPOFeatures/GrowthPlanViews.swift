@@ -20,6 +20,7 @@ struct TermPlanSection: View {
     /// 勾选立即生效的本地覆盖；服务端重新拉取后移除，失败时移除即回滚。
     @State private var pendingPersonal: [Int64: Bool] = [:]
     @State private var pendingOfficial: [Int64: Bool] = [:]
+    @State private var openedTask: TaskRef?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -44,6 +45,9 @@ struct TermPlanSection: View {
         .sheet(item: $openedActivity, onDismiss: { Task { await store.load(termStart: store.termStart) } }) { ref in
             NavigationStack { ActivityDetailView(activityID: ref.id) }
                 .environment(auth)
+        }
+        .sheet(item: $openedTask, onDismiss: { Task { await store.load(termStart: store.termStart) } }) { ref in
+            TaskDetailView(taskID: ref.id) { onAchievementChange($0) }
         }
         .sheet(isPresented: $browsingActivities, onDismiss: { Task { await store.load(termStart: store.termStart) } }) {
             ActivityListView().environment(auth)
@@ -195,19 +199,33 @@ struct TermPlanSection: View {
                                     label: done ? "已完成，点按撤回" : "标记完成") {
                         if done { undoCandidate = task } else { Task { await setOfficial(task, completed: true) } }
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        PlanTitle(text: task.title, done: done)
-                        if let description = task.description, !description.isEmpty {
-                            Text(description)
-                                .uniFont(11, weight: .semibold)
+                    Button { openedTask = TaskRef(id: task.id) } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                PlanTitle(text: task.title, done: done)
+                                if let due = task.dueHint, !due.isEmpty, !done {
+                                    Label(due, systemImage: "clock")
+                                        .uniFont(10, weight: .semibold)
+                                        .foregroundStyle(UniColor.secondary)
+                                } else if let description = task.description, !description.isEmpty {
+                                    Text(description)
+                                        .uniFont(11, weight: .semibold)
+                                        .foregroundStyle(UniColor.tertiary)
+                                        .lineLimit(2)
+                                }
+                            }
+                            Spacer()
+                            Text("+\(task.xp)")
+                                .uniFont(10, weight: .semibold)
+                                .foregroundStyle(UniColor.gold)
+                            Image(systemName: "chevron.right")
+                                .uniFont(11)
                                 .foregroundStyle(UniColor.tertiary)
-                                .lineLimit(2)
                         }
+                        .contentShape(Rectangle())
                     }
-                    Spacer()
-                    Text("+\(task.xp)")
-                        .uniFont(10, weight: .semibold)
-                        .foregroundStyle(UniColor.gold)
+                    .buttonStyle(.plain)
+                    .accessibilityHint("查看任务步骤和来源")
                 }
                 .padding(.vertical, 4)
                 if task.id != stage.tasks.last?.id { Divider().padding(.leading, 44) }
@@ -731,5 +749,12 @@ enum GrowthDate {
         calendar.timeZone = ActivityTime.zone
         let components = calendar.dateComponents([.month, .day], from: date)
         return "\(components.month ?? 0)月\(components.day ?? 0)日"
+    }
+
+    /// 「2026年10月23日」：接受「2026-10-23」。
+    static func fullDate(_ raw: String) -> String {
+        let parts = raw.prefix(10).split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return raw }
+        return "\(parts[0])年\(parts[1])月\(parts[2])日"
     }
 }

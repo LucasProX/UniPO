@@ -20,6 +20,11 @@ public class AchievementController {
         return ApiResponse.ok(achievementService.view(SecurityUtils.currentUser().id()));
     }
 
+    @GetMapping("/tasks/{taskId}")
+    public ApiResponse<AchievementDtos.TaskDetailView> task(@PathVariable Long taskId) {
+        return ApiResponse.ok(achievementService.detail(taskId, SecurityUtils.currentUser().id()));
+    }
+
     @PostMapping("/tasks/{taskId}/complete")
     public ApiResponse<AchievementDtos.AchievementView> complete(@PathVariable Long taskId) {
         return ApiResponse.ok(achievementService.complete(taskId, SecurityUtils.currentUser().id()));

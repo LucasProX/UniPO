@@ -5,6 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
 @Data
 @TableName("achievement_tasks")
 public class AchievementTask {
@@ -16,4 +19,13 @@ public class AchievementTask {
     private Integer taskOrder;
     private Integer xp;
     private String badgeCode;
+    /** 每行一步。 */
+    private String steps;
+    private String dueHint;
+    private String sourceType;
+    private String sourceName;
+    private String sourceUrl;
+    private LocalDate reviewedAt;
+    private Integer version;
+    private LocalDateTime updatedAt;
 }

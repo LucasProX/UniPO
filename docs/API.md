@@ -337,8 +337,9 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/achievements/me` | 当前用户阶段、任务、进度、徽章（需登录） |
-| POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章 |
+| GET | `/api/achievements/me` | 当前用户阶段、任务（含 `dueHint` 期限提示）、进度、徽章（需登录） |
+| GET | `/api/achievements/tasks/{taskId}` | 任务详情（G05）：`steps`、`dueHint`、`sourceType`（PLATFORM / SCHOOL / COMMUNITY）、`sourceName`、`sourceUrl`、`reviewedAt`、`version`、完成状态、`completedVersion`、`updatedSinceCompletion`、可得徽章；不存在 404 |
+| POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章；记录完成时的任务版本 |
 | DELETE | `/api/achievements/tasks/{taskId}/complete` | 撤回自报完成，幂等；按累计经验回退，并收回只由该任务授予的徽章 |
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 

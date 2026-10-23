@@ -18,6 +18,7 @@ struct AchievementsView: View {
     /// 0 本学期清单 · 1 成长路线 · 2 成长档案；默认先看本学期该做什么。
     @State private var section = 0
     @State private var termPlan = TermPlanStore()
+    @State private var openedTask: TaskRef?
 
     var body: some View {
         ScrollView {
@@ -56,6 +57,9 @@ struct AchievementsView: View {
             withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
                 pulse = true
             }
+        }
+        .sheet(item: $openedTask) { ref in
+            TaskDetailView(taskID: ref.id) { achievement = $0 }
         }
         .sheet(isPresented: $editingBackground) {
             GrowthBackgroundSheet(profile: auth.profile) {
@@ -330,22 +334,34 @@ struct AchievementsView: View {
                             .disabled(completingId != nil)
                             .accessibilityLabel(task.completed ? "已完成，点按撤回" : "标记完成")
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(task.title)
-                                    .uniFont(14, weight: .semibold)
-                                    .foregroundStyle(task.completed ? UniColor.secondary : UniColor.ink)
-                                    .strikethrough(task.completed, color: UniColor.tertiary)
-                                if let description = task.description, !description.isEmpty {
-                                    Text(description)
-                                        .uniFont(11, weight: .semibold)
+                            Button { openedTask = TaskRef(id: task.id) } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(task.title)
+                                            .uniFont(14, weight: .semibold)
+                                            .foregroundStyle(task.completed ? UniColor.secondary : UniColor.ink)
+                                            .strikethrough(task.completed, color: UniColor.tertiary)
+                                            .multilineTextAlignment(.leading)
+                                        if let description = task.description, !description.isEmpty {
+                                            Text(description)
+                                                .uniFont(11, weight: .semibold)
+                                                .foregroundStyle(UniColor.tertiary)
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text("+\(task.xp)")
+                                        .uniFont(10, weight: .semibold)
+                                        .foregroundStyle(UniColor.gold)
+                                    Image(systemName: "chevron.right")
+                                        .uniFont(11)
                                         .foregroundStyle(UniColor.tertiary)
-                                        .lineLimit(2)
                                 }
+                                .contentShape(Rectangle())
                             }
-                            Spacer()
-                            Text("+\(task.xp)")
-                                .uniFont(10, weight: .semibold)
-                                .foregroundStyle(UniColor.gold)
+                            .buttonStyle(.plain)
+                            .accessibilityHint("查看任务步骤和来源")
                         }
                         .padding(.vertical, 10)
                         if task.id != shownStage.tasks.last?.id {

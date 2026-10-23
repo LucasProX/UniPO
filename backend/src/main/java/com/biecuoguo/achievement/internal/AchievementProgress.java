@@ -15,4 +15,6 @@ public class AchievementProgress {
     private Long userId;
     private Long taskId;
     private LocalDateTime completedAt;
+    /** 完成时的任务内容版本。 */
+    private Integer taskVersion;
 }
