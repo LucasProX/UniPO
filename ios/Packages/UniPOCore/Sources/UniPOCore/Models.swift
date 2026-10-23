@@ -201,6 +201,11 @@ public struct PostView: Codable, Identifiable, Hashable {
     public let publishedAt: String?
     public let createdAt: String?
     public let author: AuthorView
+    /// 运营最近一次核实日期 yyyy-MM-dd（G06）。
+    public let verifiedAt: String?
+    /// 攻略有效期；过期后不再作为任务的有效攻略。
+    public let expiresAt: String?
+    public let expired: Bool?
 
     public var likeTotal: Int { likeCount ?? 0 }
     public var commentTotal: Int { commentCount ?? 0 }
@@ -349,6 +354,10 @@ public struct AchievementTaskDetail: Codable, Identifiable, Hashable {
     /// 完成之后任务内容又更新过；完成事实保留，只做提示。
     public let updatedSinceCompletion: Bool
     public let badge: AchievementBadgeView?
+    /// 同校、已发布、未过期的关联攻略（G06）。
+    public let guides: [PostView]?
+    /// 关联了但已过有效期、因此不再展示的攻略数。
+    public let expiredGuideCount: Int?
 
     public var sourceLabel: String {
         switch sourceType {

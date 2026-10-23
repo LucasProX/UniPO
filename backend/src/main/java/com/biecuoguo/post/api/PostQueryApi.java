@@ -24,7 +24,14 @@ public interface PostQueryApi {
     record AdminPostStats(long posts, long publishedPosts, long comments) {
     }
 
+    /** 任务攻略：有效的帖子（按传入顺序）与被隐藏的过期帖数量。不可见（别校、下架、拉黑）的不计数。 */
+    record GuideSelection(List<PostDtos.PostView> posts, int expiredCount) {
+    }
+
     UserPostStats statsForUser(long userId);
+
+    /** 按 viewer 的可见性筛出未过期的攻略帖，保持 postIds 的顺序。 */
+    GuideSelection guidePosts(List<Long> postIds, CurrentUser viewer);
 
     AdminPostStats adminStats();
 

@@ -340,6 +340,10 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | GET | `/api/achievements/me` | 当前用户阶段、任务（含 `dueHint` 期限提示）、进度、徽章（需登录） |
 | GET | `/api/achievements/tasks/{taskId}` | 任务详情（G05）：`steps`、`dueHint`、`sourceType`（PLATFORM / SCHOOL / COMMUNITY）、`sourceName`、`sourceUrl`、`reviewedAt`、`version`、完成状态、`completedVersion`、`updatedSinceCompletion`、可得徽章；不存在 404 |
 | POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章；记录完成时的任务版本 |
+| GET | `/api/admin/achievement-tasks/{taskId}/guides` | 运营：任务的全部攻略关联（含下架、过期、别校），每条带帖子当前状态 |
+| POST | `/api/admin/achievement-tasks/{taskId}/guides` | 运营：`{postId, sortOrder?}` 关联攻略；只能关联已发布且未过期的帖子（否则 409），每任务最多 10 篇，重复关联幂等；必需审计 |
+| DELETE | `/api/admin/achievement-tasks/{taskId}/guides/{postId}` | 运营：取消关联；必需审计 |
+| PUT | `/api/admin/posts/{id}/validity` | 运营：`{verifiedAt?, expiresAt?}` 整体替换核实日期与有效期，传空即清除；必需审计 |
 | DELETE | `/api/achievements/tasks/{taskId}/complete` | 撤回自报完成，幂等；按累计经验回退，并收回只由该任务授予的徽章 |
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 
@@ -416,6 +420,8 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 `ActivityView` 主要字段：`phase`（OPEN / CLOSED / ONGOING / ENDED / CANCELLED，服务端按时间计算）、`myStatus`（NONE / REGISTERED / WAITLISTED / CANCELLED）、`myWaitlistPosition`、`eligible` 与 `ineligibleReason`、`audienceLabel`、`capacity`（为空不限）、`registeredCount`、`waitlistCount`、`rewardXp`、`rewardCoins`（签到后发放，A2 实现）、`recentAttendees`（最多 8 人）、`checkedIn`、`checkedInAt`、`checkinOpen`、`canManage`、`requireApproval`、`cancelReason`、`checkinRevoked`；`myStatus` 还可能是 PENDING（待审核）与 REJECTED（未通过，不能再报名）。签到时奖励写入报名行（`reward_xp_granted` / `reward_coins_granted`），金币按 `activity-checkin:报名 ID` 幂等入账，超过每日上限的部分不入账。
 
 发布权限与上限：管理员和校级运营面向全校 / 学院 / 专业，每场最多 100 经验、200 金币；院级运营只能面向本院或本院专业，50 / 100；专业运营只能面向本专业，30 / 60。本校所有人都能看到活动，只有范围内的人能报名。名额计数在锁住活动行的事务内变更，并发报名不会超卖。
+
+任务详情的 `guides` 只包含与查看者同校、已发布、未拉黑且未过期的关联帖子，按运营排序；`expiredGuideCount` 是可见但已过期而被隐藏的篇数，下架或别校的帖子不计入。`PostView` 新增 `verifiedAt`、`expiresAt`、`expired`（G06）；过期帖子照常可读，只是不再作为任务的有效攻略。
 
 活动徽章（`activity-1` / `activity-5` / `activity-15`）出现在 `/api/achievements/me` 的 `badges` 里，由签到有效的累计场次推导，第 N 场的签到时间就是 `earnedAt`；撤销签到后自动变回未获得。
 

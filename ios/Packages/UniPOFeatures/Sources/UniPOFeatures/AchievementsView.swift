@@ -60,6 +60,7 @@ struct AchievementsView: View {
         }
         .sheet(item: $openedTask) { ref in
             TaskDetailView(taskID: ref.id) { achievement = $0 }
+                .environment(auth)
         }
         .sheet(isPresented: $editingBackground) {
             GrowthBackgroundSheet(profile: auth.profile) {

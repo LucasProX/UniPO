@@ -101,3 +101,7 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 
 测试实例迁移到 V31（任务步骤、期限提示、来源、复核日期、版本，完成记录的任务版本），部署前备份 `/var/backups/unipo/test-before-g05-20261023T091439Z/`，回退镜像 `unipo-backend:test-rollback-20261023T091439Z`。验收时临时把「确认本学期选课」的版本改到 2 再改回 1，尾号 200021 测试号的完成记录已撤回。
 
+## 2026-10-23 G06 任务攻略更新
+
+测试实例迁移到 V32（`achievement_task_posts`，`posts.verified_at` / `expires_at`），部署前备份 `/var/backups/unipo/test-before-g06-20261023T092313Z/`，回退镜像 `unipo-backend:test-rollback-20261023T092313Z`。验收后保留「四级报名」任务关联 2 号帖（四六级报名截止）作演示；3 号帖（项目实训组队）有效期设到 2027 年 5 月、核实日期 2026-10-23。
+

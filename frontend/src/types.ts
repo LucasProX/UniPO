@@ -81,6 +81,11 @@ export interface PostView {
   publishedAt: string;
   createdAt: string;
   author: AuthorView;
+  /** 运营最近一次核实日期 yyyy-MM-dd（G06） */
+  verifiedAt?: string;
+  /** 攻略有效期；过期后不再作为任务的有效攻略 */
+  expiresAt?: string;
+  expired?: boolean;
 }
 
 export interface CommentView {

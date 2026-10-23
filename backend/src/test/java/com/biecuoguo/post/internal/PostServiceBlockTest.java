@@ -48,7 +48,7 @@ class PostServiceBlockTest {
                 mock(PostLikeMapper.class), mock(PostFavoriteMapper.class), mock(PostShareMapper.class),
                 mock(PostDailyStatMapper.class), comments, mock(CommentLikeMapper.class), mock(UserMapper.class),
                 mock(SchoolMapper.class), mock(CollegeMapper.class), mock(MajorMapper.class),
-                mock(PresenceService.class), experience, blocks);
+                mock(PresenceService.class), experience, blocks, mock(com.biecuoguo.admin.api.AdminAuditApi.class));
 
         assertThrows(NoSuchElementException.class, () -> service.comment(70L,
                 new PostDtos.CreateCommentRequest("Blocked reply", 80L),

@@ -48,6 +48,7 @@ struct TermPlanSection: View {
         }
         .sheet(item: $openedTask, onDismiss: { Task { await store.load(termStart: store.termStart) } }) { ref in
             TaskDetailView(taskID: ref.id) { onAchievementChange($0) }
+                .environment(auth)
         }
         .sheet(isPresented: $browsingActivities, onDismiss: { Task { await store.load(termStart: store.termStart) } }) {
             ActivityListView().environment(auth)

@@ -1,5 +1,7 @@
 package com.biecuoguo.achievement.api;
 
+import com.biecuoguo.post.api.PostDtos;
+
 import java.util.List;
 
 public final class AchievementDtos {
@@ -40,7 +42,25 @@ public final class AchievementDtos {
             /** 完成之后任务内容又更新过。完成事实保留，只做提示。 */
             boolean updatedSinceCompletion,
             /** 完成会得到的徽章；没有为空。 */
-            BadgeView badge
+            BadgeView badge,
+            /** 同校、已发布、未过期的关联攻略，按运营排序。 */
+            List<PostDtos.PostView> guides,
+            /** 关联了但已过有效期、因此不再展示的攻略数。 */
+            int expiredGuideCount
+    ) {}
+
+    /** 后台：任务的全部关联攻略，包括下架、过期和别校的。 */
+    public record GuideLinkView(
+            Long postId,
+            int sortOrder,
+            String addedAt,
+            /** 帖子已被删除时为空。 */
+            PostDtos.PostView post
+    ) {}
+
+    public record GuideLinkRequest(
+            @jakarta.validation.constraints.NotNull Long postId,
+            Integer sortOrder
     ) {}
 
     public record StageView(

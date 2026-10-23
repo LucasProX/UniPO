@@ -38,6 +38,10 @@ public class Post {
     @TableField(updateStrategy = FieldStrategy.NEVER) private Integer shareCount;
     private String status;
     private LocalDateTime publishedAt;
+    /** 运营最近一次核实攻略仍然有效的日期。 */
+    private java.time.LocalDate verifiedAt;
+    /** 攻略有效期；过期后不再作为任务的有效攻略。 */
+    private LocalDateTime expiresAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

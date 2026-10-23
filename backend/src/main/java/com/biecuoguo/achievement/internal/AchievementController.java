@@ -22,7 +22,7 @@ public class AchievementController {
 
     @GetMapping("/tasks/{taskId}")
     public ApiResponse<AchievementDtos.TaskDetailView> task(@PathVariable Long taskId) {
-        return ApiResponse.ok(achievementService.detail(taskId, SecurityUtils.currentUser().id()));
+        return ApiResponse.ok(achievementService.detail(taskId, SecurityUtils.currentUser()));
     }
 
     @PostMapping("/tasks/{taskId}/complete")

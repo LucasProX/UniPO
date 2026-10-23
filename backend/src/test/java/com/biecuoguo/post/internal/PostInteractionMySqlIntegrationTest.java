@@ -1350,7 +1350,8 @@ class PostInteractionMySqlIntegrationTest {
                     template.getMapper(CommentMapper.class), template.getMapper(CommentLikeMapper.class),
                     template.getMapper(UserMapper.class), template.getMapper(SchoolMapper.class),
                     template.getMapper(CollegeMapper.class), template.getMapper(MajorMapper.class),
-                    new PresenceService(new MemoryPresenceStore()), experienceService, socialService);
+                    new PresenceService(new MemoryPresenceStore()), experienceService, socialService,
+                    org.mockito.Mockito.mock(com.biecuoguo.admin.api.AdminAuditApi.class));
         }
 
         @Bean

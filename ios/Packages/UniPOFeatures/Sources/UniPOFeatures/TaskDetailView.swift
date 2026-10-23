@@ -8,6 +8,7 @@ struct TaskRef: Identifiable {
 
 /// 主线任务详情（G05）：步骤、期限、来源与复核日期；完成与撤回都在这里，撤回需要确认。
 struct TaskDetailView: View {
+    @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
     let taskID: Int64
     /// 完成或撤回后把最新的成长数据交给调用方，顶部经验和清单一起刷新。
@@ -19,6 +20,7 @@ struct TaskDetailView: View {
     @State private var actionError: String?
     @State private var working = false
     @State private var confirmingUndo = false
+    @State private var openedPost: PostView?
 
     var body: some View {
         NavigationStack {
@@ -44,6 +46,9 @@ struct TaskDetailView: View {
             }
         }
         .task { await load() }
+        .sheet(item: $openedPost) { post in
+            PostDetailView(post: post).environment(auth)
+        }
         .confirmationDialog("撤回这项完成记录？", isPresented: $confirmingUndo, titleVisibility: .visible) {
             Button("撤回完成", role: .destructive) { Task { await setCompleted(false) } }
             Button("取消", role: .cancel) {}
@@ -107,6 +112,8 @@ struct TaskDetailView: View {
                 }
             }
 
+            guidesSection(detail)
+
             if let badge = detail.badge {
                 card(title: "完成可得徽章") {
                     HStack(spacing: 12) {
@@ -156,6 +163,64 @@ struct TaskDetailView: View {
             }
         }
         .padding(18)
+    }
+
+    /// 相关攻略：同校同学或运营挑出来的帖子；过期的不再展示，只告诉你隐藏了几篇。
+    @ViewBuilder
+    private func guidesSection(_ detail: AchievementTaskDetail) -> some View {
+        let guides = detail.guides ?? []
+        let expired = detail.expiredGuideCount ?? 0
+        if !guides.isEmpty || expired > 0 {
+            card(title: "相关攻略") {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(guides) { post in
+                        Button { openedPost = post } label: { guideRow(post) }
+                            .buttonStyle(.plain)
+                        if post.id != guides.last?.id { Divider() }
+                    }
+                    if guides.isEmpty {
+                        Text("这项任务的攻略都已过有效期，正在等运营更新。")
+                            .uniFont(12)
+                            .foregroundStyle(UniColor.secondary)
+                    } else if expired > 0 {
+                        Text("另有 \(expired) 篇攻略已过有效期，已隐藏。")
+                            .uniFont(11)
+                            .foregroundStyle(UniColor.tertiary)
+                            .padding(.top, 8)
+                    }
+                }
+            }
+        }
+    }
+
+    private func guideRow(_ post: PostView) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(post.title)
+                    .uniFont(14, weight: .semibold)
+                    .foregroundStyle(UniColor.ink)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(2)
+                HStack(spacing: 8) {
+                    Text(post.author.nickname)
+                    Label("\(post.likeTotal)", systemImage: "heart")
+                    if let verified = post.verifiedAt {
+                        Text("核实于 \(GrowthDate.monthDay(verified))")
+                    }
+                }
+                .uniFont(11)
+                .foregroundStyle(UniColor.tertiary)
+                .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+            Image(systemName: "chevron.right")
+                .uniFont(11)
+                .foregroundStyle(UniColor.tertiary)
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("打开这篇攻略")
     }
 
     @ViewBuilder

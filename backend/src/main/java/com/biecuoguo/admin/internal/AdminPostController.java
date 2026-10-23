@@ -21,6 +21,10 @@ public class AdminPostController {
     public record ModerateRequest(Boolean pinned, Boolean official, Boolean dontMiss, String status) {
     }
 
+    /** 整体替换：verifiedAt 为空表示未核实，expiresAt 为空表示长期有效。 */
+    public record ValidityRequest(java.time.LocalDate verifiedAt, java.time.OffsetDateTime expiresAt) {
+    }
+
     private final PostAdminApi postAdminApi;
     private final AdminAuditApi auditApi;
 
@@ -44,5 +48,12 @@ public class AdminPostController {
                 "status=" + view.status() + " pinned=" + view.pinned()
                         + " official=" + view.official() + " dontMiss=" + view.dontMiss());
         return ApiResponse.ok(view);
+    }
+
+    /** 攻略有效期（G06）：过期后不再作为任务的有效攻略，帖子本身照常可读。 */
+    @PutMapping("/{id}/validity")
+    public ApiResponse<PostDtos.PostView> validity(@PathVariable Long id, @RequestBody ValidityRequest request) {
+        return ApiResponse.ok(postAdminApi.setValidity(id, request.verifiedAt(), request.expiresAt(),
+                SecurityUtils.currentUser()));
     }
 }

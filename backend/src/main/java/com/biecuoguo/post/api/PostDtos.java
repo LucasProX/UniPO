@@ -51,7 +51,13 @@ public final class PostDtos {
             String status,
             OffsetDateTime publishedAt,
             OffsetDateTime createdAt,
-            AuthorView author
+            AuthorView author,
+            /** 运营最近一次核实日期，yyyy-MM-dd；未核实为空。 */
+            String verifiedAt,
+            /** 攻略有效期；不设为空。 */
+            OffsetDateTime expiresAt,
+            /** 已过有效期。过期帖子照常可读，但不再作为任务的有效攻略。 */
+            Boolean expired
     ) {}
 
     public record CreatePostRequest(

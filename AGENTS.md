@@ -38,7 +38,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
 | `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V30，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V32，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -89,7 +89,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V30）：
+后端（Flyway 自动执行 V1–V32）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -205,7 +205,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V30 只增不改，下一次迁移按实际最高版本递增（当前应为 `V31__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V32 只增不改，下一次迁移按实际最高版本递增（当前应为 `V33__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -260,6 +260,7 @@ xcrun simctl launch booted com.unipo.app
 - **底栏（2026-10-23）**：首页 · 成长 · 发布 · 消息 · 我的。工具页已暂停并移除，别再加回空入口。「消息」Tab 是 `InboxView`（私信 + 互动通知），嵌入的 `MessagesView` 用 `embedded: true`：不显示关闭按钮、不自己弹登录页（否则和 RootView 的登录 cover 叠两层）。推送打开会话改为切到消息 Tab；未读角标由 RootView 低频轮询放在底栏。
 - **成长背景与阶段**：入学年份决定当前阶段（后端 `GrowthTerms` + `achievement_stages.term_from/term_to`），客户端不拼「第几周」。引导第 2 步与「成长」页共用 `GrowthBackgroundForm` / `GrowthBackgroundStore`；引导先存背景再提交 onboarding，且不再传 grade。已完成任务可撤回（确认后调 DELETE），经验按累计值回退。
 - **主线任务详情（G05）**：任务带步骤（每行一步）、期限提示、来源类型/名称/链接、复核日期和内容版本；完成记录存 `task_version`。改步骤或期限要把 `version` +1，已完成的人看到「内容已更新」提示，完成事实不动。**来源必须如实标注**：通用主线是 `PLATFORM`「UniPO 编辑部整理」，只有真实拿到学校通知才写 `SCHOOL`；期限没有校历时只写提示，不编具体日期。iOS 任务行点标题进 `TaskDetailView`，左侧圆圈仍是快速完成。
+- **任务攻略（G06）**：关联存在 `achievement_task_posts`，只经 `/api/admin/achievement-tasks/{id}/guides` 维护（运营与管理员，必需审计，每任务 10 篇）。用户侧通过 `PostQueryApi.guidePosts` 读取，**可见性与信息流同一套**（同校、已发布、未拉黑），再滤掉 `posts.expires_at` 已过的；下架/过期不删关联，运营复核后续期或移除。有效期只经 `PUT /api/admin/posts/{id}/validity` 改。必需审计（`recordRequired`）必须和业务写入在同一个 `@Transactional` 方法里，别在 Controller 里分两步调。
 - **成长页三段（A4）**：「本学期」（`TermPlanStore` + `/growth/term-plan`）、「成长路线」、「成长档案」（`/growth/archive`）。完成度只认服务端 `summary`，客户端不自己加减；勾选可以先在本地翻转，但必须在重新拉取后撤掉覆盖。学期用起始日（9/1、2/1）标识，不依赖入学年份。自己的计划（`user_tasks`）**永远不发经验和金币**，有奖励的只能是有等级的组织者发布的活动。活动徽章由签到场次实时推导、不写 `user_badges`，别改成签到时插行——并发签到/撤销下那份计数会过期。
 - **发帖图片一律转 JPEG**：相册原图可能是 HEIC，服务端只认 JPEG/PNG/GIF/WebP 文件头，`ComposeSheet` 上传前统一转成最长边 2048 的 JPEG；最多 9 张，标签最多 5 个。
 - **校园活动界面**：首页「本周活动」横条、`ActivityListView`（全部 / 本周 / 我报名的 / 参加过）、`ActivityDetailView`（主按钮按 phase 与 myStatus 切换）、「我的」里的我的活动与组织者「发布活动」。状态以服务端 `phase`/`myStatus`/`eligible` 为准，客户端不自行推断。签到页支持输入签到码和 VisionKit 扫码（不支持的设备隐藏扫码入口）；系统相机扫到 `unipo://checkin?...` 会经 `RootView.onOpenURL` 直接签到，`project.yml` 注册了 `unipo` scheme 与相机用途说明。组织者在活动详情左上角打开「签到码」大屏，屏幕常亮、按服务端给的秒数刷新。**LazyVStack 里的区块加载时不要渲染成 `EmptyView`**：零高度会被当作离屏，`.task` 被取消后又出现，形成请求—取消死循环（见 DEVLOG）。

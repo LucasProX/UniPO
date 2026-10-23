@@ -10,6 +10,7 @@ import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
+import com.biecuoguo.admin.api.AdminAuditApi;
 import com.biecuoguo.post.api.PostAdminApi;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.post.api.PostQueryApi;
@@ -24,6 +25,7 @@ import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -48,8 +50,10 @@ public class PostService implements PostQueryApi, PostAdminApi {
     private final PresenceService presenceService;
     private final ExperienceService experienceService;
     private final BlockQueryApi blockQueryApi;
+    private final AdminAuditApi auditApi;
 
-    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi) {
+    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi, AdminAuditApi auditApi) {
+        this.auditApi = auditApi;
         this.appProperties = appProperties;
         this.postMapper = postMapper;
         this.imageMapper = imageMapper;
@@ -864,9 +868,56 @@ public class PostService implements PostQueryApi, PostAdminApi {
                         AppTime.toOffset(post.getDeadlineAt()), post.getMissConsequence(), post.getNextAction(), splitTags(post.getTags()),
                         safe(post.getLikeCount()), safe(post.getCommentCount()), safe(post.getFavoriteCount()), safe(post.getShareCount()),
                         likedPostIds.contains(post.getId()), favoritedPostIds.contains(post.getId()), post.getStatus(), AppTime.toOffset(post.getPublishedAt()), AppTime.toOffset(post.getCreatedAt()),
-                        authorView(authors.get(post.getAuthorId()), schools, colleges, majors)
+                        authorView(authors.get(post.getAuthorId()), schools, colleges, majors),
+                        post.getVerifiedAt() == null ? null : post.getVerifiedAt().toString(),
+                        AppTime.toOffset(post.getExpiresAt()),
+                        isExpired(post, AppTime.nowLocal())
                 ))
                 .toList();
+    }
+
+    static boolean isExpired(Post post, LocalDateTime now) {
+        return post.getExpiresAt() != null && !post.getExpiresAt().isAfter(now);
+    }
+
+    @Override
+    public GuideSelection guidePosts(List<Long> postIds, CurrentUser currentUser) {
+        if (postIds.isEmpty()) return new GuideSelection(List.of(), 0);
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        // 与信息流同一套可见性：同校、已发布、未拉黑；下架或别校的帖子直接不出现。
+        List<Post> visible = postMapper.selectList(baseVisibleWrapper(viewer).in(Post::getId, postIds));
+        LocalDateTime now = AppTime.nowLocal();
+        Map<Long, Post> byId = visible.stream().collect(Collectors.toMap(Post::getId, Function.identity()));
+        List<Post> valid = postIds.stream().map(byId::get).filter(Objects::nonNull)
+                .filter(post -> !isExpired(post, now)).toList();
+        return new GuideSelection(toViews(valid, currentUser), visible.size() - valid.size());
+    }
+
+    @Override
+    public List<PostDtos.PostView> byIds(List<Long> postIds) {
+        if (postIds.isEmpty()) return List.of();
+        Map<Long, Post> byId = postMapper.selectBatchIds(postIds).stream()
+                .collect(Collectors.toMap(Post::getId, Function.identity()));
+        return toViews(postIds.stream().map(byId::get).filter(Objects::nonNull).toList(), null);
+    }
+
+    @Override
+    @Transactional
+    public PostDtos.PostView setValidity(long postId, LocalDate verifiedAt, OffsetDateTime expiresAt, CurrentUser actor) {
+        Post post = postMapper.lockById(postId);
+        if (post == null) {
+            throw new NoSuchElementException("帖子不存在");
+        }
+        LocalDateTime expires = expiresAt == null ? null : AppTime.toLocal(expiresAt);
+        postMapper.update(null, new LambdaUpdateWrapper<Post>().eq(Post::getId, postId)
+                .set(Post::getVerifiedAt, verifiedAt)
+                .set(Post::getExpiresAt, expires)
+                .set(Post::getUpdatedAt, AppTime.nowLocal()));
+        post.setVerifiedAt(verifiedAt);
+        post.setExpiresAt(expires);
+        auditApi.recordRequired(actor, "POST_VALIDITY", "post", postId,
+                "verifiedAt=" + verifiedAt + " expiresAt=" + expires);
+        return toViews(List.of(post), null).get(0);
     }
 
     private PostDtos.PostView toView(Post post, CurrentUser currentUser) {

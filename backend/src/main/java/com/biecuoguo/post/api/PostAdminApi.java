@@ -15,4 +15,11 @@ public interface PostAdminApi {
 
     /** 部分更新：只改传入的字段。status 只允许 published / removed / draft。 */
     PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status);
+
+    /** 后台查看：不论状态与学校，按传入顺序返回存在的帖子。 */
+    List<PostDtos.PostView> byIds(List<Long> postIds);
+
+    /** 设置核实日期与有效期（整体替换，传空即清除），与必需审计在同一事务里提交。 */
+    PostDtos.PostView setValidity(long postId, java.time.LocalDate verifiedAt, java.time.OffsetDateTime expiresAt,
+                                  com.biecuoguo.security.CurrentUser actor);
 }

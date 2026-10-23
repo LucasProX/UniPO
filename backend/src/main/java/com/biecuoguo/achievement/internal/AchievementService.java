@@ -6,6 +6,8 @@ import com.biecuoguo.achievement.api.AchievementQueryApi;
 import com.biecuoguo.achievement.api.AttendanceBadges;
 import com.biecuoguo.achievement.api.GrowthTerms;
 import com.biecuoguo.activity.api.ActivityParticipationApi;
+import com.biecuoguo.post.api.PostQueryApi;
+import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
@@ -31,12 +33,17 @@ public class AchievementService implements AchievementQueryApi {
     private final UserMapper userMapper;
     private final ExperienceService experienceService;
     private final ActivityParticipationApi participation;
+    private final TaskGuidePostMapper guideMapper;
+    private final PostQueryApi postQueryApi;
 
     public AchievementService(AchievementStageMapper stageMapper, AchievementTaskMapper taskMapper,
                               AchievementProgressMapper progressMapper, BadgeMapper badgeMapper,
                               UserBadgeMapper userBadgeMapper, UserMapper userMapper,
-                              ExperienceService experienceService, ActivityParticipationApi participation) {
+                              ExperienceService experienceService, ActivityParticipationApi participation,
+                              TaskGuidePostMapper guideMapper, PostQueryApi postQueryApi) {
         this.participation = participation;
+        this.guideMapper = guideMapper;
+        this.postQueryApi = postQueryApi;
         this.stageMapper = stageMapper;
         this.taskMapper = taskMapper;
         this.progressMapper = progressMapper;
@@ -205,7 +212,8 @@ public class AchievementService implements AchievementQueryApi {
     }
 
     /** 任务详情：任何登录用户都能看全部主线任务（包括不在当前阶段的），完成状态只看自己。 */
-    public AchievementDtos.TaskDetailView detail(Long taskId, Long userId) {
+    public AchievementDtos.TaskDetailView detail(Long taskId, CurrentUser viewer) {
+        Long userId = viewer.id();
         AchievementTask task = taskMapper.selectById(taskId);
         if (task == null) {
             throw new NoSuchElementException("任务不存在");
@@ -217,6 +225,8 @@ public class AchievementService implements AchievementQueryApi {
         int version = task.getVersion() == null ? 1 : task.getVersion();
         Integer completedVersion = progress == null ? null
                 : progress.getTaskVersion() == null ? 1 : progress.getTaskVersion();
+
+        PostQueryApi.GuideSelection guides = postQueryApi.guidePosts(guidePostIds(taskId), viewer);
 
         AchievementDtos.BadgeView badge = null;
         if (task.getBadgeCode() != null && !task.getBadgeCode().isBlank()) {
@@ -247,8 +257,17 @@ public class AchievementService implements AchievementQueryApi {
                 progress == null ? null : AppTime.toOffset(progress.getCompletedAt()).toString(),
                 completedVersion,
                 completedVersion != null && completedVersion < version,
-                badge
+                badge,
+                guides.posts(),
+                guides.expiredCount()
         );
+    }
+
+    List<Long> guidePostIds(Long taskId) {
+        return guideMapper.selectList(new LambdaQueryWrapper<TaskGuidePost>()
+                        .eq(TaskGuidePost::getTaskId, taskId)
+                        .orderByAsc(TaskGuidePost::getSortOrder).orderByAsc(TaskGuidePost::getId))
+                .stream().map(TaskGuidePost::getPostId).toList();
     }
 
     /** 每行一步；空行和首尾空白去掉。 */
