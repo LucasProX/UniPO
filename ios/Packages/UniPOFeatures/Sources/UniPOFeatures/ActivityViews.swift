@@ -125,7 +125,11 @@ struct RewardChips: View {
     }
 
     private func chip(_ text: String, _ icon: String) -> some View {
-        Label(text, systemImage: icon)
+        // 不用 Label：在 List 行里自动样式可能只显示图标，奖励数字就丢了。
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+            Text(text)
+        }
             .uniFont(10, weight: .semibold)
             .foregroundStyle(UniColor.gold)
             .lineLimit(1)
@@ -145,68 +149,6 @@ enum ActivityIcon {
         case "CULTURE": return "music.note"
         case "CLASS": return "person.3.fill"
         default: return "sparkles"
-        }
-    }
-}
-
-// MARK: - 首页「本周活动」
-
-struct WeeklyActivitiesStrip: View {
-    @Environment(AuthStore.self) private var auth
-    @State private var store = ActivityListStore(tab: "week")
-    @State private var selected: ActivityView?
-    @State private var showAll = false
-
-    var body: some View {
-        Group {
-            if !store.items.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("本周活动")
-                            .uniFont(17, weight: .bold)
-                            .foregroundStyle(UniColor.ink)
-                        Spacer()
-                        Button { showAll = true } label: {
-                            HStack(spacing: 3) { Text("全部"); Image(systemName: "chevron.right") }
-                                .uniFont(12, weight: .semibold).foregroundStyle(UniColor.blue)
-                                .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(store.items) { activity in
-                                Button { selected = activity } label: { ActivityCard(activity: activity, compact: true) }
-                                    .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-            } else {
-                // 加载中也保留这一行：在 LazyVStack 里渲染成空视图会被当作离屏，
-                // .task 被取消后又重新出现，形成「请求—取消」死循环。
-                Button { showAll = true } label: {
-                    HStack {
-                        Label("校园活动", systemImage: "sparkles").uniFont(13, weight: .semibold).foregroundStyle(UniColor.ink)
-                        Spacer()
-                        Text(store.isLoading ? "加载中…" : "本周暂无，看看全部").uniFont(12, weight: .semibold).foregroundStyle(UniColor.secondary)
-                        Image(systemName: "chevron.right").uniFont(11).foregroundStyle(UniColor.tertiary)
-                    }
-                    .padding(.horizontal, 16).frame(minHeight: 48)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .task(id: "\(auth.authenticationRevision):\(auth.profile?.id ?? 0)") { await store.refresh() }
-        .sheet(item: $selected) { activity in
-            NavigationStack {
-                ActivityDetailView(activityID: activity.id, initial: activity) { store.replace($0) }
-            }
-            .environment(auth)
-        }
-        .sheet(isPresented: $showAll, onDismiss: { Task { await store.refresh() } }) {
-            ActivityListView().environment(auth)
         }
     }
 }

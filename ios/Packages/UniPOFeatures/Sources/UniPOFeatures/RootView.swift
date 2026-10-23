@@ -47,8 +47,7 @@ public struct RootView: View {
             Group {
                 switch tab {
                 case .home:
-                    HomeView(onRequestAuth: { auth.requireLogin() },
-                             onOpenAchievements: { tab = .achievements })
+                    HomeView()
                 case .achievements:
                     AchievementsView()
                         .id(identityKey)

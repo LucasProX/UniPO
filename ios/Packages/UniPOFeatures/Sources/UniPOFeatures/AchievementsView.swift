@@ -19,11 +19,13 @@ struct AchievementsView: View {
     @State private var section = 0
     @State private var termPlan = TermPlanStore()
     @State private var openedTask: TaskRef?
+    @State private var showActivities = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 hero
+                entryGrid
                 if let achievement, achievement.needsBackground { backgroundPrompt }
                 if auth.isAuthenticated {
                     ProfileSegmentedControl(selection: $section, titles: ["本学期", "成长路线", "成长档案"])
@@ -58,6 +60,12 @@ struct AchievementsView: View {
                 pulse = true
             }
         }
+        .sheet(isPresented: $showActivities, onDismiss: {
+            // 在活动里报名或签到后，本学期清单要跟着更新。
+            if termPlan.plan != nil { Task { await termPlan.load(termStart: termPlan.termStart) } }
+        }) {
+            ActivityListView().environment(auth)
+        }
         .sheet(item: $openedTask) { ref in
             TaskDetailView(taskID: ref.id) { achievement = $0 }
                 .environment(auth)
@@ -80,6 +88,35 @@ struct AchievementsView: View {
         } message: { task in
             Text("撤回后会同时扣回这项任务的 \(task.xp) 经验。")
         }
+    }
+
+    /// 成长页的子入口。先只有「校园活动」，之后社团、二手等入口按同样的图块往后加。
+    private var entryGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72, maximum: 96), spacing: 12, alignment: .top)],
+                  alignment: .leading, spacing: 12) {
+            entryTile(title: "校园活动", icon: "flag.2.crossed.fill", tint: UniColor.blue) { showActivities = true }
+        }
+    }
+
+    private func entryTile(title: String, icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .uniFont(22, weight: .semibold)
+                    .foregroundStyle(tint)
+                    .frame(width: 56, height: 56)
+                    .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
+                Text(title)
+                    .uniFont(12, weight: .semibold)
+                    .foregroundStyle(UniColor.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private var backgroundPrompt: some View {
