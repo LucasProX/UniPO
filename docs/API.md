@@ -383,6 +383,22 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
   App 里用 `DevicePhoneNumber` 抽象：DEBUG 返回演示号码 `15500008888`，Release 返回 nil（自动落到手机号验证码页）；
   接入运营商 SDK 后只替换这个 provider。
 
+### 9.6 校园活动（A1，2026-10-23）
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| GET | `/api/activities/page?tab=recommend\|week&cursor=&limit=` | 公开 | 本校未结束的活动，按开始时间正序；week 为 7 天内开始；游标绑定 tab |
+| GET | `/api/activities/{id}` | 公开 | 详情；只返回本校活动，访客按默认学校 |
+| GET | `/api/activities/mine?state=upcoming\|history` | 登录 | 我报名（含候补）的活动；history 为已结束或已取消，按开始时间倒序 |
+| GET | `/api/activities/organizer-profile` | 登录 | 能否发布、可面向的范围与奖励上限，供发布表单使用 |
+| POST | `/api/activities` | 认证组织者 | 发布活动；普通用户 403，越权范围或超额奖励 400 |
+| POST | `/api/activities/{id}/registrations` | 登录 | 报名；有名额为 REGISTERED，满员且允许候补为 WAITLISTED，否则 409；重复报名幂等 |
+| DELETE | `/api/activities/{id}/registrations/me` | 登录 | 取消报名；已报名者取消时按报名先后递补一位候补；活动开始后 409 |
+
+`ActivityView` 主要字段：`phase`（OPEN / CLOSED / ONGOING / ENDED / CANCELLED，服务端按时间计算）、`myStatus`（NONE / REGISTERED / WAITLISTED / CANCELLED）、`myWaitlistPosition`、`eligible` 与 `ineligibleReason`、`audienceLabel`、`capacity`（为空不限）、`registeredCount`、`waitlistCount`、`rewardXp`、`rewardCoins`（签到后发放，A2 实现）、`recentAttendees`（最多 8 人）。
+
+发布权限与上限：管理员和校级运营面向全校 / 学院 / 专业，每场最多 100 经验、200 金币；院级运营只能面向本院或本院专业，50 / 100；专业运营只能面向本专业，30 / 60。本校所有人都能看到活动，只有范围内的人能报名。名额计数在锁住活动行的事务内变更，并发报名不会超卖。
+
 ### 9.7 新用户资料完善（onboarding）
 
 `PUT /api/users/me/onboarding`（需登录），引导最后一次性提交。2026-10-23 起 iOS 引导为 4 步，先调 `PUT /api/users/me/growth-background` 保存学校与入学年份，再提交本接口且不再传 `grade`（年级由成长背景推算）：

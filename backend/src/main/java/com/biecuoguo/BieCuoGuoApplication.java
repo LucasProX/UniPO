@@ -6,7 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 
 @SpringBootApplication
-@MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.media.internal", "com.biecuoguo.message.internal",
+@MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.activity.internal", "com.biecuoguo.media.internal", "com.biecuoguo.message.internal",
         "com.biecuoguo.post.internal", "com.biecuoguo.spotlight.internal", "com.biecuoguo.push.internal",
         "com.biecuoguo.admin.internal", "com.biecuoguo.achievement.internal", "com.biecuoguo.auth.internal"})
 @ConfigurationPropertiesScan

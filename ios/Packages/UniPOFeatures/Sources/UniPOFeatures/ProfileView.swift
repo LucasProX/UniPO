@@ -13,6 +13,9 @@ struct ProfileView: View {
     @State private var favoritePosts: [PostView] = []
     @State private var tab = 0
     @State private var followList: FollowListTarget?
+    @State private var activityList: String?
+    @State private var showPublish = false
+    @State private var organizer: ActivityOrganizerProfile?
     @State private var isLoading = true
     @State private var loadGeneration = 0
     @State private var dataUserID: Int64?
@@ -62,6 +65,15 @@ struct ProfileView: View {
         .onChange(of: backgroundPhoto) { _, item in
             guard let item else { return }
             Task { await uploadBackground(item) }
+        }
+        .sheet(item: Binding(get: { activityList.map(ActivityListTab.init) }, set: { activityList = $0?.id })) { item in
+            ActivityListView(initialTab: item.id).environment(auth)
+        }
+        .sheet(isPresented: $showPublish) {
+            if let organizer { CreateActivityView(profile: organizer).environment(auth) }
+        }
+        .task(id: auth.profile?.id) {
+            organizer = try? await APIClient.shared.activityOrganizerProfile()
         }
         .sheet(item: $followList) { target in
             FollowListView(target: target).environment(auth)
@@ -129,6 +141,7 @@ struct ProfileView: View {
             }
 
             statsCard
+            activityShortcuts
         }
         .padding(.horizontal, 20)
         .padding(.top, 6)
@@ -320,6 +333,29 @@ struct ProfileView: View {
                 .stroke(.white.opacity(0.95), lineWidth: 1)
         )
         .shadow(color: UniColor.ink.opacity(0.05), radius: 18, y: 8)
+    }
+
+    private var activityShortcuts: some View {
+        HStack(spacing: 10) {
+            shortcut("我的活动", "ticket", tint: UniColor.blue) { activityList = "upcoming" }
+            shortcut("参加过", "clock.arrow.circlepath", tint: UniColor.inkSoft) { activityList = "history" }
+            if organizer?.canPublish == true {
+                shortcut("发布活动", "plus.circle.fill", tint: UniColor.gold) { showPublish = true }
+            }
+        }
+    }
+
+    private func shortcut(_ title: String, _ icon: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).foregroundStyle(tint)
+                Text(title).foregroundStyle(UniColor.ink)
+            }
+            .font(.uniLabel(12))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func followStat(_ value: Int, _ kind: FollowListKind) -> some View {

@@ -67,6 +67,8 @@ public class SecurityConfig {
                         // 首页轮播位是公开只读；写入在 /api/admin/spotlights（已受角色保护）。
                         .requestMatchers(HttpMethod.GET, "/api/categories", "/api/tags", "/api/schools", "/api/spotlights", "/api/v1/spotlights").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/posts/**", "/api/options/**").permitAll()
+                        // 活动浏览对访客开放（按默认学校）；/mine 与 /organizer-profile 在 Controller 内要求登录。
+                        .requestMatchers(HttpMethod.GET, "/api/activities/page", "/api/activities/*").permitAll()
                         // ApiVersionPrefixFilter 只改写「/api 上也存在」的路径，
                         // /api/v1/posts/page 这类 v1 独有端点会保留原样进来，
                         // 所以这里必须单独加一次白名单。

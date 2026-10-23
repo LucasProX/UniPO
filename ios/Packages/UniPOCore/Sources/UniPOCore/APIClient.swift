@@ -297,6 +297,40 @@ public actor APIClient {
         return try await request(path: "users/me/growth-background", method: "PUT", body: body)
     }
 
+    // MARK: 校园活动
+
+    public func activities(tab: String, cursor: String?, limit: Int = 20) async throws -> ActivityPage {
+        var query = [URLQueryItem(name: "tab", value: tab), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "activities/page", query: query)
+    }
+
+    public func myActivities(state: String, cursor: String?, limit: Int = 20) async throws -> ActivityPage {
+        var query = [URLQueryItem(name: "state", value: state), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "activities/mine", query: query)
+    }
+
+    public func activity(id: Int64) async throws -> ActivityView {
+        try await request(path: "activities/\(id)")
+    }
+
+    public func registerActivity(id: Int64) async throws -> ActivityView {
+        try await request(path: "activities/\(id)/registrations", method: "POST")
+    }
+
+    public func cancelActivityRegistration(id: Int64) async throws -> ActivityView {
+        try await request(path: "activities/\(id)/registrations/me", method: "DELETE")
+    }
+
+    public func activityOrganizerProfile() async throws -> ActivityOrganizerProfile {
+        try await request(path: "activities/organizer-profile")
+    }
+
+    public func createActivity(_ input: CreateActivityInput) async throws -> ActivityView {
+        try await request(path: "activities", method: "POST", body: input.body)
+    }
+
     // MARK: 互动与社交
 
     public func interactionNotices() async throws -> [InteractionNoticeView] {

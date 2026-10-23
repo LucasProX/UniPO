@@ -64,7 +64,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5)),
             new Rule("conversation-create", "POST", "/api/messages/conversations", 60, Duration.ofMinutes(1)),
             new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),
-            new Rule("outbox-retry", "POST", "/api/admin/message-deliveries/*/retry", 20, Duration.ofMinutes(1))
+            new Rule("outbox-retry", "POST", "/api/admin/message-deliveries/*/retry", 20, Duration.ofMinutes(1)),
+            new Rule("activity-create", "POST", "/api/activities", 20, Duration.ofMinutes(10)),
+            new Rule("activity-register", "POST", "/api/activities/*/registrations", 60, Duration.ofMinutes(1))
     );
 
     private final RateLimitService rateLimitService;

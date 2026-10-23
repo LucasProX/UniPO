@@ -4945,3 +4945,13 @@ dump 故意不带 `--databases`。带上之后文件里会有 `CREATE DATABASE` 
 模拟器走完新账号引导后，首页阶段卡还写着「按完成进度」，以为是后端没存上，查库 `entry_year=2026` 好好的。原因是首页在登录那一刻（引导还挡在上面）就读了成长数据，引导保存背景后 `.task(id:)` 的 id 只含账号和版本号，没变化就不重读。现在首页和成长页都跟着 `profile.entryYear` 变化重载。
 
 头像预设用 `UIGraphicsImageRenderer(size: 600×600)` 渲染，默认按屏幕 3 倍，实际是 1800 像素、3.3MB 的 PNG，模拟器上首页头像要等好几秒才出来，真机流量下更糟。改成 `format.scale = 1`。
+
+## 2026-10-23 活动 A1：单测全绿，上了服务器连起都起不来
+
+成长系统改由认证组织者发布的活动发奖，先做 A1（发布、列表、详情、报名、候补、取消）。`ActivityRules` 的单测和 ArchitectureTest 都过了，全量 342 项零失败，部署到测试实例却报 `Parameter 0 of constructor in ActivityService required a bean of type 'ActivityMapper' that could not be found`。`BieCuoGuoApplication` 的 `@MapperScan` 是按包一个个列的，新包没加进去；单测都不起 Spring 上下文，自然发现不了。更坑的是 Flyway 在上下文失败之前已经把 V27 跑完了，重新部署时日志显示「Schema is up to date」，差点以为迁移没执行。
+
+接着候补报名返回 500，日志是 `SQLSyntaxErrorException ... near '; '2026-10-23 11:27:27.98781' OR ...'`。`waitlistPosition` 那条 `@Select` 没包 `<script>`，我顺手写了 `&lt;`，MyBatis 只在 XML 脚本里才解码实体，普通字符串原样发给 MySQL。好在出错点在报名事务里，整笔回滚，计数没脏。
+
+并发验证第一次没跑成：连续调 `sms-code` 撞了 10 分钟 20 次的限流，新账号拿不到 token，看起来像「并发全 401」。改成复用已登录的四个账号同时抢 1 个名额，1 个成功、3 个 409，计数正确，靠的是报名前 `SELECT ... FOR UPDATE` 锁活动行。
+
+iOS 首页的「本周活动」一开始怎么都不出现，接口明明返回两条。看模拟器日志，同一个请求在一秒内被反复发起又以 `-999` 取消。区块在加载中渲染成 `EmptyView`，放在 `LazyVStack` 里高度为 0，被当成离屏，`.task` 随即取消；取消后不在加载了，又渲染出兜底行，重新出现、重新请求，于是死循环。现在加载中也保留那一行（显示「加载中…」），只在有数据时换成横向卡片。

@@ -35,6 +35,7 @@ struct HomeView: View {
                 header
                 boardPicker
                 stageCard
+                WeeklyActivitiesStrip()
                 content
             }
             .padding(.horizontal, 18)
