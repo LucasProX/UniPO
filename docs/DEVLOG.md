@@ -5009,3 +5009,11 @@ G06 的「设置有效期」第一次实测，返回「服务器开小差了」�
 改法是把审计挪进 `PostService.setValidity`，方法加 `@Transactional`，审计写不进去就整体回滚。旧的 `moderate` 用的是普通 `record`（尽力而为），所以以前没暴露。以后凡是 `recordRequired`，都要放在同一个事务方法里。
 
 关联规则上纠结过「下架的帖子要不要算进『已过期隐藏 N 篇』」。最后只数可见但过期的：下架、别校、拉黑的帖子对这个用户本来就不存在，告诉他「隐藏了 3 篇」反而泄露了别校或被拉黑作者的存在。另外，已经关联过的帖子再关联一次直接幂等返回，即使它后来过期了——不然运营重复点一下就报「已过期」，很迷惑。
+
+## 2026-10-23 底栏「下半截是方的」其实是渐隐层没铺到底
+
+用户说毛玻璃底栏的下部还是方的。放大截图看，玻璃本身的四个圆角是好的；问题在它后面：`RootView` 里那层 `LinearGradient` 渐隐只铺到安全区上沿，Home 条那 34pt 里帖子内容没被遮，白色卡片的上沿正好横在底栏下方，看起来就像底栏下半截是一块直角矩形。
+
+修的时候顺便要把底栏往下放（下沿只比 Home 条高一个 Home 条）。第一反应是给底栏和渐隐都加 `.ignoresSafeArea(edges: .bottom)`，再给底栏 `padding(.bottom, 18)`。装上去量像素：中间 54pt 的加号圆心离底 87pt，推回去底栏下沿在 51pt——正好是 34 + 18，`ignoresSafeArea` 完全没生效，渐隐也还是停在原处。没再深究 ZStack 里为什么不生效（上层还有 `safeAreaInset(edge: .top)` 等一串修饰符），改成确定性的写法：从窗口拿 `safeAreaInsets.bottom`，底栏照常排在安全区边缘再 `offset(y: safeBottom - 18)`，渐隐加高 `safeBottom` 再下移同样距离。再量一次，下沿 18.3pt。
+
+评论发完键盘不收：原逻辑在请求成功、且输入框内容没变时才把 `commentFocused` 设成 false；但发送过程中 `TextField` 被 `.disabled(isSending)`，焦点状态和 UIKit 的第一响应者对不上，键盘就留在那里。现在点发送就立即 `commentFocused = false` 并 `resignFirstResponder`，失败时提示「重试」，用户自己再点输入框。

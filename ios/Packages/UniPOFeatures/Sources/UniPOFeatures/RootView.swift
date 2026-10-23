@@ -61,13 +61,16 @@ public struct RootView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaPadding(.bottom, 92)
+            .safeAreaPadding(.bottom, 70)
 
+            // 渐隐要铺到屏幕最底：只铺到安全区时，Home 条那一段内容会露出来，
+            // 在底栏下面切出一条直角边，看起来像玻璃底栏的下半截是方的。
             LinearGradient(
                 colors: [Color(UniColor.paper).opacity(0), Color(UniColor.paper).opacity(0.92)],
                 startPoint: .top, endPoint: .bottom
             )
-            .frame(height: 150)
+            .frame(height: 130 + DockMetrics.safeBottom)
+            .offset(y: DockMetrics.safeBottom)
             .allowsHitTesting(false)
 
             DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, unreadCount: unreadCount, onCompose: {
@@ -77,7 +80,9 @@ public struct RootView: View {
                 auth.requireLogin()
             })
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                // 在这个 ZStack 里 ignoresSafeArea 不生效（实测底栏仍停在安全区上沿），
+                // 所以照常排在安全区边缘，再整体下移到离屏幕底 bottomGap 的位置。
+                .offset(y: DockMetrics.safeBottom - DockMetrics.bottomGap)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if auth.isRestoring || auth.recoveryError != nil { sessionRecoveryNotice }
@@ -231,5 +236,20 @@ public struct RootView: View {
         .background(UniColor.paper)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.recovery")
+    }
+}
+
+/// 底栏离屏幕底边的距离。全面屏上 Home 条约 5pt 高、离底约 8pt，底栏下沿再高出一个 Home 条的高度；
+/// 有 Home 键的机型没有 Home 条，只留 8pt。
+enum DockMetrics {
+    /// 窗口底部安全区（全面屏约 34pt，有 Home 键的机型为 0）。
+    static var safeBottom: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first?.safeAreaInsets.bottom ?? 0
+    }
+
+    static var bottomGap: CGFloat {
+        safeBottom > 0 ? 18 : 8
     }
 }

@@ -539,6 +539,9 @@ struct PostDetailView: View {
         let revision = auth.authenticationRevision
         let text = trimmedComment
         guard !text.isEmpty, !commentOverLimit else { return }
+        // 点了发送就收起键盘：发送中输入框会被禁用，只改 FocusState 时 UIKit 的键盘可能留着。
+        commentFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         // A retry of this draft owns the same intent across transport failures and
         // login recovery. Authentication changes never rotate its request key.
         let intentKey = commentIntentKey
@@ -559,7 +562,7 @@ struct PostDetailView: View {
             }
             if commentIntentKey == intentKey {
                 commentIntentKey = UUID().uuidString
-                if trimmedComment == text { commentText = ""; commentFocused = false; replyTarget = nil }
+                if trimmedComment == text { commentText = ""; replyTarget = nil }
             }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), commentRequestID == requestID else { return }
