@@ -65,6 +65,17 @@ public class ActivityController {
         return ApiResponse.ok(activityService.cancel(id, SecurityUtils.currentUser()));
     }
 
+    @GetMapping("/{id}/checkin-code")
+    public ApiResponse<ActivityDtos.OrganizerCheckinView> checkinCode(@PathVariable long id) {
+        return ApiResponse.ok(activityService.organizerCheckin(id, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/checkin")
+    public ApiResponse<ActivityDtos.CheckinResult> checkin(@PathVariable long id,
+                                                           @Valid @RequestBody ActivityDtos.CheckinRequest request) {
+        return ApiResponse.ok(activityService.checkin(id, request, SecurityUtils.currentUser()));
+    }
+
     private static CurrentUser optional(Authentication authentication) {
         return authentication != null && authentication.getPrincipal() instanceof CurrentUser user ? user : null;
     }

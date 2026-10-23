@@ -36,6 +36,9 @@ public class Activity {
     private String status;
     private Integer registeredCount;
     private Integer waitlistCount;
+    /** 只在服务端使用，绝不进入任何视图或日志。 */
+    private String checkinSecret;
+    private String checkinCode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

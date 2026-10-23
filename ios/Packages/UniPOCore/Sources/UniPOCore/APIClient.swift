@@ -323,6 +323,23 @@ public actor APIClient {
         try await request(path: "activities/\(id)/registrations/me", method: "DELETE")
     }
 
+    public func checkin(activityID: Int64, token: String? = nil, code: String? = nil) async throws -> ActivityCheckinResult {
+        var body: [String: Any] = [:]
+        if let token { body["token"] = token }
+        if let code { body["code"] = code }
+        return try await request(path: "activities/\(activityID)/checkin", method: "POST", body: body)
+    }
+
+    public func organizerCheckin(activityID: Int64) async throws -> ActivityOrganizerCheckin {
+        try await request(path: "activities/\(activityID)/checkin-code")
+    }
+
+    public func wallet(cursor: String? = nil) async throws -> WalletView {
+        var query: [URLQueryItem] = []
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "wallet/me", query: query)
+    }
+
     public func activityOrganizerProfile() async throws -> ActivityOrganizerProfile {
         try await request(path: "activities/organizer-profile")
     }

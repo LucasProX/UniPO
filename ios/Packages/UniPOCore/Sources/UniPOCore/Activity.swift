@@ -44,6 +44,12 @@ public struct ActivityView: Codable, Identifiable, Hashable {
     public let eligible: Bool
     public let ineligibleReason: String?
     public let recentAttendees: [ActivityAttendee]
+    public let checkedIn: Bool
+    public let checkedInAt: String?
+    /** 开始前 30 分钟到结束为签到时间窗。 */
+    public let checkinOpen: Bool
+    /** 发布者本人或管理员，可以打开签到码页面。 */
+    public let canManage: Bool
 
     public var isRegistered: Bool { myStatus == "REGISTERED" }
     public var isWaitlisted: Bool { myStatus == "WAITLISTED" }
@@ -72,6 +78,65 @@ public struct ActivityView: Codable, Identifiable, Hashable {
         default: return ""
         }
     }
+}
+
+public struct ActivityCheckinResult: Codable {
+    public let activity: ActivityView
+    public let alreadyCheckedIn: Bool
+    public let rewardXp: Int
+    public let rewardCoins: Int
+}
+
+public struct ActivityOrganizerCheckin: Codable {
+    public let qrPayload: String
+    public let code: String
+    public let refreshAfterSeconds: Int
+    public let windowOpen: Bool
+    public let windowOpensAt: String?
+    public let windowClosesAt: String?
+    public let checkedInCount: Int
+    public let registeredCount: Int
+}
+
+/// 现场二维码内容：`unipo://checkin?activity=12&token=...`。系统相机扫到会打开 App，App 内扫码也走同一个解析。
+public struct CheckinLink: Equatable {
+    public let activityID: Int64
+    public let token: String
+
+    public init?(url: URL) {
+        guard url.scheme == "unipo", url.host == "checkin",
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+              let id = items.first(where: { $0.name == "activity" })?.value.flatMap(Int64.init), id > 0,
+              let token = items.first(where: { $0.name == "token" })?.value,
+              token.count == 22, token.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" })
+        else { return nil }
+        activityID = id
+        self.token = token
+    }
+
+    public init?(string: String) {
+        guard let url = URL(string: string.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+        self.init(url: url)
+    }
+}
+
+public struct WalletLedgerEntry: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let amount: Int
+    public let balanceAfter: Int
+    public let sourceType: String
+    public let sourceId: Int64?
+    public let reason: String
+    public let createdAt: String?
+}
+
+public struct WalletView: Codable {
+    public let balance: Int
+    public let earnedToday: Int
+    public let dailyCap: Int
+    public let entries: [WalletLedgerEntry]
+    public let nextCursor: String?
+    public let hasMore: Bool
 }
 
 public struct ActivityPage: Codable {

@@ -18,6 +18,10 @@ public class ActivityRegistration {
     private String status;
     private LocalDateTime queuedAt;
     private LocalDateTime cancelledAt;
+    private LocalDateTime checkedInAt;
+    private String checkinMethod;
+    private Integer rewardXpGranted;
+    private Integer rewardCoinsGranted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -15,6 +15,7 @@ struct ProfileView: View {
     @State private var followList: FollowListTarget?
     @State private var activityList: String?
     @State private var showPublish = false
+    @State private var showWallet = false
     @State private var organizer: ActivityOrganizerProfile?
     @State private var isLoading = true
     @State private var loadGeneration = 0
@@ -69,6 +70,7 @@ struct ProfileView: View {
         .sheet(item: Binding(get: { activityList.map(ActivityListTab.init) }, set: { activityList = $0?.id })) { item in
             ActivityListView(initialTab: item.id).environment(auth)
         }
+        .sheet(isPresented: $showWallet) { WalletScreen().environment(auth) }
         .sheet(isPresented: $showPublish) {
             if let organizer { CreateActivityView(profile: organizer).environment(auth) }
         }
@@ -339,6 +341,7 @@ struct ProfileView: View {
         HStack(spacing: 10) {
             shortcut("我的活动", "ticket", tint: UniColor.blue) { activityList = "upcoming" }
             shortcut("参加过", "clock.arrow.circlepath", tint: UniColor.inkSoft) { activityList = "history" }
+            shortcut("金币", "circle.hexagongrid.fill", tint: UniColor.gold) { showWallet = true }
             if organizer?.canPublish == true {
                 shortcut("发布活动", "plus.circle.fill", tint: UniColor.gold) { showPublish = true }
             }

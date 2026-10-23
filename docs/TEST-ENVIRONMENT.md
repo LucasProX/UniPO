@@ -85,3 +85,6 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 
 测试实例更新到含 V27 活动表的后端（部署前备份 `/var/backups/unipo/test-before-a1-20261023T032247Z/`，回退镜像 `unipo-backend:test-rollback-20261023T032247Z`）。第一次启动因新模块 Mapper 未加入 `@MapperScan` 失败，但 Flyway 已先完成 V27，修复后重新部署即就绪。测试账号 13900135791 通过管理员接口设为 `SCHOOL_OPERATOR`（scope `school`），角色变化会吊销它原有登录，需要重新登录后才能在「我的」里看到「发布活动」。为验证新建了尾号 200001 至 200004、200011 至 200015 等测试手机号账号，以及两条测试活动。`/v3/api-docs` 在测试端口上可公开访问，用于生成前端类型，生产不经网关暴露。
 
+## 2026-10-23 A2 签到与金币更新
+
+测试实例迁移到 V28（签到字段、`user_wallets`、`coin_ledger`），部署前备份 `/var/backups/unipo/test-before-a2-20261023T035209Z/`，回退镜像 `unipo-backend:test-rollback-20261023T035209Z`。新建了「签到测试：读书分享会」「秋季迎新志愿者培训」两条可签到的测试活动，尾号 200001、200002、200004 的测试号已签到并获得经验和金币。

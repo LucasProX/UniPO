@@ -69,8 +69,24 @@ public final class ActivityDtos {
             boolean eligible,
             String ineligibleReason,
             List<AttendeeView> recentAttendees,
-            OffsetDateTime createdAt
+            OffsetDateTime createdAt,
+            boolean checkedIn,
+            OffsetDateTime checkedInAt,
+            /** 签到时间窗：开始前 30 分钟到结束。 */
+            boolean checkinOpen,
+            /** 当前账号是发布者或管理员，可以打开签到码页面。 */
+            boolean canManage
     ) {}
+
+    /** token 来自扫码（动态二维码），code 是现场公布的 4 位签到码；两者给一个即可。 */
+    public record CheckinRequest(@Size(max = 64) String token, @Size(max = 8) String code) {}
+
+    public record CheckinResult(ActivityView activity, boolean alreadyCheckedIn, int rewardXp, int rewardCoins) {}
+
+    /** 组织者签到页：二维码内容约 30 秒轮换一次，客户端按 refreshAfterSeconds 重新拉取。 */
+    public record OrganizerCheckinView(String qrPayload, String code, int refreshAfterSeconds, boolean windowOpen,
+                                       OffsetDateTime windowOpensAt, OffsetDateTime windowClosesAt,
+                                       int checkedInCount, int registeredCount) {}
 
     public record ActivityPage(List<ActivityView> items, String nextCursor, boolean hasMore, int limit) {}
 

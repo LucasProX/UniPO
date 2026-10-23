@@ -80,7 +80,8 @@ struct ActivityCard: View {
     @ViewBuilder
     private var statusTag: some View {
         let text: String = {
-            if activity.isRegistered { return "已报名" }
+            if activity.checkedIn { return "已签到" }
+            if activity.isRegistered { return activity.checkinOpen ? "可签到" : "已报名" }
             if activity.isWaitlisted { return "候补中" }
             if activity.phase == "OPEN", activity.isFull { return activity.waitlistEnabled ? "可候补" : "已满" }
             return activity.phaseLabel
@@ -284,6 +285,8 @@ struct ActivityDetailView: View {
     @State private var actionError: String?
     @State private var isWorking = false
     @State private var confirmCancel = false
+    @State private var checkin: CheckinTarget?
+    @State private var showOrganizerCode = false
 
     init(activityID: Int64, initial: ActivityView? = nil, showsClose: Bool = true,
          onChange: @escaping (ActivityView) -> Void = { _ in }) {
@@ -315,6 +318,11 @@ struct ActivityDetailView: View {
             if showsClose {
                 ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } }
             }
+            if activity?.canManage == true {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showOrganizerCode = true } label: { Label("签到码", systemImage: "qrcode") }
+                }
+            }
         }
         .task(id: "\(auth.authenticationRevision):\(auth.profile?.id ?? 0)") { await load() }
         .confirmationDialog("取消报名？", isPresented: $confirmCancel, titleVisibility: .visible) {
@@ -322,6 +330,16 @@ struct ActivityDetailView: View {
             Button("再想想", role: .cancel) {}
         } message: {
             Text(activity?.isRegistered == true ? "名额会让给候补的同学，之后再报名需要重新排队。" : "将退出候补队列。")
+        }
+        .sheet(item: $checkin) { target in
+            CheckinSheet(target: target) { updated in
+                activity = updated
+                onChange(updated)
+            }
+            .environment(auth)
+        }
+        .sheet(isPresented: $showOrganizerCode, onDismiss: { Task { await load() } }) {
+            if let activity { OrganizerCheckinView(activity: activity) }
         }
         .fullScreenCover(isPresented: Binding(get: { auth.loginRequested }, set: { auth.loginRequested = $0 })) {
             LoginView().environment(auth)
@@ -461,6 +479,12 @@ struct ActivityDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(!primaryEnabled(activity) || isWorking)
+            if activity.isRegistered, activity.checkinOpen, !activity.checkedIn,
+               activity.phase == "OPEN" || activity.phase == "CLOSED" {
+                Button("取消报名") { confirmCancel = true }
+                    .font(.uniLabel(12)).foregroundStyle(UniColor.secondary)
+                    .frame(minHeight: 36)
+            }
         }
         .padding(.horizontal, 18).padding(.top, 10).padding(.bottom, 8)
         .background(UniColor.paper.opacity(0.96).ignoresSafeArea(edges: .bottom))
@@ -468,6 +492,10 @@ struct ActivityDetailView: View {
 
     private func primaryTitle(_ activity: ActivityView) -> String {
         if !auth.isAuthenticated { return "登录后报名" }
+        if activity.checkedIn {
+            return "已签到 · " + (activity.checkedInAt.map { ActivityTime.short($0) } ?? "")
+        }
+        if activity.isRegistered, activity.checkinOpen { return "去签到" }
         if activity.isRegistered { return activity.phase == "OPEN" || activity.phase == "CLOSED" ? "已报名 · 取消报名" : "已报名" }
         if activity.isWaitlisted { return "候补第 \(activity.myWaitlistPosition ?? 1) 位 · 退出候补" }
         switch activity.phase {
@@ -484,6 +512,8 @@ struct ActivityDetailView: View {
 
     private func primaryEnabled(_ activity: ActivityView) -> Bool {
         if !auth.isAuthenticated { return true }
+        if activity.checkedIn { return false }
+        if activity.isRegistered, activity.checkinOpen { return true }
         if activity.isRegistered || activity.isWaitlisted {
             return activity.phase == "OPEN" || activity.phase == "CLOSED"
         }
@@ -491,7 +521,8 @@ struct ActivityDetailView: View {
     }
 
     private func primaryColor(_ activity: ActivityView) -> Color {
-        activity.isRegistered || activity.isWaitlisted ? UniColor.inkSoft : UniColor.blue
+        if activity.isRegistered, activity.checkinOpen { return UniColor.blue }
+        return activity.isRegistered || activity.isWaitlisted ? UniColor.inkSoft : UniColor.blue
     }
 
     private func hint(_ activity: ActivityView) -> String? {
@@ -499,12 +530,18 @@ struct ActivityDetailView: View {
            activity.phase == "OPEN" {
             return activity.ineligibleReason
         }
-        if activity.isRegistered, activity.phase != "ENDED" { return "活动开始后到现场签到" + (activity.hasReward ? "，奖励随签到发放" : "") }
+        if activity.checkedIn, activity.hasReward { return "奖励已在签到时发放" }
+        if activity.isRegistered, activity.checkinOpen { return "到现场输入签到码或扫二维码" + (activity.hasReward ? "，签到即得奖励" : "") }
+        if activity.isRegistered, activity.phase != "ENDED" { return "开始前 30 分钟开放签到" + (activity.hasReward ? "，奖励随签到发放" : "") }
         return nil
     }
 
     private func primaryAction(_ activity: ActivityView) async {
         guard auth.isAuthenticated else { auth.requireLogin(); return }
+        if activity.isRegistered, activity.checkinOpen, !activity.checkedIn {
+            checkin = CheckinTarget(activityID: activity.id)
+            return
+        }
         if activity.isRegistered || activity.isWaitlisted { confirmCancel = true; return }
         await perform(cancel: false)
     }

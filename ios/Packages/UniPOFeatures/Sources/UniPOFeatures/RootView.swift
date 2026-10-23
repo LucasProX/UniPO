@@ -12,6 +12,7 @@ public struct RootView: View {
     @State private var tab: AppTab = .home
     @State private var showCompose = false
     @State private var unreadCount = 0
+    @State private var pendingCheckin: CheckinTarget?
     @State private var pendingConversationId: Int64?
     @State private var pendingProfileTab = false
     @State private var lastVerifiedUserID: Int64?
@@ -134,6 +135,15 @@ public struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .unipoPushToken)) { note in
             guard auth.isAuthenticated, let token = note.object as? String else { return }
             Task { _ = try? await APIClient.shared.registerPushToken(token) }
+        }
+        .onOpenURL { url in
+            // 系统相机扫现场二维码会打开 unipo://checkin?...，直接进入签到。
+            guard let link = CheckinLink(url: url) else { return }
+            pendingCheckin = CheckinTarget(activityID: link.activityID, token: link.token)
+            if !auth.isAuthenticated { auth.requireLogin() }
+        }
+        .sheet(item: Binding(get: { auth.isAuthenticated ? pendingCheckin : nil }, set: { pendingCheckin = $0 })) { target in
+            CheckinSheet(target: target).environment(auth)
         }
         .onReceive(NotificationCenter.default.publisher(for: .unipoOpenConversation)) { note in
             guard auth.isAuthenticated, let id = note.object as? Int64 else { return }

@@ -9,7 +9,8 @@ final class ActivityTests: XCTestCase {
          "signupDeadline": "2026-11-01T12:00:00+08:00", "organizerName": "计算机学院",
          "audienceScope": "SCHOOL", "audienceLabel": "全校", "capacity": 2, "registeredCount": 2,
          "waitlistCount": 1, "waitlistEnabled": true, "rewardXp": 30, "rewardCoins": 20, "phase": "OPEN",
-         "myStatus": status, "eligible": true, "recentAttendees": []]
+         "myStatus": status, "eligible": true, "recentAttendees": [], "checkedIn": false,
+         "checkinOpen": false, "canManage": false]
     }
 
     private func page(_ ids: [Int64], cursor: String? = nil) throws -> ActivityPage {
@@ -55,5 +56,14 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(store.tab, "week")
         XCTAssertEqual(store.items.map(\.id), [3, 4])
         XCTAssertTrue(store.hasMore)
+    }
+
+    func testCheckinLinkAcceptsOnlyWellFormedUniPOLinks() {
+        let token = String(repeating: "a", count: 21) + "_"
+        XCTAssertEqual(CheckinLink(string: "unipo://checkin?activity=12&token=\(token)")?.activityID, 12)
+        XCTAssertNil(CheckinLink(string: "https://checkin?activity=12&token=\(token)"))
+        XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=0&token=\(token)"))
+        XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=12&token=short"))
+        XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=12&token=\(String(repeating: "a", count: 21))%2F"))
     }
 }

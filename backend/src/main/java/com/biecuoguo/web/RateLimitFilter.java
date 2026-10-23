@@ -66,7 +66,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),
             new Rule("outbox-retry", "POST", "/api/admin/message-deliveries/*/retry", 20, Duration.ofMinutes(1)),
             new Rule("activity-create", "POST", "/api/activities", 20, Duration.ofMinutes(10)),
-            new Rule("activity-register", "POST", "/api/activities/*/registrations", 60, Duration.ofMinutes(1))
+            new Rule("activity-register", "POST", "/api/activities/*/registrations", 60, Duration.ofMinutes(1)),
+            // 4 位签到码只有一万种组合，按来源 IP 严格限流，挡住穷举
+            new Rule("activity-checkin", "POST", "/api/activities/*/checkin", 20, Duration.ofMinutes(1))
     );
 
     private final RateLimitService rateLimitService;

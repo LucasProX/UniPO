@@ -13,12 +13,15 @@ import com.biecuoguo.mapper.CollegeMapper;
 import com.biecuoguo.mapper.MajorMapper;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.security.CurrentUser;
+import com.biecuoguo.service.ExperienceService;
+import com.biecuoguo.wallet.api.WalletApi;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -44,10 +47,14 @@ public class ActivityService {
     private final CollegeMapper collegeMapper;
     private final MajorMapper majorMapper;
     private final AppProperties properties;
+    private final ExperienceService experienceService;
+    private final WalletApi walletApi;
 
     public ActivityService(ActivityMapper activityMapper, ActivityRegistrationMapper registrationMapper,
                            UserMapper userMapper, CollegeMapper collegeMapper, MajorMapper majorMapper,
-                           AppProperties properties) {
+                           AppProperties properties, ExperienceService experienceService, WalletApi walletApi) {
+        this.experienceService = experienceService;
+        this.walletApi = walletApi;
         this.activityMapper = activityMapper;
         this.registrationMapper = registrationMapper;
         this.userMapper = userMapper;
@@ -144,6 +151,8 @@ public class ActivityService {
         activity.setStatus("PUBLISHED");
         activity.setRegisteredCount(0);
         activity.setWaitlistCount(0);
+        activity.setCheckinSecret(CheckinTokens.newSecret());
+        activity.setCheckinCode(CheckinTokens.newCode());
         activity.setCreatedAt(now);
         activity.setUpdatedAt(now);
         activityMapper.insert(activity);
@@ -275,6 +284,79 @@ public class ActivityService {
         return view(activity, user);
     }
 
+    // ---- 签到 ----
+
+    /** 组织者签到页：发布者本人或管理员可见；二维码内容每 30 秒轮换。 */
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public ActivityDtos.OrganizerCheckinView organizerCheckin(long id, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = activityMapper.selectById(id);
+        if (activity == null || !activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
+        if (!canManage(activity, user)) throw new AccessDeniedException("只有活动发布者可以查看签到码");
+        Instant instant = Instant.now();
+        LocalDateTime now = AppTime.nowLocal();
+        String token = CheckinTokens.token(activity.getCheckinSecret(), id, CheckinTokens.slot(instant));
+        long checkedIn = registrationMapper.selectCount(new LambdaQueryWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getActivityId, id).isNotNull(ActivityRegistration::getCheckedInAt));
+        return new ActivityDtos.OrganizerCheckinView("unipo://checkin?activity=" + id + "&token=" + token,
+                activity.getCheckinCode(), CheckinTokens.secondsLeftInSlot(instant),
+                "PUBLISHED".equals(activity.getStatus())
+                        && CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now),
+                AppTime.toOffset(activity.getStartsAt().minus(CheckinTokens.OPENS_BEFORE_START)),
+                AppTime.toOffset(activity.getEndsAt()), (int) checkedIn, activity.getRegisteredCount());
+    }
+
+    /**
+     * 扫码或签到码签到，成功即发经验与金币。锁住本人报名行后判断是否已签到，重复请求返回原结果、不重复发奖；
+     * 金币按「activity-checkin:报名 ID」幂等入账。锁顺序：报名行 → 用户行（经验）→ 钱包行。
+     */
+    @Transactional
+    public ActivityDtos.CheckinResult checkin(long id, ActivityDtos.CheckinRequest request, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = activityMapper.selectById(id);
+        if (activity == null || !activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
+        ActivityRegistration registration = registrationMapper.lockOne(id, user.getId());
+        if (registration != null && registration.getCheckedInAt() != null) {
+            return new ActivityDtos.CheckinResult(view(activity, user), true, registration.getRewardXpGranted(),
+                    registration.getRewardCoinsGranted());
+        }
+        if (!"PUBLISHED".equals(activity.getStatus())) throw new StateConflictException("活动已取消");
+        LocalDateTime now = AppTime.nowLocal();
+        if (!CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now)) {
+            throw new StateConflictException(now.isBefore(activity.getStartsAt()) ? "活动开始前 30 分钟开放签到" : "签到已结束");
+        }
+        if (registration == null || "CANCELLED".equals(registration.getStatus())) throw new AccessDeniedException("你还没有报名这个活动");
+        if ("WAITLISTED".equals(registration.getStatus())) throw new StateConflictException("候补中的同学不能签到");
+        String method;
+        if (request.token() != null && !request.token().isBlank()) {
+            if (!CheckinTokens.validToken(activity.getCheckinSecret(), id, request.token().trim(), Instant.now())) {
+                throw new IllegalArgumentException("二维码已过期，请重新扫描现场的签到码");
+            }
+            method = "QR";
+        } else if (CheckinTokens.validCode(activity.getCheckinCode(), request.code())) {
+            method = "CODE";
+        } else {
+            throw new IllegalArgumentException("签到码不正确");
+        }
+        int xp = activity.getRewardXp() == null ? 0 : activity.getRewardXp();
+        if (xp > 0) experienceService.award(user.getId(), xp);
+        int coins = walletApi.credit(user.getId(), activity.getRewardCoins() == null ? 0 : activity.getRewardCoins(),
+                "ACTIVITY_CHECKIN", activity.getId(), "activity-checkin:" + registration.getId(),
+                "参加活动：" + activity.getTitle());
+        registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getId, registration.getId())
+                .set(ActivityRegistration::getCheckedInAt, now)
+                .set(ActivityRegistration::getCheckinMethod, method)
+                .set(ActivityRegistration::getRewardXpGranted, xp)
+                .set(ActivityRegistration::getRewardCoinsGranted, coins)
+                .set(ActivityRegistration::getUpdatedAt, now));
+        return new ActivityDtos.CheckinResult(view(activity, user), false, xp, coins);
+    }
+
+    private static boolean canManage(Activity activity, User user) {
+        return user != null && ("ADMIN".equals(user.getRole()) || user.getId().equals(activity.getOrganizerId()));
+    }
+
     // ---- 组装 ----
 
     private ActivityDtos.ActivityPage page(List<Activity> rows, int limit, String tab, User user) {
@@ -330,7 +412,12 @@ public class ActivityService {
                     ActivityRules.phase(activity.getStatus(), activity.getSignupDeadline(), activity.getStartsAt(),
                             activity.getEndsAt(), now),
                     myStatus, position, reason == null, reason,
-                    attendees.getOrDefault(activity.getId(), List.of()), AppTime.toOffset(activity.getCreatedAt())));
+                    attendees.getOrDefault(activity.getId(), List.of()), AppTime.toOffset(activity.getCreatedAt()),
+                    registration != null && registration.getCheckedInAt() != null,
+                    registration == null ? null : AppTime.toOffset(registration.getCheckedInAt()),
+                    "PUBLISHED".equals(activity.getStatus())
+                            && CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now),
+                    canManage(activity, viewer)));
         }
         return views;
     }

@@ -11,7 +11,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["me"];
+        get: operations["me_1"];
         put: operations["updateProfile"];
         post?: never;
         delete: operations["deleteAccount"];
@@ -612,6 +612,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/checkin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["checkin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/achievements/tasks/{taskId}/complete": {
         parameters: {
             query?: never;
@@ -642,6 +658,22 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["moderate"];
+        trace?: never;
+    };
+    "/api/wallet/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/posts/page": {
@@ -1131,7 +1163,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["me_1"];
+        get: operations["me_2"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1284,6 +1316,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/checkin-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["checkinCode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/activities/page": {
         parameters: {
             query?: never;
@@ -1339,7 +1387,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["me_2"];
+        get: operations["me_3"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2011,6 +2059,11 @@ export interface components {
             recentAttendees?: components["schemas"]["AttendeeView"][];
             /** Format: date-time */
             createdAt?: string;
+            checkedIn?: boolean;
+            /** Format: date-time */
+            checkedInAt?: string;
+            checkinOpen?: boolean;
+            canManage?: boolean;
         };
         ApiResponseActivityView: {
             code?: string;
@@ -2030,6 +2083,24 @@ export interface components {
             nickname?: string;
             avatarUrl?: string;
             role?: string;
+        };
+        CheckinRequest: {
+            token?: string;
+            code?: string;
+        };
+        ApiResponseCheckinResult: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CheckinResult"];
+            requestId?: string;
+        };
+        CheckinResult: {
+            activity?: components["schemas"]["ActivityView"];
+            alreadyCheckedIn?: boolean;
+            /** Format: int32 */
+            rewardXp?: number;
+            /** Format: int32 */
+            rewardCoins?: number;
         };
         AchievementView: {
             /** Format: int32 */
@@ -2094,6 +2165,37 @@ export interface components {
             official?: boolean;
             dontMiss?: boolean;
             status?: string;
+        };
+        ApiResponseWalletView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["WalletView"];
+            requestId?: string;
+        };
+        LedgerEntry: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: int32 */
+            amount?: number;
+            /** Format: int32 */
+            balanceAfter?: number;
+            sourceType?: string;
+            /** Format: int64 */
+            sourceId?: number;
+            reason?: string;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        WalletView: {
+            /** Format: int32 */
+            balance?: number;
+            /** Format: int32 */
+            earnedToday?: number;
+            /** Format: int32 */
+            dailyCap?: number;
+            entries?: components["schemas"]["LedgerEntry"][];
+            nextCursor?: string;
+            hasMore?: boolean;
         };
         ApiResponsePostPageView: {
             code?: string;
@@ -2480,6 +2582,27 @@ export interface components {
             data?: components["schemas"]["AnalyticsOverview"];
             requestId?: string;
         };
+        ApiResponseOrganizerCheckinView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["OrganizerCheckinView"];
+            requestId?: string;
+        };
+        OrganizerCheckinView: {
+            qrPayload?: string;
+            code?: string;
+            /** Format: int32 */
+            refreshAfterSeconds?: number;
+            windowOpen?: boolean;
+            /** Format: date-time */
+            windowOpensAt?: string;
+            /** Format: date-time */
+            windowClosesAt?: string;
+            /** Format: int32 */
+            checkedInCount?: number;
+            /** Format: int32 */
+            registeredCount?: number;
+        };
         ActivityPage: {
             items?: components["schemas"]["ActivityView"][];
             nextCursor?: string;
@@ -2523,7 +2646,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    me: {
+    me_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -3748,6 +3871,32 @@ export interface operations {
             };
         };
     };
+    checkin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckinRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCheckinResult"];
+                };
+            };
+        };
+    };
     complete: {
         parameters: {
             query?: never;
@@ -3814,6 +3963,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponsePostView"];
+                };
+            };
+        };
+    };
+    me: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseWalletView"];
                 };
             };
         };
@@ -4456,7 +4628,7 @@ export interface operations {
             };
         };
     };
-    me_1: {
+    me_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -4674,6 +4846,28 @@ export interface operations {
             };
         };
     };
+    checkinCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseOrganizerCheckinView"];
+                };
+            };
+        };
+    };
     page_1: {
         parameters: {
             query?: {
@@ -4742,7 +4936,7 @@ export interface operations {
             };
         };
     };
-    me_2: {
+    me_3: {
         parameters: {
             query?: never;
             header?: never;
