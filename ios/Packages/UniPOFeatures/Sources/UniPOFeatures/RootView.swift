@@ -16,6 +16,8 @@ public struct RootView: View {
     @State private var pendingConversationId: Int64?
     @State private var pendingProfileTab = false
     @State private var lastVerifiedUserID: Int64?
+    /// 打开私信对话时收起底栏：对话页的输入框在底部，底栏会把它整个盖住。
+    @State private var threadOpen = false
 
     private var identityKey: String {
         "\(auth.authenticationRevision):\(auth.profile?.id ?? 0):\(auth.isSessionRecoveryPending)"
@@ -41,51 +43,65 @@ public struct RootView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottom) {
+        // 底部安全区从 GeometryReader 读。不要在 body 里读 UIWindow.safeAreaInsets：
+        // 那会在视图更新中途强制 UIKit 布局，SwiftUI 算出的新界面被丢掉——
+        // 表现是提示条、底栏移除后还留在屏幕上，点击却按旧布局走（见 DEVLOG）。
+        GeometryReader { proxy in
+            content(safeBottom: proxy.safeAreaInsets.bottom)
+        }
+    }
+
+    private func content(safeBottom: CGFloat) -> some View {
+        let bottomGap: CGFloat = safeBottom > 0 ? 18 : 8
+        return ZStack(alignment: .bottom) {
             Color(UniColor.paper).ignoresSafeArea()
 
-            Group {
-                switch tab {
-                case .home:
-                    HomeView()
-                case .achievements:
-                    AchievementsView()
-                        .id(identityKey)
-                case .messages:
-                    InboxView(initialConversationId: pendingConversationId)
-                        .id("\(identityKey):\(pendingConversationId ?? 0)")
-                case .profile:
-                    ProfileView()
-                        .id(identityKey)
+            VStack(spacing: 0) {
+                if auth.isRestoring || auth.recoveryError != nil { sessionRecoveryNotice }
+                Group {
+                    switch tab {
+                    case .home:
+                        HomeView()
+                    case .achievements:
+                        AchievementsView()
+                            .id(identityKey)
+                    case .messages:
+                        InboxView(initialConversationId: pendingConversationId,
+                                  onThreadChange: { threadOpen = $0 })
+                            .id("\(identityKey):\(pendingConversationId ?? 0)")
+                    case .profile:
+                        ProfileView()
+                            .id(identityKey)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .safeAreaPadding(.bottom, 70)
+            .safeAreaPadding(.bottom, dockVisible ? 70 : 0)
 
-            // 渐隐要铺到屏幕最底：只铺到安全区时，Home 条那一段内容会露出来，
-            // 在底栏下面切出一条直角边，看起来像玻璃底栏的下半截是方的。
-            LinearGradient(
-                colors: [Color(UniColor.paper).opacity(0), Color(UniColor.paper).opacity(0.92)],
-                startPoint: .top, endPoint: .bottom
-            )
-            .frame(height: 130 + DockMetrics.safeBottom)
-            .offset(y: DockMetrics.safeBottom)
-            .allowsHitTesting(false)
+            if dockVisible {
+                // 渐隐要铺到屏幕最底：只铺到安全区时，Home 条那一段内容会露出来，
+                // 在底栏下面切出一条直角边，看起来像玻璃底栏的下半截是方的。
+                LinearGradient(
+                    colors: [Color(UniColor.paper).opacity(0), Color(UniColor.paper).opacity(0.92)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 130 + safeBottom)
+                .offset(y: safeBottom)
+                .allowsHitTesting(false)
 
-            DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, unreadCount: unreadCount, onCompose: {
-                if auth.isAuthenticated { showCompose = true } else { auth.requireLogin() }
-            }, onRequestAuth: { target in
-                pendingProfileTab = target == .profile
-                auth.requireLogin()
-            })
-                .padding(.horizontal, 16)
-                // 在这个 ZStack 里 ignoresSafeArea 不生效（实测底栏仍停在安全区上沿），
-                // 所以照常排在安全区边缘，再整体下移到离屏幕底 bottomGap 的位置。
-                .offset(y: DockMetrics.safeBottom - DockMetrics.bottomGap)
+                DockBar(tab: $tab, isAuthenticated: auth.isAuthenticated, unreadCount: unreadCount, onCompose: {
+                    if auth.isAuthenticated { showCompose = true } else { auth.requireLogin() }
+                }, onRequestAuth: { target in
+                    pendingProfileTab = target == .profile
+                    auth.requireLogin()
+                })
+                    .padding(.horizontal, 16)
+                    // 照常排在安全区边缘，再整体下移到离屏幕底 bottomGap 的位置：
+                    // 全面屏 Home 条之上再留一个 Home 条高度（18pt），有 Home 键的机型留 8pt。
+                    .offset(y: safeBottom - bottomGap)
+            }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if auth.isRestoring || auth.recoveryError != nil { sessionRecoveryNotice }
-        }
+        .onChange(of: tab) { _, value in if value != .messages { threadOpen = false } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, auth.recoveryError != nil, !auth.loginRequested {
                 Task { await auth.restore() }
@@ -208,6 +224,8 @@ public struct RootView: View {
         RealtimeClient.shared.disconnect()
     }
 
+    private var dockVisible: Bool { !(tab == .messages && threadOpen) }
+
     private var sessionRecoveryNotice: some View {
         HStack(spacing: 12) {
             if auth.isRestoring {
@@ -235,20 +253,5 @@ public struct RootView: View {
         .background(UniColor.paper)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("session.recovery")
-    }
-}
-
-/// 底栏离屏幕底边的距离。全面屏上 Home 条约 5pt 高、离底约 8pt，底栏下沿再高出一个 Home 条的高度；
-/// 有 Home 键的机型没有 Home 条，只留 8pt。
-enum DockMetrics {
-    /// 窗口底部安全区（全面屏约 34pt，有 Home 键的机型为 0）。
-    static var safeBottom: CGFloat {
-        UIApplication.shared.connectedScenes
-            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-            .first?.safeAreaInsets.bottom ?? 0
-    }
-
-    static var bottomGap: CGFloat {
-        safeBottom > 0 ? 18 : 8
     }
 }

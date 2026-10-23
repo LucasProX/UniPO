@@ -6,6 +6,7 @@ import UniPOUI
 struct InboxView: View {
     @Environment(AuthStore.self) private var auth
     let initialConversationId: Int64?
+    var onThreadChange: (Bool) -> Void = { _ in }
 
     @State private var section: Section = .messages
     @State private var threadOpen = false
@@ -25,7 +26,7 @@ struct InboxView: View {
             switch section {
             case .messages:
                 MessagesView(initialConversationId: initialConversationId, embedded: true,
-                             onThreadChange: { threadOpen = $0 })
+                             onThreadChange: { threadOpen = $0; onThreadChange($0) })
             case .notices:
                 InteractionNoticesView()
             case .system:

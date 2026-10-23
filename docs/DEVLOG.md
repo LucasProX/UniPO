@@ -5017,3 +5017,11 @@ G06 的「设置有效期」第一次实测，返回「服务器开小差了」�
 修的时候顺便要把底栏往下放（下沿只比 Home 条高一个 Home 条）。第一反应是给底栏和渐隐都加 `.ignoresSafeArea(edges: .bottom)`，再给底栏 `padding(.bottom, 18)`。装上去量像素：中间 54pt 的加号圆心离底 87pt，推回去底栏下沿在 51pt——正好是 34 + 18，`ignoresSafeArea` 完全没生效，渐隐也还是停在原处。没再深究 ZStack 里为什么不生效（上层还有 `safeAreaInset(edge: .top)` 等一串修饰符），改成确定性的写法：从窗口拿 `safeAreaInsets.bottom`，底栏照常排在安全区边缘再 `offset(y: safeBottom - 18)`，渐隐加高 `safeBottom` 再下移同样距离。再量一次，下沿 18.3pt。
 
 评论发完键盘不收：原逻辑在请求成功、且输入框内容没变时才把 `commentFocused` 设成 false；但发送过程中 `TextField` 被 `.disabled(isSending)`，焦点状态和 UIKit 的第一响应者对不上，键盘就留在那里。现在点发送就立即 `commentFocused = false` 并 `resignFirstResponder`，失败时提示「重试」，用户自己再点输入框。
+
+## 2026-10-24 会话点不开：body 里读 UIWindow 让画面停在了旧的一帧
+
+M03 验收一开始就卡住：消息页顶部「正在确认登录状态…」一直不消失，点会话行没反应，点头像倒是能打开主页，而打开的主页底下露出来的却是已经打开的对话。第一反应是登录恢复卡住了——给 `AuthStore` 加日志，`performRestore` 0.3 秒就正常结束，`isRestoring=false`，RootView 也拿到了新值。又怀疑是会话行 `.plain` 按钮的空白区域点不中，加了 `contentShape`，没变化。CPU 是 0，不是卡死。
+
+关键线索是「点头像弹出的主页下面是对话页」：说明点击其实生效了、状态也变了，只是屏幕没换画面。回头看最近的改动，前一天为了把底栏放低，在 `DockMetrics` 里从 `UIApplication.shared.connectedScenes...keyWindow.safeAreaInsets.bottom` 读安全区，RootView 每次刷新 body 都会调到它。在 SwiftUI 更新视图的中途去碰 UIWindow 的布局属性，会让 UIKit 同步走一遍布局，这一轮 SwiftUI 算出来的新画面就没提交上屏——于是提示条、底栏、列表都停在旧的那一帧，命中测试却已经是新的布局。去掉底栏 offset 也没恢复（因为还在读），改成从外层 `GeometryReader` 的 `proxy.safeAreaInsets.bottom` 拿值后立刻正常，底栏位置不变。
+
+同时把恢复提示从 `safeAreaInset(edge: .top)` 挪进了页面 `VStack`，打开对话时收起底栏（之前它直接盖住了输入框，以前没人注意到是因为对话页一直进不去），离开对话时重新拉会话列表让未读数清零。教训：SwiftUI 的 body 里不要读 UIKit 的窗口/布局属性，要尺寸就用 `GeometryReader` 或环境值。

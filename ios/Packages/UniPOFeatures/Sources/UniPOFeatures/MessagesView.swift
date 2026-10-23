@@ -54,6 +54,8 @@ struct MessagesView: View {
                     if selected != nil {
                         Button {
                             store.select(nil)
+                            // 进入对话时服务端已把看到的消息标为已读；回到列表重新拉一次，未读数才会清掉。
+                            Task { await store.loadConversations() }
                         } label: {
                             Image(systemName: "chevron.left")
                         }
@@ -182,6 +184,8 @@ struct MessagesView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                            // .plain 按钮只有不透明的像素能点；昵称和时间之间的 Spacer 是空白，不加这一行会点不中。
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
