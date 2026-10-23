@@ -272,6 +272,40 @@ public actor APIClient {
         try await request(path: "achievements/tasks/\(id)/complete", method: "DELETE")
     }
 
+    // MARK: 成长清单与档案
+
+    public func termPlan(termStart: String?) async throws -> TermPlan {
+        var query: [URLQueryItem] = []
+        if let termStart { query.append(URLQueryItem(name: "termStart", value: termStart)) }
+        return try await request(path: "growth/term-plan", query: query)
+    }
+
+    public func growthArchive() async throws -> GrowthArchive {
+        try await request(path: "growth/archive")
+    }
+
+    @discardableResult
+    public func createPersonalTask(_ input: PersonalTaskInput) async throws -> PersonalTask {
+        try await request(path: "growth/tasks", method: "POST", body: input.body)
+    }
+
+    @discardableResult
+    public func updatePersonalTask(id: Int64, _ input: PersonalTaskInput) async throws -> PersonalTask {
+        var body = input.body
+        body.removeValue(forKey: "termStart")
+        return try await request(path: "growth/tasks/\(id)", method: "PUT", body: body)
+    }
+
+    @discardableResult
+    public func setPersonalTaskCompleted(id: Int64, completed: Bool) async throws -> PersonalTask {
+        try await request(path: "growth/tasks/\(id)/complete", method: completed ? "POST" : "DELETE")
+    }
+
+    @discardableResult
+    public func deletePersonalTask(id: Int64) async throws -> PersonalTask {
+        try await request(path: "growth/tasks/\(id)", method: "DELETE")
+    }
+
     // MARK: 成长背景
 
     public func schoolOptions() async throws -> [SchoolOption] {

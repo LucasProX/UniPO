@@ -15,15 +15,28 @@ struct AchievementsView: View {
     @State private var selectedStageCode: String?
     @State private var undoCandidate: AchievementTaskView?
     @State private var editingBackground = false
+    /// 0 本学期清单 · 1 成长路线 · 2 成长档案；默认先看本学期该做什么。
+    @State private var section = 0
+    @State private var termPlan = TermPlanStore()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 hero
                 if let achievement, achievement.needsBackground { backgroundPrompt }
-                stagePath
-                currentTasks
-                badgeGrid
+                if auth.isAuthenticated {
+                    ProfileSegmentedControl(selection: $section, titles: ["本学期", "成长路线", "成长档案"])
+                }
+                switch auth.isAuthenticated ? section : 1 {
+                case 0:
+                    TermPlanSection(store: termPlan) { achievement = $0 }
+                case 2:
+                    GrowthArchiveSection()
+                default:
+                    stagePath
+                    currentTasks
+                    badgeGrid
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 8)
@@ -31,6 +44,10 @@ struct AchievementsView: View {
         }
         .scrollIndicators(.hidden)
         .task(id: "\(auth.isAuthenticated):\(auth.profile?.entryYear ?? 0)") { await load() }
+        .onChange(of: section) { _, value in
+            // 在「成长路线」里勾掉的主线任务要同步回清单。
+            if value == 0, termPlan.plan != nil { Task { await termPlan.load(termStart: termPlan.termStart) } }
+        }
         .onAppear {
             withAnimation(.spring(response: 0.6, dampingFraction: 0.8).delay(0.1)) {
                 appeared = true
@@ -41,7 +58,12 @@ struct AchievementsView: View {
             }
         }
         .sheet(isPresented: $editingBackground) {
-            GrowthBackgroundSheet(profile: auth.profile) { Task { await load() } }
+            GrowthBackgroundSheet(profile: auth.profile) {
+                Task {
+                    await load()
+                    await termPlan.showCurrent()
+                }
+            }
                 .environment(auth)
                 .presentationDetents([.large])
         }

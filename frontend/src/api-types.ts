@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/growth/tasks/{taskId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_1"];
+        post?: never;
+        delete: operations["delete_1"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users/{id}/status": {
         parameters: {
             query?: never;
@@ -108,9 +124,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_1"];
+        put: operations["update_2"];
         post?: never;
-        delete: operations["delete_1"];
+        delete: operations["delete_2"];
         options?: never;
         head?: never;
         patch?: never;
@@ -124,7 +140,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["detail"];
-        put: operations["update_2"];
+        put: operations["update_3"];
         post?: never;
         delete?: never;
         options?: never;
@@ -388,6 +404,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/growth/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/growth/tasks/{taskId}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["complete"];
+        delete: operations["undo"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/verification-code": {
         parameters: {
             query?: never;
@@ -589,7 +637,7 @@ export interface paths {
         };
         get: operations["list_1"];
         put?: never;
-        post: operations["create_2"];
+        post: operations["create_3"];
         delete?: never;
         options?: never;
         head?: never;
@@ -621,7 +669,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["create_3"];
+        post: operations["create_4"];
         delete?: never;
         options?: never;
         head?: never;
@@ -749,8 +797,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["complete"];
-        delete: operations["undo"];
+        post: operations["complete_1"];
+        delete: operations["undo_1"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1268,6 +1316,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/growth/term-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["termPlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/growth/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["archive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/categories": {
         parameters: {
             query?: never;
@@ -1700,6 +1780,35 @@ export interface components {
             majorId?: number;
             /** Format: int32 */
             entryYear: number;
+        };
+        PersonalTaskRequest: {
+            title: string;
+            note?: string;
+            /** Format: date-time */
+            dueAt?: string;
+            /** Format: date */
+            termStart?: string;
+        };
+        ApiResponsePersonalTaskView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["PersonalTaskView"];
+            requestId?: string;
+        };
+        PersonalTaskView: {
+            /** Format: int64 */
+            id?: number;
+            /** Format: date */
+            termStart?: string;
+            title?: string;
+            note?: string;
+            /** Format: date-time */
+            dueAt?: string;
+            completed?: boolean;
+            /** Format: date-time */
+            completedAt?: string;
+            /** Format: date-time */
+            createdAt?: string;
         };
         UserStatusRequest: {
             status: string;
@@ -2695,6 +2804,94 @@ export interface components {
             /** Format: int32 */
             limit?: number;
         };
+        ApiResponseTermPlanView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TermPlanView"];
+            requestId?: string;
+        };
+        Participation: {
+            /** Format: int64 */
+            activityId?: number;
+            title?: string;
+            category?: string;
+            location?: string;
+            organizerName?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            activityStatus?: string;
+            registrationStatus?: string;
+            checkedIn?: boolean;
+            /** Format: date-time */
+            checkedInAt?: string;
+            checkinRevoked?: boolean;
+            /** Format: int32 */
+            xpGranted?: number;
+            /** Format: int32 */
+            coinsGranted?: number;
+        };
+        TermPlanView: {
+            /** Format: date */
+            termStart?: string;
+            /** Format: date */
+            termEnd?: string;
+            termLabel?: string;
+            /** Format: int32 */
+            termIndex?: number;
+            current?: boolean;
+            /** Format: date */
+            previousTermStart?: string;
+            /** Format: date */
+            nextTermStart?: string;
+            canAddTasks?: boolean;
+            summary?: components["schemas"]["TermSummary"];
+            activities?: components["schemas"]["Participation"][];
+            officialStage?: components["schemas"]["StageView"];
+            personalTasks?: components["schemas"]["PersonalTaskView"][];
+        };
+        TermSummary: {
+            /** Format: int32 */
+            done?: number;
+            /** Format: int32 */
+            total?: number;
+            /** Format: int32 */
+            attended?: number;
+            /** Format: int32 */
+            activityXp?: number;
+            /** Format: int32 */
+            activityCoins?: number;
+        };
+        ApiResponseArchiveView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ArchiveView"];
+            requestId?: string;
+        };
+        ArchiveTerm: {
+            /** Format: date */
+            termStart?: string;
+            termLabel?: string;
+            current?: boolean;
+            activities?: components["schemas"]["Participation"][];
+            badges?: components["schemas"]["BadgeView"][];
+            /** Format: int32 */
+            officialCompleted?: number;
+            /** Format: int32 */
+            personalCompleted?: number;
+            /** Format: int32 */
+            activityXp?: number;
+            /** Format: int32 */
+            activityCoins?: number;
+        };
+        ArchiveView: {
+            /** Format: int32 */
+            attendedTotal?: number;
+            /** Format: int32 */
+            badgeTotal?: number;
+            terms?: components["schemas"]["ArchiveTerm"][];
+        };
         ApiResponseListCategoryView: {
             code?: string;
             message?: string;
@@ -3037,6 +3234,54 @@ export interface operations {
             };
         };
     };
+    update_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePersonalTaskView"];
+                };
+            };
+        };
+    };
+    delete_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePersonalTaskView"];
+                };
+            };
+        };
+    };
     updateUserStatus: {
         parameters: {
             query?: never;
@@ -3089,7 +3334,7 @@ export interface operations {
             };
         };
     };
-    update_1: {
+    update_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -3115,7 +3360,7 @@ export interface operations {
             };
         };
     };
-    delete_1: {
+    delete_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -3159,7 +3404,7 @@ export interface operations {
             };
         };
     };
-    update_2: {
+    update_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -3798,6 +4043,74 @@ export interface operations {
             };
         };
     };
+    create_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalTaskRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePersonalTaskView"];
+                };
+            };
+        };
+    };
+    complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePersonalTaskView"];
+                };
+            };
+        };
+    };
+    undo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                taskId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePersonalTaskView"];
+                };
+            };
+        };
+    };
     requestVerificationCode: {
         parameters: {
             query?: never;
@@ -4098,7 +4411,7 @@ export interface operations {
             };
         };
     };
-    create_2: {
+    create_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -4148,7 +4461,7 @@ export interface operations {
             };
         };
     };
-    create_3: {
+    create_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -4368,7 +4681,7 @@ export interface operations {
             };
         };
     };
-    complete: {
+    complete_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -4390,7 +4703,7 @@ export interface operations {
             };
         };
     };
-    undo: {
+    undo_1: {
         parameters: {
             query?: never;
             header?: never;
@@ -5096,6 +5409,48 @@ export interface operations {
                 };
                 content: {
                     "*/*": string;
+                };
+            };
+        };
+    };
+    termPlan: {
+        parameters: {
+            query?: {
+                termStart?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseTermPlanView"];
+                };
+            };
+        };
+    };
+    archive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseArchiveView"];
                 };
             };
         };

@@ -92,3 +92,8 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 ## 2026-10-23 A3 组织者工具更新
 
 测试实例迁移到 V29（报名审核、撤销签到、活动取消字段与 `user_notifications`），部署前备份 `/var/backups/unipo/test-before-a3-20261023T041329Z/`，回退镜像 `unipo-backend:test-rollback-20261023T041329Z`。新增「审核测试：学生会面试」（已取消）与「提醒测试：午间英语角」两条测试活动。
+
+## 2026-10-23 A4 成长整合更新
+
+测试实例迁移到 V30（`user_tasks` 与三枚活动徽章元数据），部署前备份 `/var/backups/unipo/test-before-a4-20261023T044511Z/`，回退镜像 `unipo-backend:test-rollback-20261023T044511Z`。验收新建了尾号 200021 的测试号和「徽章测试：草坪音乐会」（补签后撤销，随后取消）；尾号 200002 的测试号留了一条「CET4 practice 20 sets」计划。
+

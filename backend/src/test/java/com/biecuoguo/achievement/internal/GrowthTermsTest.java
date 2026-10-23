@@ -61,4 +61,36 @@ class GrowthTermsTest {
         stage.setTermTo(to);
         return stage;
     }
+
+    @Test
+    void termStartsAreSeptemberAndFebruaryWithJanuaryInTheAutumnTerm() {
+        assertEquals(LocalDate.of(2026, 9, 1), GrowthTerms.termStartOf(LocalDate.of(2026, 10, 23)));
+        assertEquals(LocalDate.of(2026, 9, 1), GrowthTerms.termStartOf(LocalDate.of(2027, 1, 31)));
+        assertEquals(LocalDate.of(2027, 2, 1), GrowthTerms.termStartOf(LocalDate.of(2027, 2, 1)));
+        assertEquals(LocalDate.of(2027, 2, 1), GrowthTerms.termStartOf(LocalDate.of(2027, 8, 31)));
+        assertEquals(LocalDate.of(2027, 2, 1), GrowthTerms.nextTermStart(LocalDate.of(2026, 9, 1)));
+        assertEquals(LocalDate.of(2027, 9, 1), GrowthTerms.nextTermStart(LocalDate.of(2027, 2, 1)));
+        assertEquals(LocalDate.of(2026, 2, 1), GrowthTerms.previousTermStart(LocalDate.of(2026, 9, 1)));
+        assertEquals(LocalDate.of(2025, 9, 1), GrowthTerms.previousTermStart(LocalDate.of(2026, 2, 1)));
+        assertTrue(GrowthTerms.isTermStart(LocalDate.of(2026, 2, 1)));
+        assertFalse(GrowthTerms.isTermStart(LocalDate.of(2026, 3, 1)));
+        assertFalse(GrowthTerms.isTermStart(LocalDate.of(2026, 9, 2)));
+    }
+
+    @Test
+    void termLabelFallsBackToSeasonWithoutEntryYear() {
+        assertEquals("大一上学期", GrowthTerms.termLabel(2026, LocalDate.of(2026, 9, 1)));
+        assertEquals("大二下学期", GrowthTerms.termLabel(2025, LocalDate.of(2027, 2, 1)));
+        assertEquals("2026 秋季学期", GrowthTerms.termLabel(null, LocalDate.of(2026, 9, 1)));
+        assertEquals("2027 春季学期", GrowthTerms.termLabel(null, LocalDate.of(2027, 2, 1)));
+    }
+
+    @Test
+    void attendanceBadgesAreReachedExactlyAtTheirThreshold() {
+        assertEquals(java.util.Optional.of("activity-1"), com.biecuoguo.achievement.api.AttendanceBadges.reachedAt(1));
+        assertEquals(java.util.Optional.of("activity-5"), com.biecuoguo.achievement.api.AttendanceBadges.reachedAt(5));
+        assertTrue(com.biecuoguo.achievement.api.AttendanceBadges.reachedAt(2).isEmpty());
+        assertEquals(15, com.biecuoguo.achievement.api.AttendanceBadges.THRESHOLDS.values().stream()
+                .mapToInt(Integer::intValue).max().orElseThrow());
+    }
 }

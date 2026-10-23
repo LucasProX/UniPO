@@ -2,7 +2,10 @@ package com.biecuoguo.achievement.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.achievement.api.AchievementDtos;
+import com.biecuoguo.achievement.api.AchievementQueryApi;
+import com.biecuoguo.achievement.api.AttendanceBadges;
 import com.biecuoguo.achievement.api.GrowthTerms;
+import com.biecuoguo.activity.api.ActivityParticipationApi;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
@@ -18,7 +21,7 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 
 @Service
-public class AchievementService {
+public class AchievementService implements AchievementQueryApi {
 
     private final AchievementStageMapper stageMapper;
     private final AchievementTaskMapper taskMapper;
@@ -27,11 +30,13 @@ public class AchievementService {
     private final UserBadgeMapper userBadgeMapper;
     private final UserMapper userMapper;
     private final ExperienceService experienceService;
+    private final ActivityParticipationApi participation;
 
     public AchievementService(AchievementStageMapper stageMapper, AchievementTaskMapper taskMapper,
                               AchievementProgressMapper progressMapper, BadgeMapper badgeMapper,
                               UserBadgeMapper userBadgeMapper, UserMapper userMapper,
-                              ExperienceService experienceService) {
+                              ExperienceService experienceService, ActivityParticipationApi participation) {
+        this.participation = participation;
         this.stageMapper = stageMapper;
         this.taskMapper = taskMapper;
         this.progressMapper = progressMapper;
@@ -41,6 +46,7 @@ public class AchievementService {
         this.experienceService = experienceService;
     }
 
+    @Override
     public AchievementDtos.AchievementView view(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -117,6 +123,16 @@ public class AchievementService {
             nextTask = stage.tasks().stream().filter(task -> !task.completed()).findFirst().orElse(null);
         }
 
+        // 活动徽章不落库：按签到有效的场次推导，第 N 场的签到时间就是获得时间。
+        ActivityParticipationApi.AttendanceSummary attendance =
+                participation.attendance(userId, AttendanceBadges.MAX_THRESHOLD);
+        for (var entry : AttendanceBadges.THRESHOLDS.entrySet()) {
+            earned.remove(entry.getKey());
+            if (attendance.count() >= entry.getValue() && attendance.earliestCheckins().size() >= entry.getValue()) {
+                earned.put(entry.getKey(), attendance.earliestCheckins().get(entry.getValue() - 1));
+            }
+        }
+
         List<AchievementDtos.BadgeView> badgeViews = new ArrayList<>();
         for (Badge badge : badgeMapper.selectList(new LambdaQueryWrapper<Badge>()
                 .orderByAsc(Badge::getSortOrder))) {
@@ -136,6 +152,15 @@ public class AchievementService {
                 termIndex == null ? null : GrowthTerms.termLabel(termIndex),
                 nextTask
         );
+    }
+
+    @Override
+    public AchievementDtos.StageView stageForTerm(Long userId, int termIndex) {
+        List<AchievementStage> stages = stageMapper.selectList(new LambdaQueryWrapper<AchievementStage>()
+                .orderByAsc(AchievementStage::getStageOrder));
+        String code = stageForTerm(stages, termIndex);
+        if (code == null) return null;
+        return view(userId).stages().stream().filter(stage -> stage.code().equals(code)).findFirst().orElse(null);
     }
 
     /** 入学前一律落在第一个阶段；超过所有区间的落在最后一个阶段。 */

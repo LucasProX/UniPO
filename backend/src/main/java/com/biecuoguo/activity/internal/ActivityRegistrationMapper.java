@@ -59,4 +59,38 @@ public interface ActivityRegistrationMapper extends BaseMapper<ActivityRegistrat
     List<Long> selectMineIds(@Param("userId") long userId, @Param("history") boolean history,
                              @Param("now") LocalDateTime now, @Param("afterStart") LocalDateTime afterStart,
                              @Param("afterId") Long afterId, @Param("limit") int limit);
+
+    /** 成长清单：开始时间在区间内、未被本人取消的报名。 */
+    @Select("""
+            SELECT r.* FROM activity_registrations r JOIN activities a ON a.id = r.activity_id
+            WHERE r.user_id = #{userId} AND r.status <> 'CANCELLED'
+              AND a.starts_at >= #{from} AND a.starts_at < #{to}
+            ORDER BY a.starts_at ASC, a.id ASC
+            LIMIT 200
+            """)
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    List<ActivityRegistration> selectInRange(@Param("userId") long userId, @Param("from") LocalDateTime from,
+                                             @Param("to") LocalDateTime to);
+
+    /** 成长档案：签到有效的报名，按活动开始时间倒序。 */
+    @Select("""
+            SELECT r.* FROM activity_registrations r JOIN activities a ON a.id = r.activity_id
+            WHERE r.user_id = #{userId} AND r.checked_in_at IS NOT NULL
+            ORDER BY a.starts_at DESC, a.id DESC
+            LIMIT #{limit}
+            """)
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    List<ActivityRegistration> selectAttended(@Param("userId") long userId, @Param("limit") int limit);
+
+    @Select("SELECT COUNT(*) FROM activity_registrations WHERE user_id = #{userId} AND checked_in_at IS NOT NULL")
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    int countAttended(@Param("userId") long userId);
+
+    @Select("""
+            SELECT checked_in_at FROM activity_registrations
+            WHERE user_id = #{userId} AND checked_in_at IS NOT NULL
+            ORDER BY checked_in_at ASC, id ASC LIMIT #{limit}
+            """)
+    @Options(useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    List<LocalDateTime> earliestCheckins(@Param("userId") long userId, @Param("limit") int limit);
 }

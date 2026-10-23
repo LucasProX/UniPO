@@ -2,6 +2,7 @@ package com.biecuoguo.activity.internal;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.biecuoguo.achievement.api.AttendanceBadges;
 import com.biecuoguo.activity.api.ActivityDtos;
 import com.biecuoguo.admin.api.AdminAuditApi;
 import com.biecuoguo.notification.api.NotificationApi;
@@ -366,6 +367,11 @@ public class ActivityService {
                 .set(ActivityRegistration::getRewardXpGranted, xp)
                 .set(ActivityRegistration::getRewardCoinsGranted, coins)
                 .set(ActivityRegistration::getUpdatedAt, now));
+        // 活动徽章由签到场次实时推导；这里只在恰好跨过门槛时提醒一次（撤销后再达到不重复提醒）。
+        int attended = registrationMapper.countAttended(registration.getUserId());
+        AttendanceBadges.reachedAt(attended).ifPresent(code -> notifications.notify(List.of(registration.getUserId()),
+                "BADGE_EARNED", "解锁活动徽章",
+                "累计参加 " + attended + " 场校园活动，解锁了新徽章，去成长档案看看吧。", activity.getId(), "badge:" + code));
         return new int[]{xp, coins};
     }
 

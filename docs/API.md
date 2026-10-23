@@ -406,10 +406,17 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | POST | `/api/activities/{id}/cancel` | 发布者或管理员 | `{reason}` 必填；已签到的奖励保留；通知所有报名者 |
 | GET | `/api/notifications?cursor=` · `/unread-count` · POST `/read-all` | 登录 | 站内通知：审核结果、候补转正、变更、取消、开始前 24 小时与 1 小时提醒、签到撤销 |
 | GET | `/api/wallet/me?cursor=&limit=` | 登录 | 金币余额、今日已获得与每日上限（500）、流水倒序分页（cursor 为上一页最后一条流水 ID） |
+| GET | `/api/growth/term-plan?termStart=` | 登录 | 本学期清单：活动（签到自动完成）+ 当期主线阶段 + 自己的计划，附 `summary{done,total,attended,activityXp,activityCoins}`；`termStart` 为 9 月 1 日或 2 月 1 日，默认当前学期，可往前到入学学期、往后一个学期，超出 400 |
+| GET | `/api/growth/archive` | 登录 | 成长档案：按学期倒序的参加活动、获得徽章、完成的主线任务与计划数 |
+| POST | `/api/growth/tasks` · PUT `/api/growth/tasks/{id}` | 登录 | 自己的计划 `{title, note?, dueAt?, termStart?}`；只能加到当前或下一个学期（否则 409），每学期最多 50 条；不发经验与金币 |
+| POST / DELETE | `/api/growth/tasks/{id}/complete` | 本人 | 完成 / 撤回，幂等；别人的任务一律 404 |
+| DELETE | `/api/growth/tasks/{id}` | 本人 | 删除，返回被删除的任务 |
 
 `ActivityView` 主要字段：`phase`（OPEN / CLOSED / ONGOING / ENDED / CANCELLED，服务端按时间计算）、`myStatus`（NONE / REGISTERED / WAITLISTED / CANCELLED）、`myWaitlistPosition`、`eligible` 与 `ineligibleReason`、`audienceLabel`、`capacity`（为空不限）、`registeredCount`、`waitlistCount`、`rewardXp`、`rewardCoins`（签到后发放，A2 实现）、`recentAttendees`（最多 8 人）、`checkedIn`、`checkedInAt`、`checkinOpen`、`canManage`、`requireApproval`、`cancelReason`、`checkinRevoked`；`myStatus` 还可能是 PENDING（待审核）与 REJECTED（未通过，不能再报名）。签到时奖励写入报名行（`reward_xp_granted` / `reward_coins_granted`），金币按 `activity-checkin:报名 ID` 幂等入账，超过每日上限的部分不入账。
 
 发布权限与上限：管理员和校级运营面向全校 / 学院 / 专业，每场最多 100 经验、200 金币；院级运营只能面向本院或本院专业，50 / 100；专业运营只能面向本专业，30 / 60。本校所有人都能看到活动，只有范围内的人能报名。名额计数在锁住活动行的事务内变更，并发报名不会超卖。
+
+活动徽章（`activity-1` / `activity-5` / `activity-15`）出现在 `/api/achievements/me` 的 `badges` 里，由签到有效的累计场次推导，第 N 场的签到时间就是 `earnedAt`；撤销签到后自动变回未获得。
 
 ### 9.7 新用户资料完善（onboarding）
 

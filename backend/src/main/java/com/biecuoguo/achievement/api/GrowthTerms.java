@@ -37,4 +37,32 @@ public final class GrowthTerms {
     public static boolean plausibleEntryYear(int entryYear, LocalDate today) {
         return entryYear >= today.getYear() - 10 && entryYear <= today.getYear() + 1;
     }
+
+    /** 某天所在学期的起始日：9 月 1 日（秋季，含次年 1 月）或 2 月 1 日（春季）。不依赖入学年份。 */
+    public static LocalDate termStartOf(LocalDate day) {
+        int month = day.getMonthValue();
+        if (month >= 9) return LocalDate.of(day.getYear(), 9, 1);
+        if (month == 1) return LocalDate.of(day.getYear() - 1, 9, 1);
+        return LocalDate.of(day.getYear(), 2, 1);
+    }
+
+    public static boolean isTermStart(LocalDate day) {
+        return day.getDayOfMonth() == 1 && (day.getMonthValue() == 9 || day.getMonthValue() == 2);
+    }
+
+    public static LocalDate nextTermStart(LocalDate termStart) {
+        return termStart.getMonthValue() == 9 ? LocalDate.of(termStart.getYear() + 1, 2, 1)
+                : LocalDate.of(termStart.getYear(), 9, 1);
+    }
+
+    public static LocalDate previousTermStart(LocalDate termStart) {
+        return termStart.getMonthValue() == 9 ? LocalDate.of(termStart.getYear(), 2, 1)
+                : LocalDate.of(termStart.getYear() - 1, 9, 1);
+    }
+
+    /** 有入学年份时用「大一上学期」，否则用「2026 秋季学期」。 */
+    public static String termLabel(Integer entryYear, LocalDate termStart) {
+        if (entryYear != null) return termLabel(termIndex(entryYear, termStart));
+        return termStart.getYear() + (termStart.getMonthValue() == 9 ? " 秋季学期" : " 春季学期");
+    }
 }

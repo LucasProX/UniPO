@@ -5,6 +5,8 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.lang.ArchRule;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
@@ -130,6 +132,16 @@ class ArchitectureTest {
                 .that().resideOutsideOfPackage("com.biecuoguo.spotlight..")
                 .should().dependOnClassesThat().resideInAPackage("com.biecuoguo.spotlight.internal..")
                 .because("spotlight 内部实现对外不可见，跨模块只能依赖 api（ADR-0002）");
+        rule.check(CLASSES);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"activity", "achievement", "growth", "wallet", "notification"})
+    void growthLoopInternalsAreNotAccessedFromOutside(String module) {
+        ArchRule rule = noClasses()
+                .that().resideOutsideOfPackage("com.biecuoguo." + module + "..")
+                .should().dependOnClassesThat().resideInAPackage("com.biecuoguo." + module + ".internal..")
+                .because(module + " 内部实现对外不可见，跨模块只能依赖 api（ADR-0002）");
         rule.check(CLASSES);
     }
 
