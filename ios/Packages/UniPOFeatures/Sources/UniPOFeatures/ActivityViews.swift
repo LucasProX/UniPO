@@ -80,7 +80,10 @@ struct ActivityCard: View {
     @ViewBuilder
     private var statusTag: some View {
         let text: String = {
+            if activity.phase == "CANCELLED" { return "已取消" }
             if activity.checkedIn { return "已签到" }
+            if activity.isPending { return "待审核" }
+            if activity.isRejected { return "未通过" }
             if activity.isRegistered { return activity.checkinOpen ? "可签到" : "已报名" }
             if activity.isWaitlisted { return "候补中" }
             if activity.phase == "OPEN", activity.isFull { return activity.waitlistEnabled ? "可候补" : "已满" }
@@ -201,7 +204,8 @@ struct ActivityListView: View {
     @State private var tab = "recommend"
 
     private var tabs: [(String, String)] {
-        auth.isAuthenticated
+        if initialTab == "organized" { return [("organized", "我发布的")] }
+        return auth.isAuthenticated
             ? [("recommend", "全部"), ("week", "本周"), ("upcoming", "我报名的"), ("history", "参加过")]
             : [("recommend", "全部"), ("week", "本周")]
     }
@@ -209,12 +213,14 @@ struct ActivityListView: View {
     var body: some View {
         NavigationStack {
             List {
-                Picker("活动列表", selection: $tab) {
-                    ForEach(tabs, id: \.0) { Text($0.1).tag($0.0) }
+                if tabs.count > 1 {
+                    Picker("活动列表", selection: $tab) {
+                        ForEach(tabs, id: \.0) { Text($0.1).tag($0.0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
-                .pickerStyle(.segmented)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
 
                 if store.isLoading && store.items.isEmpty {
                     UniLoadingState("加载活动…").listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -247,7 +253,7 @@ struct ActivityListView: View {
             .scrollContentBackground(.hidden)
             .background(UniColor.paper)
             .refreshable { await store.refresh() }
-            .navigationTitle("校园活动")
+            .navigationTitle(initialTab == "organized" ? "我发布的活动" : "校园活动")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: ActivityView.self) { activity in
                 ActivityDetailView(activityID: activity.id, initial: activity, showsClose: false) { store.replace($0) }
@@ -264,6 +270,7 @@ struct ActivityListView: View {
         switch tab {
         case "upcoming": return "还没有报名的活动"
         case "history": return "还没有参加过的活动"
+        case "organized": return "还没有发布过活动"
         case "week": return "本周没有活动"
         default: return "暂时没有活动"
         }
@@ -287,6 +294,10 @@ struct ActivityDetailView: View {
     @State private var confirmCancel = false
     @State private var checkin: CheckinTarget?
     @State private var showOrganizerCode = false
+    @State private var showRoster = false
+    @State private var showEdit = false
+    @State private var showCancelActivity = false
+    @State private var cancelReason = ""
 
     init(activityID: Int64, initial: ActivityView? = nil, showsClose: Bool = true,
          onChange: @escaping (ActivityView) -> Void = { _ in }) {
@@ -318,9 +329,24 @@ struct ActivityDetailView: View {
             if showsClose {
                 ToolbarItem(placement: .topBarTrailing) { Button("关闭") { dismiss() } }
             }
-            if activity?.canManage == true {
+            if let activity, activity.canManage {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { showOrganizerCode = true } label: { Label("签到码", systemImage: "qrcode") }
+                    Menu {
+                        Button("签到码", systemImage: "qrcode") { showOrganizerCode = true }
+                        Button("报名名单", systemImage: "person.2") { showRoster = true }
+                        if activity.phase == "OPEN" || activity.phase == "CLOSED" {
+                            Button("编辑活动", systemImage: "pencil") { showEdit = true }
+                        }
+                        if activity.phase != "ENDED" && activity.phase != "CANCELLED" {
+                            Button("取消活动", systemImage: "xmark.circle", role: .destructive) {
+                                cancelReason = ""
+                                showCancelActivity = true
+                            }
+                        }
+                    } label: {
+                        Label("管理", systemImage: "slider.horizontal.3").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityLabel("管理活动")
                 }
             }
         }
@@ -341,6 +367,24 @@ struct ActivityDetailView: View {
         .sheet(isPresented: $showOrganizerCode, onDismiss: { Task { await load() } }) {
             if let activity { OrganizerCheckinView(activity: activity) }
         }
+        .sheet(isPresented: $showRoster, onDismiss: { Task { await load() } }) {
+            if let activity { ActivityRosterView(activity: activity) }
+        }
+        .sheet(isPresented: $showEdit) {
+            if let activity {
+                EditActivityView(activity: activity) { updated in
+                    self.activity = updated
+                    onChange(updated)
+                }
+            }
+        }
+        .alert("取消活动", isPresented: $showCancelActivity) {
+            TextField("取消原因（会通知所有报名者）", text: $cancelReason)
+            Button("确认取消活动", role: .destructive) { Task { await cancelWholeActivity() } }
+            Button("再想想", role: .cancel) {}
+        } message: {
+            Text("取消后不能恢复；已签到的同学奖励保留。")
+        }
         .fullScreenCover(isPresented: Binding(get: { auth.loginRequested }, set: { auth.loginRequested = $0 })) {
             LoginView().environment(auth)
         }
@@ -348,6 +392,12 @@ struct ActivityDetailView: View {
 
     private func content(_ activity: ActivityView) -> some View {
         VStack(alignment: .leading, spacing: 16) {
+            if activity.phase == "CANCELLED" {
+                Label("活动已取消" + (activity.cancelReason.map { "：\($0)" } ?? ""), systemImage: "xmark.octagon.fill")
+                    .font(.uniLabel(13)).foregroundStyle(UniColor.danger)
+                    .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(UniColor.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+            }
             header(activity)
             infoCard(activity)
             if activity.capacity != nil { capacityCard(activity) }
@@ -495,12 +545,16 @@ struct ActivityDetailView: View {
         if activity.checkedIn {
             return "已签到 · " + (activity.checkedInAt.map { ActivityTime.short($0) } ?? "")
         }
+        if activity.checkinRevoked { return "签到已被撤销" }
+        if activity.isRejected { return "报名未通过" }
+        if activity.isPending { return "待审核 · 取消报名" }
         if activity.isRegistered, activity.checkinOpen { return "去签到" }
         if activity.isRegistered { return activity.phase == "OPEN" || activity.phase == "CLOSED" ? "已报名 · 取消报名" : "已报名" }
         if activity.isWaitlisted { return "候补第 \(activity.myWaitlistPosition ?? 1) 位 · 退出候补" }
         switch activity.phase {
         case "OPEN":
             if !activity.eligible { return "不在报名范围" }
+            if activity.requireApproval { return "申请报名" }
             if activity.isFull { return activity.waitlistEnabled ? "加入候补" : "名额已满" }
             return "立即报名"
         case "CLOSED": return "报名已截止"
@@ -512,7 +566,8 @@ struct ActivityDetailView: View {
 
     private func primaryEnabled(_ activity: ActivityView) -> Bool {
         if !auth.isAuthenticated { return true }
-        if activity.checkedIn { return false }
+        if activity.checkedIn || activity.checkinRevoked || activity.isRejected { return false }
+        if activity.isPending { return activity.phase == "OPEN" || activity.phase == "CLOSED" }
         if activity.isRegistered, activity.checkinOpen { return true }
         if activity.isRegistered || activity.isWaitlisted {
             return activity.phase == "OPEN" || activity.phase == "CLOSED"
@@ -530,6 +585,9 @@ struct ActivityDetailView: View {
            activity.phase == "OPEN" {
             return activity.ineligibleReason
         }
+        if activity.checkinRevoked { return "组织者撤销了你的签到，奖励已扣回" }
+        if activity.isPending { return "组织者审核后会通知你" }
+        if activity.requireApproval, activity.myStatus == "NONE", activity.phase == "OPEN" { return "这个活动需要组织者审核报名" }
         if activity.checkedIn, activity.hasReward { return "奖励已在签到时发放" }
         if activity.isRegistered, activity.checkinOpen { return "到现场输入签到码或扫二维码" + (activity.hasReward ? "，签到即得奖励" : "") }
         if activity.isRegistered, activity.phase != "ENDED" { return "开始前 30 分钟开放签到" + (activity.hasReward ? "，奖励随签到发放" : "") }
@@ -542,8 +600,22 @@ struct ActivityDetailView: View {
             checkin = CheckinTarget(activityID: activity.id)
             return
         }
-        if activity.isRegistered || activity.isWaitlisted { confirmCancel = true; return }
+        if activity.isRegistered || activity.isWaitlisted || activity.isPending { confirmCancel = true; return }
         await perform(cancel: false)
+    }
+
+    private func cancelWholeActivity() async {
+        let reason = cancelReason.trimmingCharacters(in: .whitespaces)
+        guard !reason.isEmpty else { actionError = "取消活动需要填写原因"; return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let result = try await APIClient.shared.cancelActivity(id: activityID, reason: reason)
+            activity = result
+            onChange(result)
+        } catch {
+            actionError = (error as? LocalizedError)?.errorDescription ?? "取消失败，请重试"
+        }
     }
 
     private func perform(cancel: Bool) async {

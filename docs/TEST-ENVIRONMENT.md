@@ -88,3 +88,7 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 ## 2026-10-23 A2 签到与金币更新
 
 测试实例迁移到 V28（签到字段、`user_wallets`、`coin_ledger`），部署前备份 `/var/backups/unipo/test-before-a2-20261023T035209Z/`，回退镜像 `unipo-backend:test-rollback-20261023T035209Z`。新建了「签到测试：读书分享会」「秋季迎新志愿者培训」两条可签到的测试活动，尾号 200001、200002、200004 的测试号已签到并获得经验和金币。
+
+## 2026-10-23 A3 组织者工具更新
+
+测试实例迁移到 V29（报名审核、撤销签到、活动取消字段与 `user_notifications`），部署前备份 `/var/backups/unipo/test-before-a3-20261023T041329Z/`，回退镜像 `unipo-backend:test-rollback-20261023T041329Z`。新增「审核测试：学生会面试」（已取消）与「提醒测试：午间英语角」两条测试活动。

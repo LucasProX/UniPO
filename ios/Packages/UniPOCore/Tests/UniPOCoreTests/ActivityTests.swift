@@ -10,7 +10,7 @@ final class ActivityTests: XCTestCase {
          "audienceScope": "SCHOOL", "audienceLabel": "全校", "capacity": 2, "registeredCount": 2,
          "waitlistCount": 1, "waitlistEnabled": true, "rewardXp": 30, "rewardCoins": 20, "phase": "OPEN",
          "myStatus": status, "eligible": true, "recentAttendees": [], "checkedIn": false,
-         "checkinOpen": false, "canManage": false]
+         "checkinOpen": false, "canManage": false, "requireApproval": false, "checkinRevoked": false]
     }
 
     private func page(_ ids: [Int64], cursor: String? = nil) throws -> ActivityPage {
@@ -65,5 +65,15 @@ final class ActivityTests: XCTestCase {
         XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=0&token=\(token)"))
         XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=12&token=short"))
         XCTAssertNil(CheckinLink(string: "unipo://checkin?activity=12&token=\(String(repeating: "a", count: 21))%2F"))
+    }
+
+    func testUpdateInputClearsCapacityExplicitly() throws {
+        let view = try JSONDecoder().decode(ActivityView.self, from: JSONSerialization.data(withJSONObject: activity(1)))
+        var input = UpdateActivityInput(activity: view)
+        XCTAssertEqual(input.capacity, 2)
+        input.capacity = nil
+        XCTAssertEqual(input.body["clearCapacity"] as? Bool, true)
+        XCTAssertNil(input.body["capacity"])
+        XCTAssertTrue((input.body["startsAt"] as? String)?.hasPrefix("2026-11-02T14:00:00") == true)
     }
 }

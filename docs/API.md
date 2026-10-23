@@ -397,9 +397,17 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 
 | GET | `/api/activities/{id}/checkin-code` | 发布者或管理员 | 签到大屏：`qrPayload`（`unipo://checkin?activity=&token=`，30 秒轮换）、4 位 `code`、`refreshAfterSeconds`、签到窗与已签到人数 |
 | POST | `/api/activities/{id}/checkin` | 已报名者 | `{token}` 或 `{code}` 二选一；签到窗为开始前 30 分钟至结束；成功即发经验与金币，重复签到返回 `alreadyCheckedIn=true` 不重复发奖；候补者 409；错码 400；按 IP 每分钟 20 次限流 |
+| GET | `/api/activities/organized?cursor=` | 登录 | 我发布的活动，按创建时间倒序 |
+| GET | `/api/activities/{id}/registrations?filter=all\|registered\|pending\|waitlisted\|checked_in&cursor=` | 发布者或管理员 | 报名名单与各状态人数；不含手机号等账号信息 |
+| POST | `/api/activities/{id}/registrations/{rid}/approve` · `/reject` | 发布者或管理员 | 审核待审核报名；通过时有名额进已报名，否则进候补；已处理过的 409 |
+| POST | `/api/activities/{id}/registrations/{rid}/checkin` | 发布者或管理员 | 手动补签：签到开放后至活动结束后 24 小时，发同样的奖励，幂等 |
+| POST | `/api/activities/{id}/registrations/{rid}/revoke-checkin` | 发布者或管理员 | `{reason}` 必填；签到后 24 小时内撤销，按实际发放扣回经验与金币（金币不扣成负数），撤销后不能再签到；写必需审计 |
+| PUT | `/api/activities/{id}` | 发布者或管理员 | 开始前编辑；名额不能少于已报名人数，扩容自动递补候补；时间或地点变化通知所有报名者 |
+| POST | `/api/activities/{id}/cancel` | 发布者或管理员 | `{reason}` 必填；已签到的奖励保留；通知所有报名者 |
+| GET | `/api/notifications?cursor=` · `/unread-count` · POST `/read-all` | 登录 | 站内通知：审核结果、候补转正、变更、取消、开始前 24 小时与 1 小时提醒、签到撤销 |
 | GET | `/api/wallet/me?cursor=&limit=` | 登录 | 金币余额、今日已获得与每日上限（500）、流水倒序分页（cursor 为上一页最后一条流水 ID） |
 
-`ActivityView` 主要字段：`phase`（OPEN / CLOSED / ONGOING / ENDED / CANCELLED，服务端按时间计算）、`myStatus`（NONE / REGISTERED / WAITLISTED / CANCELLED）、`myWaitlistPosition`、`eligible` 与 `ineligibleReason`、`audienceLabel`、`capacity`（为空不限）、`registeredCount`、`waitlistCount`、`rewardXp`、`rewardCoins`（签到后发放，A2 实现）、`recentAttendees`（最多 8 人）、`checkedIn`、`checkedInAt`、`checkinOpen`、`canManage`。签到时奖励写入报名行（`reward_xp_granted` / `reward_coins_granted`），金币按 `activity-checkin:报名 ID` 幂等入账，超过每日上限的部分不入账。
+`ActivityView` 主要字段：`phase`（OPEN / CLOSED / ONGOING / ENDED / CANCELLED，服务端按时间计算）、`myStatus`（NONE / REGISTERED / WAITLISTED / CANCELLED）、`myWaitlistPosition`、`eligible` 与 `ineligibleReason`、`audienceLabel`、`capacity`（为空不限）、`registeredCount`、`waitlistCount`、`rewardXp`、`rewardCoins`（签到后发放，A2 实现）、`recentAttendees`（最多 8 人）、`checkedIn`、`checkedInAt`、`checkinOpen`、`canManage`、`requireApproval`、`cancelReason`、`checkinRevoked`；`myStatus` 还可能是 PENDING（待审核）与 REJECTED（未通过，不能再报名）。签到时奖励写入报名行（`reward_xp_granted` / `reward_coins_granted`），金币按 `activity-checkin:报名 ID` 幂等入账，超过每日上限的部分不入账。
 
 发布权限与上限：管理员和校级运营面向全校 / 学院 / 专业，每场最多 100 经验、200 金币；院级运营只能面向本院或本院专业，50 / 100；专业运营只能面向本专业，30 / 60。本校所有人都能看到活动，只有范围内的人能报名。名额计数在锁住活动行的事务内变更，并发报名不会超卖。
 

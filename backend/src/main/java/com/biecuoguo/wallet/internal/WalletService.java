@@ -54,6 +54,29 @@ public class WalletService implements WalletApi {
         return granted;
     }
 
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int debit(long userId, int amount, String sourceType, Long sourceId, String idempotencyKey, String reason) {
+        if (amount <= 0) return 0;
+        LocalDateTime now = AppTime.nowLocal();
+        mapper.ensureWallet(userId, now);
+        int balance = mapper.lockBalance(userId);
+        if (mapper.countKey(idempotencyKey) > 0) return 0;
+        int taken = Math.min(amount, Math.max(0, balance));
+        CoinLedgerEntry entry = new CoinLedgerEntry();
+        entry.setUserId(userId);
+        entry.setAmount(-taken);
+        entry.setBalanceAfter(balance - taken);
+        entry.setSourceType(sourceType);
+        entry.setSourceId(sourceId);
+        entry.setIdempotencyKey(idempotencyKey);
+        entry.setReason(reason.length() > 120 ? reason.substring(0, 120) : reason);
+        entry.setCreatedAt(now);
+        mapper.insert(entry);
+        mapper.updateBalance(userId, balance - taken, now);
+        return taken;
+    }
+
     static int capped(int amount, int earnedToday) {
         return Math.max(0, Math.min(amount, DAILY_EARN_CAP - earnedToday));
     }

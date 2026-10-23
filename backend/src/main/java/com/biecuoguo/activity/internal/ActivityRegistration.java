@@ -22,6 +22,10 @@ public class ActivityRegistration {
     private String checkinMethod;
     private Integer rewardXpGranted;
     private Integer rewardCoinsGranted;
+    private Long reviewedBy;
+    private LocalDateTime reviewedAt;
+    private LocalDateTime checkinRevokedAt;
+    private String revokeReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

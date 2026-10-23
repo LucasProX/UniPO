@@ -50,6 +50,13 @@ public struct ActivityView: Codable, Identifiable, Hashable {
     public let checkinOpen: Bool
     /** 发布者本人或管理员，可以打开签到码页面。 */
     public let canManage: Bool
+    public let requireApproval: Bool
+    public let cancelReason: String?
+    /** 组织者撤销了我的签到；撤销后不能再签到。 */
+    public let checkinRevoked: Bool
+
+    public var isPending: Bool { myStatus == "PENDING" }
+    public var isRejected: Bool { myStatus == "REJECTED" }
 
     public var isRegistered: Bool { myStatus == "REGISTERED" }
     public var isWaitlisted: Bool { myStatus == "WAITLISTED" }
@@ -139,6 +146,92 @@ public struct WalletView: Codable {
     public let hasMore: Bool
 }
 
+public struct ActivityRosterEntry: Codable, Identifiable, Hashable {
+    public var id: Int64 { registrationId }
+    public let registrationId: Int64
+    public let uid: String
+    public let nickname: String
+    public let avatarUrl: String?
+    public let college: String?
+    public let major: String?
+    public let grade: String?
+    /** REGISTERED / WAITLISTED / PENDING / CANCELLED / REJECTED */
+    public let status: String
+    public let queuedAt: String?
+    public let checkedInAt: String?
+    public let checkinMethod: String?
+    public let rewardXpGranted: Int
+    public let rewardCoinsGranted: Int
+    public let checkinRevokedAt: String?
+    public let revokeReason: String?
+    public let revocable: Bool
+}
+
+public struct ActivityRosterPage: Codable {
+    public let items: [ActivityRosterEntry]
+    public let nextCursor: String?
+    public let hasMore: Bool
+    public let registeredCount: Int
+    public let waitlistCount: Int
+    public let pendingCount: Int
+    public let checkedInCount: Int
+}
+
+/// 编辑活动只发送改动过的字段；名额为空表示改为不限。
+public struct UpdateActivityInput {
+    public var title: String
+    public var location: String
+    public var description: String
+    public var notice: String
+    public var startsAt: Date
+    public var endsAt: Date
+    public var signupDeadline: Date
+    public var capacity: Int?
+
+    public init(activity: ActivityView) {
+        title = activity.title
+        location = activity.location
+        description = activity.description
+        notice = activity.notice ?? ""
+        startsAt = ActivityTime.parse(activity.startsAt) ?? Date()
+        endsAt = ActivityTime.parse(activity.endsAt) ?? Date()
+        signupDeadline = ActivityTime.parse(activity.signupDeadline) ?? Date()
+        capacity = activity.capacity
+    }
+
+    var body: [String: Any] {
+        var value: [String: Any] = [
+            "title": title.trimmingCharacters(in: .whitespacesAndNewlines),
+            "location": location.trimmingCharacters(in: .whitespacesAndNewlines),
+            "description": description.trimmingCharacters(in: .whitespacesAndNewlines),
+            "notice": notice.trimmingCharacters(in: .whitespacesAndNewlines),
+            "startsAt": ActivityTime.iso(startsAt),
+            "endsAt": ActivityTime.iso(endsAt),
+            "signupDeadline": ActivityTime.iso(signupDeadline)
+        ]
+        if let capacity { value["capacity"] = capacity } else { value["clearCapacity"] = true }
+        return value
+    }
+}
+
+public struct AppNotification: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let category: String
+    public let type: String
+    public let title: String
+    public let body: String
+    public let activityId: Int64?
+    public let read: Bool
+    public let createdAt: String?
+}
+
+public struct AppNotificationPage: Codable {
+    public let items: [AppNotification]
+    public let nextCursor: String?
+    public let hasMore: Bool
+    public let unreadCount: Int
+}
+
 public struct ActivityPage: Codable {
     public let items: [ActivityView]
     public let nextCursor: String?
@@ -176,6 +269,7 @@ public struct CreateActivityInput {
     public var waitlistEnabled = true
     public var rewardXp = 0
     public var rewardCoins = 0
+    public var requireApproval = false
 
     public init(now: Date = Date()) {
         let start = Calendar.current.date(byAdding: .day, value: 3, to: now) ?? now
@@ -196,7 +290,8 @@ public struct CreateActivityInput {
             "audienceScope": audienceScope,
             "waitlistEnabled": waitlistEnabled,
             "rewardXp": rewardXp,
-            "rewardCoins": rewardCoins
+            "rewardCoins": rewardCoins,
+            "requireApproval": requireApproval
         ]
         let name = organizerName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !name.isEmpty { value["organizerName"] = name }
@@ -276,6 +371,7 @@ public final class ActivityListStore {
     private let loadPage: PageLoader
 
     public init(tab: String = "recommend", loadPage: @escaping PageLoader = { tab, cursor in
+        if tab == "organized" { return try await APIClient.shared.organizedActivities(cursor: cursor) }
         if tab == "upcoming" || tab == "history" {
             return try await APIClient.shared.myActivities(state: tab, cursor: cursor)
         }

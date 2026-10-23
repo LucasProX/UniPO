@@ -36,7 +36,7 @@ public interface ActivityRegistrationMapper extends BaseMapper<ActivityRegistrat
     @Select("""
             <script>
             SELECT a.id FROM activity_registrations r JOIN activities a ON a.id = r.activity_id
-            WHERE r.user_id = #{userId} AND r.status IN ('REGISTERED', 'WAITLISTED')
+            WHERE r.user_id = #{userId} AND r.status IN ('REGISTERED', 'WAITLISTED', 'PENDING')
               <choose>
                 <when test="history">AND (a.ends_at &lt;= #{now} OR a.status = 'CANCELLED')</when>
                 <otherwise>AND a.ends_at &gt; #{now} AND a.status = 'PUBLISHED'</otherwise>

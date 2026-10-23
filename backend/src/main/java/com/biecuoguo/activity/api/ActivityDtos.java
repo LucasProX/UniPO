@@ -28,8 +28,39 @@ public final class ActivityDtos {
             Integer capacity,
             Boolean waitlistEnabled,
             Integer rewardXp,
+            Integer rewardCoins,
+            Boolean requireApproval
+    ) {}
+
+    /** 编辑只改给出的字段；活动开始后不能编辑。名额不能低于已报名人数，扩容时自动递补候补。 */
+    public record UpdateActivityRequest(
+            @Size(max = 80) String title,
+            @Size(max = 80) String organizerName,
+            @Size(max = 500) String coverUrl,
+            @Size(max = 5000) String description,
+            @Size(max = 1000) String notice,
+            @Size(max = 120) String location,
+            OffsetDateTime startsAt,
+            OffsetDateTime endsAt,
+            OffsetDateTime signupDeadline,
+            Integer capacity,
+            Boolean clearCapacity,
+            Boolean waitlistEnabled,
+            Integer rewardXp,
             Integer rewardCoins
     ) {}
+
+    public record ReasonRequest(@NotBlank @Size(max = 200) String reason) {}
+
+    /** 名单里的一行：只给组织者看，不含手机号等账号信息。 */
+    public record RosterEntry(long registrationId, String uid, String nickname, String avatarUrl,
+                              String college, String major, String grade, String status,
+                              OffsetDateTime queuedAt, OffsetDateTime checkedInAt, String checkinMethod,
+                              int rewardXpGranted, int rewardCoinsGranted, OffsetDateTime checkinRevokedAt,
+                              String revokeReason, boolean revocable) {}
+
+    public record RosterPage(List<RosterEntry> items, String nextCursor, boolean hasMore,
+                             int registeredCount, int waitlistCount, int pendingCount, int checkedInCount) {}
 
     public record OrganizerView(Long id, String uid, String nickname, String avatarUrl, String role) {}
 
@@ -75,7 +106,11 @@ public final class ActivityDtos {
             /** 签到时间窗：开始前 30 分钟到结束。 */
             boolean checkinOpen,
             /** 当前账号是发布者或管理员，可以打开签到码页面。 */
-            boolean canManage
+            boolean canManage,
+            boolean requireApproval,
+            String cancelReason,
+            /** 组织者撤销了我的签到；撤销后不能再次签到。 */
+            boolean checkinRevoked
     ) {}
 
     /** token 来自扫码（动态二维码），code 是现场公布的 4 位签到码；两者给一个即可。 */

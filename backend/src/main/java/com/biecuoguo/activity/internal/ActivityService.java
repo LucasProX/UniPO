@@ -3,6 +3,8 @@ package com.biecuoguo.activity.internal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.activity.api.ActivityDtos;
+import com.biecuoguo.admin.api.AdminAuditApi;
+import com.biecuoguo.notification.api.NotificationApi;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.College;
@@ -40,6 +42,9 @@ import java.util.stream.Collectors;
 public class ActivityService {
     private static final Set<String> TABS = Set.of("recommend", "week");
     private static final int ATTENDEE_PREVIEW = 8;
+    static final Set<String> ACTIVE = Set.of("REGISTERED", "WAITLISTED", "PENDING");
+    /** 组织者撤销签到的期限：签到后 24 小时内。 */
+    static final java.time.Duration REVOKE_WINDOW = java.time.Duration.ofHours(24);
 
     private final ActivityMapper activityMapper;
     private final ActivityRegistrationMapper registrationMapper;
@@ -49,10 +54,15 @@ public class ActivityService {
     private final AppProperties properties;
     private final ExperienceService experienceService;
     private final WalletApi walletApi;
+    private final NotificationApi notifications;
+    private final AdminAuditApi audit;
 
     public ActivityService(ActivityMapper activityMapper, ActivityRegistrationMapper registrationMapper,
                            UserMapper userMapper, CollegeMapper collegeMapper, MajorMapper majorMapper,
-                           AppProperties properties, ExperienceService experienceService, WalletApi walletApi) {
+                           AppProperties properties, ExperienceService experienceService, WalletApi walletApi,
+                           NotificationApi notifications, AdminAuditApi audit) {
+        this.notifications = notifications;
+        this.audit = audit;
         this.experienceService = experienceService;
         this.walletApi = walletApi;
         this.activityMapper = activityMapper;
@@ -146,6 +156,7 @@ public class ActivityService {
         activity.setAudienceEntryYear(request.audienceEntryYear());
         activity.setCapacity(request.capacity());
         activity.setWaitlistEnabled(request.waitlistEnabled() == null || request.waitlistEnabled());
+        activity.setRequireApproval(Boolean.TRUE.equals(request.requireApproval()));
         activity.setRewardXp(xp);
         activity.setRewardCoins(coins);
         activity.setStatus("PUBLISHED");
@@ -210,8 +221,11 @@ public class ActivityService {
         User user = activeUser(viewer.id());
         Activity activity = lockVisible(id, user);
         ActivityRegistration existing = registrationMapper.lockOne(id, user.getId());
-        if (existing != null && Set.of("REGISTERED", "WAITLISTED").contains(existing.getStatus())) {
+        if (existing != null && ACTIVE.contains(existing.getStatus())) {
             return view(activity, user);
+        }
+        if (existing != null && "REJECTED".equals(existing.getStatus())) {
+            throw new StateConflictException("组织者未通过你的报名");
         }
         LocalDateTime now = AppTime.nowLocal();
         String phase = ActivityRules.phase(activity.getStatus(), activity.getSignupDeadline(), activity.getStartsAt(),
@@ -219,13 +233,16 @@ public class ActivityService {
         if (!"OPEN".equals(phase)) throw new StateConflictException("活动当前不能报名");
         String reason = ActivityRules.ineligibleReason(activity, schoolOf(user), user.getCollegeId(), user.getMajorId(),
                 user.getEntryYear(), audienceLabel(activity));
-        if (reason != null) throw new AccessDeniedException(reason);
+        // 不在报名范围是业务状态而不是越权，返回具体原因给用户看。
+        if (reason != null) throw new StateConflictException(reason);
 
+        boolean needsReview = Boolean.TRUE.equals(activity.getRequireApproval());
         boolean hasSeat = activity.getCapacity() == null || activity.getRegisteredCount() < activity.getCapacity();
-        if (!hasSeat && !Boolean.TRUE.equals(activity.getWaitlistEnabled())) {
+        if (!needsReview && !hasSeat && !Boolean.TRUE.equals(activity.getWaitlistEnabled())) {
             throw new StateConflictException("名额已满");
         }
-        String status = hasSeat ? "REGISTERED" : "WAITLISTED";
+        // 需要审核的活动先进待审核，不占名额；通过时再按名额决定已报名或候补。
+        String status = needsReview ? "PENDING" : hasSeat ? "REGISTERED" : "WAITLISTED";
         if (existing == null) {
             ActivityRegistration registration = new ActivityRegistration();
             registration.setActivityId(id);
@@ -243,7 +260,7 @@ public class ActivityService {
                     .set(ActivityRegistration::getCancelledAt, null)
                     .set(ActivityRegistration::getUpdatedAt, now));
         }
-        adjustCounts(activity, hasSeat ? 1 : 0, hasSeat ? 0 : 1, now);
+        if (!needsReview) adjustCounts(activity, hasSeat ? 1 : 0, hasSeat ? 0 : 1, now);
         return view(activity, user);
     }
 
@@ -260,27 +277,18 @@ public class ActivityService {
         if (!now.isBefore(activity.getStartsAt()) && !"CANCELLED".equals(activity.getStatus())) {
             throw new StateConflictException("活动已开始，不能取消报名");
         }
-        boolean wasRegistered = "REGISTERED".equals(existing.getStatus());
+        if ("REJECTED".equals(existing.getStatus())) return view(activity, user);
+        if (existing.getCheckedInAt() != null) throw new StateConflictException("已签到，不能取消报名");
+        String previous = existing.getStatus();
         registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
                 .eq(ActivityRegistration::getId, existing.getId())
                 .set(ActivityRegistration::getStatus, "CANCELLED")
                 .set(ActivityRegistration::getCancelledAt, now)
                 .set(ActivityRegistration::getUpdatedAt, now));
-        int registeredDelta = wasRegistered ? -1 : 0;
-        int waitlistDelta = wasRegistered ? 0 : -1;
-        if (wasRegistered && "PUBLISHED".equals(activity.getStatus())) {
-            ActivityRegistration next = registrationMapper.firstWaitlisted(id);
-            if (next != null) {
-                registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
-                        .eq(ActivityRegistration::getId, next.getId())
-                        .eq(ActivityRegistration::getStatus, "WAITLISTED")
-                        .set(ActivityRegistration::getStatus, "REGISTERED")
-                        .set(ActivityRegistration::getUpdatedAt, now));
-                registeredDelta += 1;
-                waitlistDelta -= 1;
-            }
-        }
+        int registeredDelta = "REGISTERED".equals(previous) ? -1 : 0;
+        int waitlistDelta = "WAITLISTED".equals(previous) ? -1 : 0;
         adjustCounts(activity, registeredDelta, waitlistDelta, now);
+        if ("REGISTERED".equals(previous) && "PUBLISHED".equals(activity.getStatus())) promoteWaitlist(activity, 1, now);
         return view(activity, user);
     }
 
@@ -325,8 +333,10 @@ public class ActivityService {
         if (!CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now)) {
             throw new StateConflictException(now.isBefore(activity.getStartsAt()) ? "活动开始前 30 分钟开放签到" : "签到已结束");
         }
-        if (registration == null || "CANCELLED".equals(registration.getStatus())) throw new AccessDeniedException("你还没有报名这个活动");
+        if (registration == null || "CANCELLED".equals(registration.getStatus())) throw new StateConflictException("你还没有报名这个活动");
         if ("WAITLISTED".equals(registration.getStatus())) throw new StateConflictException("候补中的同学不能签到");
+        if (!"REGISTERED".equals(registration.getStatus())) throw new StateConflictException("报名尚未通过，不能签到");
+        if (registration.getCheckinRevokedAt() != null) throw new StateConflictException("你的签到已被组织者撤销");
         String method;
         if (request.token() != null && !request.token().isBlank()) {
             if (!CheckinTokens.validToken(activity.getCheckinSecret(), id, request.token().trim(), Instant.now())) {
@@ -338,9 +348,15 @@ public class ActivityService {
         } else {
             throw new IllegalArgumentException("签到码不正确");
         }
+        int[] granted = grantCheckin(activity, registration, method, now);
+        return new ActivityDtos.CheckinResult(view(activity, user), false, granted[0], granted[1]);
+    }
+
+    /** 记签到并发奖；调用方已锁住报名行并确认尚未签到。 */
+    private int[] grantCheckin(Activity activity, ActivityRegistration registration, String method, LocalDateTime now) {
         int xp = activity.getRewardXp() == null ? 0 : activity.getRewardXp();
-        if (xp > 0) experienceService.award(user.getId(), xp);
-        int coins = walletApi.credit(user.getId(), activity.getRewardCoins() == null ? 0 : activity.getRewardCoins(),
+        if (xp > 0) experienceService.award(registration.getUserId(), xp);
+        int coins = walletApi.credit(registration.getUserId(), activity.getRewardCoins() == null ? 0 : activity.getRewardCoins(),
                 "ACTIVITY_CHECKIN", activity.getId(), "activity-checkin:" + registration.getId(),
                 "参加活动：" + activity.getTitle());
         registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
@@ -350,7 +366,300 @@ public class ActivityService {
                 .set(ActivityRegistration::getRewardXpGranted, xp)
                 .set(ActivityRegistration::getRewardCoinsGranted, coins)
                 .set(ActivityRegistration::getUpdatedAt, now));
-        return new ActivityDtos.CheckinResult(view(activity, user), false, xp, coins);
+        return new int[]{xp, coins};
+    }
+
+    // ---- 组织者 ----
+
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public ActivityDtos.ActivityPage organized(String cursor, Integer requestedLimit, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        int limit = limit(requestedLimit);
+        Long before = cursor == null || cursor.isBlank() ? null : parseId(cursor, "活动游标不合法");
+        List<Activity> rows = activityMapper.selectList(new LambdaQueryWrapper<Activity>()
+                .eq(Activity::getOrganizerId, user.getId())
+                .lt(before != null, Activity::getId, before)
+                .orderByDesc(Activity::getId)
+                .last("LIMIT " + (limit + 1)));
+        boolean more = rows.size() > limit;
+        List<Activity> page = more ? rows.subList(0, limit) : rows;
+        return new ActivityDtos.ActivityPage(views(page, user), more ? String.valueOf(page.getLast().getId()) : null, more, limit);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.READ_COMMITTED)
+    public ActivityDtos.RosterPage roster(long id, String filter, String cursor, Integer requestedLimit, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, false);
+        int limit = Math.min(limit(requestedLimit), 50);
+        Long after = cursor == null || cursor.isBlank() ? null : parseId(cursor, "名单游标不合法");
+        String key = filter == null || filter.isBlank() ? "all" : filter.trim().toLowerCase(Locale.ROOT);
+        LambdaQueryWrapper<ActivityRegistration> query = new LambdaQueryWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getActivityId, id)
+                .gt(after != null, ActivityRegistration::getId, after);
+        switch (key) {
+            case "registered" -> query.eq(ActivityRegistration::getStatus, "REGISTERED");
+            case "pending" -> query.eq(ActivityRegistration::getStatus, "PENDING");
+            case "waitlisted" -> query.eq(ActivityRegistration::getStatus, "WAITLISTED");
+            case "checked_in" -> query.isNotNull(ActivityRegistration::getCheckedInAt);
+            case "all" -> query.in(ActivityRegistration::getStatus, ACTIVE);
+            default -> throw new IllegalArgumentException("名单筛选不合法");
+        }
+        List<ActivityRegistration> rows = registrationMapper.selectList(query.orderByAsc(ActivityRegistration::getId)
+                .last("LIMIT " + (limit + 1)));
+        boolean more = rows.size() > limit;
+        List<ActivityRegistration> page = more ? rows.subList(0, limit) : rows;
+        Map<Long, User> users = page.isEmpty() ? Map.of() : userMapper.selectBatchIds(
+                page.stream().map(ActivityRegistration::getUserId).collect(Collectors.toSet())).stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+        LocalDateTime now = AppTime.nowLocal();
+        List<ActivityDtos.RosterEntry> entries = page.stream().map(row -> {
+            User attendee = users.get(row.getUserId());
+            boolean revocable = row.getCheckedInAt() != null && now.isBefore(row.getCheckedInAt().plus(REVOKE_WINDOW));
+            return new ActivityDtos.RosterEntry(row.getId(), attendee == null ? "" : attendee.getPublicUid(),
+                    attendee == null ? "已注销用户" : attendee.getNickname(), attendee == null ? null : attendee.getAvatarUrl(),
+                    attendee == null ? null : attendee.getCollege(), attendee == null ? null : attendee.getMajor(),
+                    attendee == null ? null : attendee.getGrade(), row.getStatus(),
+                    AppTime.toOffset(row.getQueuedAt()), AppTime.toOffset(row.getCheckedInAt()), row.getCheckinMethod(),
+                    nz(row.getRewardXpGranted()), nz(row.getRewardCoinsGranted()), AppTime.toOffset(row.getCheckinRevokedAt()),
+                    row.getRevokeReason(), revocable);
+        }).toList();
+        int pending = Math.toIntExact(registrationMapper.selectCount(new LambdaQueryWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getActivityId, id).eq(ActivityRegistration::getStatus, "PENDING")));
+        int checkedIn = Math.toIntExact(registrationMapper.selectCount(new LambdaQueryWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getActivityId, id).isNotNull(ActivityRegistration::getCheckedInAt)));
+        return new ActivityDtos.RosterPage(entries, more ? String.valueOf(page.getLast().getId()) : null, more,
+                activity.getRegisteredCount(), activity.getWaitlistCount(), pending, checkedIn);
+    }
+
+    /** 通过待审核报名：有名额进已报名，否则（允许候补时）进候补。 */
+    @Transactional
+    public ActivityDtos.RosterEntry approve(long id, long registrationId, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, true);
+        ActivityRegistration registration = ownRegistration(id, registrationId);
+        if (!"PENDING".equals(registration.getStatus())) throw new StateConflictException("这条报名已处理");
+        if (!"PUBLISHED".equals(activity.getStatus())) throw new StateConflictException("活动已取消");
+        LocalDateTime now = AppTime.nowLocal();
+        boolean hasSeat = activity.getCapacity() == null || activity.getRegisteredCount() < activity.getCapacity();
+        if (!hasSeat && !Boolean.TRUE.equals(activity.getWaitlistEnabled())) throw new StateConflictException("名额已满");
+        String status = hasSeat ? "REGISTERED" : "WAITLISTED";
+        registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getId, registrationId)
+                .set(ActivityRegistration::getStatus, status)
+                .set(ActivityRegistration::getQueuedAt, AppTime.nowLocal())
+                .set(ActivityRegistration::getReviewedBy, user.getId())
+                .set(ActivityRegistration::getReviewedAt, now)
+                .set(ActivityRegistration::getUpdatedAt, now));
+        adjustCounts(activity, hasSeat ? 1 : 0, hasSeat ? 0 : 1, now);
+        notifications.notify(List.of(registration.getUserId()), "REGISTRATION_APPROVED",
+                hasSeat ? "报名已通过" : "报名已通过，正在候补", "「" + activity.getTitle() + "」"
+                        + (hasSeat ? "报名成功，记得按时参加。" : "名额已满，有空位时按顺序递补。"),
+                id, "approved:" + registrationId);
+        audit.record(actor, "ACTIVITY_REGISTRATION_APPROVE", "activity_registration", registrationId, "activity=" + id);
+        return rosterEntry(registrationId);
+    }
+
+    @Transactional
+    public ActivityDtos.RosterEntry reject(long id, long registrationId, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, true);
+        ActivityRegistration registration = ownRegistration(id, registrationId);
+        if (!"PENDING".equals(registration.getStatus())) throw new StateConflictException("这条报名已处理");
+        LocalDateTime now = AppTime.nowLocal();
+        registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getId, registrationId)
+                .set(ActivityRegistration::getStatus, "REJECTED")
+                .set(ActivityRegistration::getReviewedBy, user.getId())
+                .set(ActivityRegistration::getReviewedAt, now)
+                .set(ActivityRegistration::getUpdatedAt, now));
+        notifications.notify(List.of(registration.getUserId()), "REGISTRATION_REJECTED", "报名未通过",
+                "「" + activity.getTitle() + "」的报名未通过，可以看看其他活动。", id, "rejected:" + registrationId);
+        audit.record(actor, "ACTIVITY_REGISTRATION_REJECT", "activity_registration", registrationId, "activity=" + id);
+        return rosterEntry(registrationId);
+    }
+
+    /** 手动补签：签到窗开放后到活动结束后 24 小时内，与自助签到发同样的奖励。 */
+    @Transactional
+    public ActivityDtos.RosterEntry manualCheckin(long id, long registrationId, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, false);
+        ActivityRegistration registration = registrationMapper.lockOne(id, ownRegistration(id, registrationId).getUserId());
+        if (registration.getCheckedInAt() != null) return rosterEntry(registrationId);
+        if (!"REGISTERED".equals(registration.getStatus())) throw new StateConflictException("只有已报名的同学可以补签");
+        if (registration.getCheckinRevokedAt() != null) throw new StateConflictException("签到已被撤销，不能再补签");
+        LocalDateTime now = AppTime.nowLocal();
+        if (now.isBefore(activity.getStartsAt().minus(CheckinTokens.OPENS_BEFORE_START))
+                || !now.isBefore(activity.getEndsAt().plus(REVOKE_WINDOW))) {
+            throw new StateConflictException("只能在签到开放后到活动结束后 24 小时内补签");
+        }
+        grantCheckin(activity, registration, "MANUAL", now);
+        audit.recordRequired(actor, "ACTIVITY_MANUAL_CHECKIN", "activity_registration", registrationId, "activity=" + id);
+        return rosterEntry(registrationId);
+    }
+
+    /** 撤销作弊签到：签到后 24 小时内，按实际发放的数额扣回经验与金币，撤销后不能再签到。 */
+    @Transactional
+    public ActivityDtos.RosterEntry revokeCheckin(long id, long registrationId, ActivityDtos.ReasonRequest request,
+                                                  CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, false);
+        ActivityRegistration registration = registrationMapper.lockOne(id, ownRegistration(id, registrationId).getUserId());
+        if (registration.getCheckedInAt() == null) throw new StateConflictException("这位同学还没有签到");
+        LocalDateTime now = AppTime.nowLocal();
+        if (!now.isBefore(registration.getCheckedInAt().plus(REVOKE_WINDOW))) {
+            throw new StateConflictException("签到超过 24 小时，不能再撤销");
+        }
+        String reason = request.reason().trim();
+        int xp = nz(registration.getRewardXpGranted());
+        if (xp > 0) experienceService.revoke(registration.getUserId(), xp);
+        int coins = walletApi.debit(registration.getUserId(), nz(registration.getRewardCoinsGranted()),
+                "ACTIVITY_CHECKIN_REVOKE", activity.getId(), "activity-checkin-revoke:" + registrationId,
+                "撤销签到：" + activity.getTitle());
+        registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
+                .eq(ActivityRegistration::getId, registrationId)
+                .set(ActivityRegistration::getCheckedInAt, null)
+                .set(ActivityRegistration::getCheckinRevokedAt, now)
+                .set(ActivityRegistration::getRevokeReason, reason)
+                .set(ActivityRegistration::getRewardXpGranted, 0)
+                .set(ActivityRegistration::getRewardCoinsGranted, 0)
+                .set(ActivityRegistration::getUpdatedAt, now));
+        notifications.notify(List.of(registration.getUserId()), "CHECKIN_REVOKED", "签到已被撤销",
+                "「" + activity.getTitle() + "」的签到被组织者撤销，原因：" + reason + "。已扣回 " + xp + " 经验、" + coins + " 金币。",
+                id, "revoked:" + registrationId);
+        audit.recordRequired(actor, "ACTIVITY_CHECKIN_REVOKE", "activity_registration", registrationId,
+                "activity=" + id + " xp=" + xp + " coins=" + coins + " reason=" + reason);
+        return rosterEntry(registrationId);
+    }
+
+    /** 编辑活动：开始前可改；时间、地点变化通知所有报名者；扩容时按顺序递补候补。 */
+    @Transactional
+    public ActivityDtos.ActivityView update(long id, ActivityDtos.UpdateActivityRequest request, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, true);
+        LocalDateTime now = AppTime.nowLocal();
+        if (!"PUBLISHED".equals(activity.getStatus())) throw new StateConflictException("活动已取消，不能编辑");
+        if (!now.isBefore(activity.getStartsAt())) throw new StateConflictException("活动已开始，不能编辑");
+        LocalDateTime startsAt = request.startsAt() == null ? activity.getStartsAt() : AppTime.toLocal(request.startsAt()).withNano(0);
+        LocalDateTime endsAt = request.endsAt() == null ? activity.getEndsAt() : AppTime.toLocal(request.endsAt()).withNano(0);
+        LocalDateTime deadline = request.signupDeadline() == null ? activity.getSignupDeadline()
+                : AppTime.toLocal(request.signupDeadline()).withNano(0);
+        if (!endsAt.isAfter(startsAt)) throw new IllegalArgumentException("结束时间必须晚于开始时间");
+        if (!startsAt.isAfter(now)) throw new IllegalArgumentException("开始时间必须晚于现在");
+        if (deadline.isAfter(startsAt)) throw new IllegalArgumentException("报名截止时间必须在活动开始之前");
+        Integer capacity = Boolean.TRUE.equals(request.clearCapacity()) ? null
+                : request.capacity() != null ? request.capacity() : activity.getCapacity();
+        if (capacity != null && (capacity < 1 || capacity > 10_000)) throw new IllegalArgumentException("名额需要在 1 到 10000 之间");
+        if (capacity != null && capacity < activity.getRegisteredCount()) {
+            throw new IllegalArgumentException("名额不能少于已报名的 " + activity.getRegisteredCount() + " 人");
+        }
+        ActivityRules.Level level = ActivityRules.levelOf(user.getRole(), user.getOperatorScope());
+        int xp = request.rewardXp() == null ? nz(activity.getRewardXp()) : request.rewardXp();
+        int coins = request.rewardCoins() == null ? nz(activity.getRewardCoins()) : request.rewardCoins();
+        if (level == null) throw new AccessDeniedException("当前身份不能编辑官方活动");
+        ActivityRules.checkReward(level, xp, coins);
+        boolean scheduleChanged = !startsAt.equals(activity.getStartsAt()) || !endsAt.equals(activity.getEndsAt())
+                || (request.location() != null && !request.location().trim().equals(activity.getLocation()));
+        LambdaUpdateWrapper<Activity> update = new LambdaUpdateWrapper<Activity>().eq(Activity::getId, id)
+                .set(Activity::getStartsAt, startsAt).set(Activity::getEndsAt, endsAt)
+                .set(Activity::getSignupDeadline, deadline).set(Activity::getCapacity, capacity)
+                .set(Activity::getRewardXp, xp).set(Activity::getRewardCoins, coins)
+                .set(Activity::getUpdatedAt, now);
+        if (request.title() != null && !request.title().isBlank()) update.set(Activity::getTitle, request.title().trim());
+        if (request.organizerName() != null && !request.organizerName().isBlank()) update.set(Activity::getOrganizerName, request.organizerName().trim());
+        if (request.coverUrl() != null) update.set(Activity::getCoverUrl, blankToNull(request.coverUrl()));
+        if (request.description() != null && !request.description().isBlank()) update.set(Activity::getDescription, request.description().trim());
+        if (request.notice() != null) update.set(Activity::getNotice, blankToNull(request.notice()));
+        if (request.location() != null && !request.location().isBlank()) update.set(Activity::getLocation, request.location().trim());
+        if (request.waitlistEnabled() != null) update.set(Activity::getWaitlistEnabled, request.waitlistEnabled());
+        activityMapper.update(null, update);
+        Activity updated = activityMapper.lockById(id);
+        if (updated.getCapacity() == null || updated.getCapacity() > updated.getRegisteredCount()) {
+            int seats = updated.getCapacity() == null ? Integer.MAX_VALUE : updated.getCapacity() - updated.getRegisteredCount();
+            promoteWaitlist(updated, seats, now);
+        }
+        if (scheduleChanged) {
+            notifications.notify(activeUserIds(id), "ACTIVITY_CHANGED", "活动时间或地点有变化",
+                    "「" + updated.getTitle() + "」改为 " + ActivityRules.DAY_TIME.format(updated.getStartsAt())
+                            + " 开始，地点：" + updated.getLocation() + "。",
+                    id, "changed:" + id + ":" + now);
+        }
+        audit.record(actor, "ACTIVITY_UPDATE", "activity", id, scheduleChanged ? "schedule changed" : "details changed");
+        return view(updated, user);
+    }
+
+    /** 取消活动：已签到的奖励保留；通知所有报名者。 */
+    @Transactional
+    public ActivityDtos.ActivityView cancelActivity(long id, ActivityDtos.ReasonRequest request, CurrentUser actor) {
+        User user = activeUser(actor.id());
+        Activity activity = managed(id, user, true);
+        if ("CANCELLED".equals(activity.getStatus())) return view(activity, user);
+        LocalDateTime now = AppTime.nowLocal();
+        if (!now.isBefore(activity.getEndsAt())) throw new StateConflictException("活动已结束，不能取消");
+        String reason = request.reason().trim();
+        activityMapper.update(null, new LambdaUpdateWrapper<Activity>().eq(Activity::getId, id)
+                .set(Activity::getStatus, "CANCELLED").set(Activity::getCancelReason, reason)
+                .set(Activity::getCancelledAt, now).set(Activity::getUpdatedAt, now));
+        notifications.notify(activeUserIds(id), "ACTIVITY_CANCELLED", "活动已取消",
+                "「" + activity.getTitle() + "」已取消，原因：" + reason + "。", id, "cancelled:" + id);
+        audit.recordRequired(actor, "ACTIVITY_CANCEL", "activity", id, reason);
+        return view(activityMapper.selectById(id), user);
+    }
+
+    private void promoteWaitlist(Activity activity, int seats, LocalDateTime now) {
+        int promoted = 0;
+        while (promoted < seats) {
+            ActivityRegistration next = registrationMapper.firstWaitlisted(activity.getId());
+            if (next == null) break;
+            registrationMapper.update(null, new LambdaUpdateWrapper<ActivityRegistration>()
+                    .eq(ActivityRegistration::getId, next.getId())
+                    .eq(ActivityRegistration::getStatus, "WAITLISTED")
+                    .set(ActivityRegistration::getStatus, "REGISTERED")
+                    .set(ActivityRegistration::getUpdatedAt, now));
+            notifications.notify(List.of(next.getUserId()), "WAITLIST_PROMOTED", "候补转正",
+                    "「" + activity.getTitle() + "」有空位了，你已从候补转为已报名。", activity.getId(), "promoted:" + next.getId() + ":" + now);
+            promoted++;
+        }
+        if (promoted > 0) adjustCounts(activity, promoted, -promoted, now);
+    }
+
+    private List<Long> activeUserIds(long activityId) {
+        return registrationMapper.selectList(new LambdaQueryWrapper<ActivityRegistration>()
+                        .select(ActivityRegistration::getUserId)
+                        .eq(ActivityRegistration::getActivityId, activityId)
+                        .in(ActivityRegistration::getStatus, ACTIVE))
+                .stream().map(ActivityRegistration::getUserId).toList();
+    }
+
+    /** 发布者本人或管理员；lock=true 时锁住活动行（改名额、状态时）。 */
+    private Activity managed(long id, User user, boolean lock) {
+        Activity activity = lock ? activityMapper.lockById(id) : activityMapper.selectById(id);
+        if (activity == null || !activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
+        if (!canManage(activity, user)) throw new AccessDeniedException("只有活动发布者可以管理这个活动");
+        return activity;
+    }
+
+    private ActivityRegistration ownRegistration(long activityId, long registrationId) {
+        ActivityRegistration registration = registrationMapper.selectById(registrationId);
+        if (registration == null || registration.getActivityId() != activityId) throw new NoSuchElementException("报名记录不存在");
+        return registration;
+    }
+
+    private ActivityDtos.RosterEntry rosterEntry(long registrationId) {
+        ActivityRegistration row = registrationMapper.selectById(registrationId);
+        User attendee = userMapper.selectById(row.getUserId());
+        LocalDateTime now = AppTime.nowLocal();
+        return new ActivityDtos.RosterEntry(row.getId(), attendee.getPublicUid(), attendee.getNickname(), attendee.getAvatarUrl(),
+                attendee.getCollege(), attendee.getMajor(), attendee.getGrade(), row.getStatus(),
+                AppTime.toOffset(row.getQueuedAt()), AppTime.toOffset(row.getCheckedInAt()), row.getCheckinMethod(),
+                nz(row.getRewardXpGranted()), nz(row.getRewardCoinsGranted()), AppTime.toOffset(row.getCheckinRevokedAt()),
+                row.getRevokeReason(), row.getCheckedInAt() != null && now.isBefore(row.getCheckedInAt().plus(REVOKE_WINDOW)));
+    }
+
+    private static int nz(Integer value) { return value == null ? 0 : value; }
+
+    private static long parseId(String value, String message) {
+        if (!value.matches("[1-9][0-9]{0,18}")) throw new IllegalArgumentException(message);
+        return Long.parseLong(value);
     }
 
     private static boolean canManage(Activity activity, User user) {
@@ -417,7 +726,9 @@ public class ActivityService {
                     registration == null ? null : AppTime.toOffset(registration.getCheckedInAt()),
                     "PUBLISHED".equals(activity.getStatus())
                             && CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now),
-                    canManage(activity, viewer)));
+                    canManage(activity, viewer),
+                    Boolean.TRUE.equals(activity.getRequireApproval()), activity.getCancelReason(),
+                    registration != null && registration.getCheckinRevokedAt() != null));
         }
         return views;
     }

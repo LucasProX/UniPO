@@ -13,6 +13,7 @@ struct InboxView: View {
     enum Section: String, CaseIterable, Identifiable {
         case messages = "私信"
         case notices = "互动"
+        case system = "通知"
         var id: String { rawValue }
     }
 
@@ -27,6 +28,8 @@ struct InboxView: View {
                              onThreadChange: { threadOpen = $0 })
             case .notices:
                 InteractionNoticesView()
+            case .system:
+                NotificationsView()
             }
         }
         .background(UniColor.paper)

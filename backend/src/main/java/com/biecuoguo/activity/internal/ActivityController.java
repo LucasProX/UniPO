@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -74,6 +75,55 @@ public class ActivityController {
     public ApiResponse<ActivityDtos.CheckinResult> checkin(@PathVariable long id,
                                                            @Valid @RequestBody ActivityDtos.CheckinRequest request) {
         return ApiResponse.ok(activityService.checkin(id, request, SecurityUtils.currentUser()));
+    }
+
+    // ---- 组织者 ----
+
+    @GetMapping("/organized")
+    public ApiResponse<ActivityDtos.ActivityPage> organized(@RequestParam(required = false) String cursor,
+                                                            @RequestParam(required = false) Integer limit) {
+        return ApiResponse.ok(activityService.organized(cursor, limit, SecurityUtils.currentUser()));
+    }
+
+    @GetMapping("/{id}/registrations")
+    public ApiResponse<ActivityDtos.RosterPage> roster(@PathVariable long id,
+                                                       @RequestParam(required = false) String filter,
+                                                       @RequestParam(required = false) String cursor,
+                                                       @RequestParam(required = false) Integer limit) {
+        return ApiResponse.ok(activityService.roster(id, filter, cursor, limit, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/registrations/{registrationId}/approve")
+    public ApiResponse<ActivityDtos.RosterEntry> approve(@PathVariable long id, @PathVariable long registrationId) {
+        return ApiResponse.ok(activityService.approve(id, registrationId, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/registrations/{registrationId}/reject")
+    public ApiResponse<ActivityDtos.RosterEntry> reject(@PathVariable long id, @PathVariable long registrationId) {
+        return ApiResponse.ok(activityService.reject(id, registrationId, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/registrations/{registrationId}/checkin")
+    public ApiResponse<ActivityDtos.RosterEntry> manualCheckin(@PathVariable long id, @PathVariable long registrationId) {
+        return ApiResponse.ok(activityService.manualCheckin(id, registrationId, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/registrations/{registrationId}/revoke-checkin")
+    public ApiResponse<ActivityDtos.RosterEntry> revokeCheckin(@PathVariable long id, @PathVariable long registrationId,
+                                                               @Valid @RequestBody ActivityDtos.ReasonRequest request) {
+        return ApiResponse.ok(activityService.revokeCheckin(id, registrationId, request, SecurityUtils.currentUser()));
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<ActivityDtos.ActivityView> update(@PathVariable long id,
+                                                         @Valid @RequestBody ActivityDtos.UpdateActivityRequest request) {
+        return ApiResponse.ok(activityService.update(id, request, SecurityUtils.currentUser()));
+    }
+
+    @PostMapping("/{id}/cancel")
+    public ApiResponse<ActivityDtos.ActivityView> cancelActivity(@PathVariable long id,
+                                                                 @Valid @RequestBody ActivityDtos.ReasonRequest request) {
+        return ApiResponse.ok(activityService.cancelActivity(id, request, SecurityUtils.currentUser()));
     }
 
     private static CurrentUser optional(Authentication authentication) {

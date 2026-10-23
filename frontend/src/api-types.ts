@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail"];
+        put: operations["update_2"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{uid}/report": {
         parameters: {
             query?: never;
@@ -303,6 +319,22 @@ export interface paths {
         put?: never;
         post: operations["likeComment"];
         delete: operations["unlikeComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["readAll"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -603,9 +635,73 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: operations["roster"];
         put?: never;
         post: operations["register_2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/registrations/{registrationId}/revoke-checkin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revokeCheckin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/registrations/{registrationId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/registrations/{registrationId}/checkin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["manualCheckin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/registrations/{registrationId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["approve"];
         delete?: never;
         options?: never;
         head?: never;
@@ -622,6 +718,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["checkin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["cancelActivity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1044,6 +1156,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["page_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/unread-count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["unread"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/messages/unread-count": {
         parameters: {
             query?: never;
@@ -1300,22 +1444,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/activities/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["detail"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/activities/{id}/checkin-code": {
         parameters: {
             query?: never;
@@ -1339,7 +1467,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["page_1"];
+        get: operations["page_2"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1356,6 +1484,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["organizerProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/organized": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["organized"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1660,6 +1804,101 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        UpdateActivityRequest: {
+            title?: string;
+            organizerName?: string;
+            coverUrl?: string;
+            description?: string;
+            notice?: string;
+            location?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: date-time */
+            signupDeadline?: string;
+            /** Format: int32 */
+            capacity?: number;
+            clearCapacity?: boolean;
+            waitlistEnabled?: boolean;
+            /** Format: int32 */
+            rewardXp?: number;
+            /** Format: int32 */
+            rewardCoins?: number;
+        };
+        ActivityView: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+            category?: string;
+            coverUrl?: string;
+            description?: string;
+            notice?: string;
+            location?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            endsAt?: string;
+            /** Format: date-time */
+            signupDeadline?: string;
+            organizerName?: string;
+            organizer?: components["schemas"]["OrganizerView"];
+            audienceScope?: string;
+            /** Format: int64 */
+            audienceCollegeId?: number;
+            /** Format: int64 */
+            audienceMajorId?: number;
+            /** Format: int32 */
+            audienceEntryYear?: number;
+            audienceLabel?: string;
+            /** Format: int32 */
+            capacity?: number;
+            /** Format: int32 */
+            registeredCount?: number;
+            /** Format: int32 */
+            waitlistCount?: number;
+            waitlistEnabled?: boolean;
+            /** Format: int32 */
+            rewardXp?: number;
+            /** Format: int32 */
+            rewardCoins?: number;
+            phase?: string;
+            myStatus?: string;
+            /** Format: int32 */
+            myWaitlistPosition?: number;
+            eligible?: boolean;
+            ineligibleReason?: string;
+            recentAttendees?: components["schemas"]["AttendeeView"][];
+            /** Format: date-time */
+            createdAt?: string;
+            checkedIn?: boolean;
+            /** Format: date-time */
+            checkedInAt?: string;
+            checkinOpen?: boolean;
+            canManage?: boolean;
+            requireApproval?: boolean;
+            cancelReason?: string;
+            checkinRevoked?: boolean;
+        };
+        ApiResponseActivityView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ActivityView"];
+            requestId?: string;
+        };
+        AttendeeView: {
+            uid?: string;
+            nickname?: string;
+            avatarUrl?: string;
+        };
+        OrganizerView: {
+            /** Format: int64 */
+            id?: number;
+            uid?: string;
+            nickname?: string;
+            avatarUrl?: string;
+            role?: string;
+        };
         ReportRequest: {
             category: string;
             detail?: string;
@@ -1825,6 +2064,13 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
             author?: components["schemas"]["AuthorView"];
+        };
+        ApiResponseInteger: {
+            code?: string;
+            message?: string;
+            /** Format: int32 */
+            data?: number;
+            requestId?: string;
         };
         CreateConversationRequest: {
             peerUid?: string;
@@ -2013,76 +2259,40 @@ export interface components {
             rewardXp?: number;
             /** Format: int32 */
             rewardCoins?: number;
+            requireApproval?: boolean;
         };
-        ActivityView: {
-            /** Format: int64 */
-            id?: number;
-            title?: string;
-            category?: string;
-            coverUrl?: string;
-            description?: string;
-            notice?: string;
-            location?: string;
-            /** Format: date-time */
-            startsAt?: string;
-            /** Format: date-time */
-            endsAt?: string;
-            /** Format: date-time */
-            signupDeadline?: string;
-            organizerName?: string;
-            organizer?: components["schemas"]["OrganizerView"];
-            audienceScope?: string;
-            /** Format: int64 */
-            audienceCollegeId?: number;
-            /** Format: int64 */
-            audienceMajorId?: number;
-            /** Format: int32 */
-            audienceEntryYear?: number;
-            audienceLabel?: string;
-            /** Format: int32 */
-            capacity?: number;
-            /** Format: int32 */
-            registeredCount?: number;
-            /** Format: int32 */
-            waitlistCount?: number;
-            waitlistEnabled?: boolean;
-            /** Format: int32 */
-            rewardXp?: number;
-            /** Format: int32 */
-            rewardCoins?: number;
-            phase?: string;
-            myStatus?: string;
-            /** Format: int32 */
-            myWaitlistPosition?: number;
-            eligible?: boolean;
-            ineligibleReason?: string;
-            recentAttendees?: components["schemas"]["AttendeeView"][];
-            /** Format: date-time */
-            createdAt?: string;
-            checkedIn?: boolean;
-            /** Format: date-time */
-            checkedInAt?: string;
-            checkinOpen?: boolean;
-            canManage?: boolean;
+        ReasonRequest: {
+            reason: string;
         };
-        ApiResponseActivityView: {
+        ApiResponseRosterEntry: {
             code?: string;
             message?: string;
-            data?: components["schemas"]["ActivityView"];
+            data?: components["schemas"]["RosterEntry"];
             requestId?: string;
         };
-        AttendeeView: {
-            uid?: string;
-            nickname?: string;
-            avatarUrl?: string;
-        };
-        OrganizerView: {
+        RosterEntry: {
             /** Format: int64 */
-            id?: number;
+            registrationId?: number;
             uid?: string;
             nickname?: string;
             avatarUrl?: string;
-            role?: string;
+            college?: string;
+            major?: string;
+            grade?: string;
+            status?: string;
+            /** Format: date-time */
+            queuedAt?: string;
+            /** Format: date-time */
+            checkedInAt?: string;
+            checkinMethod?: string;
+            /** Format: int32 */
+            rewardXpGranted?: number;
+            /** Format: int32 */
+            rewardCoinsGranted?: number;
+            /** Format: date-time */
+            checkinRevokedAt?: string;
+            revokeReason?: string;
+            revocable?: boolean;
         };
         CheckinRequest: {
             token?: string;
@@ -2421,6 +2631,32 @@ export interface components {
             name?: string;
             code?: string;
         };
+        ApiResponseNotificationPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["NotificationPage"];
+            requestId?: string;
+        };
+        NotificationPage: {
+            items?: components["schemas"]["NotificationView"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+            /** Format: int32 */
+            unreadCount?: number;
+        };
+        NotificationView: {
+            /** Format: int64 */
+            id?: number;
+            category?: string;
+            type?: string;
+            title?: string;
+            body?: string;
+            /** Format: int64 */
+            activityId?: number;
+            read?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+        };
         ApiResponseListConversationView: {
             code?: string;
             message?: string;
@@ -2581,6 +2817,25 @@ export interface components {
             message?: string;
             data?: components["schemas"]["AnalyticsOverview"];
             requestId?: string;
+        };
+        ApiResponseRosterPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["RosterPage"];
+            requestId?: string;
+        };
+        RosterPage: {
+            items?: components["schemas"]["RosterEntry"][];
+            nextCursor?: string;
+            hasMore?: boolean;
+            /** Format: int32 */
+            registeredCount?: number;
+            /** Format: int32 */
+            waitlistCount?: number;
+            /** Format: int32 */
+            pendingCount?: number;
+            /** Format: int32 */
+            checkedInCount?: number;
         };
         ApiResponseOrganizerCheckinView: {
             code?: string;
@@ -2878,6 +3133,54 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseActivityView"];
+                };
+            };
+        };
+    };
+    update_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateActivityRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseActivityView"];
                 };
             };
         };
@@ -3350,6 +3653,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    readAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseInteger"];
                 };
             };
         };
@@ -3849,6 +4172,32 @@ export interface operations {
             };
         };
     };
+    roster: {
+        parameters: {
+            query?: {
+                filter?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRosterPage"];
+                };
+            };
+        };
+    };
     register_2: {
         parameters: {
             query?: never;
@@ -3867,6 +4216,102 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseActivityView"];
+                };
+            };
+        };
+    };
+    revokeCheckin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                registrationId: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRosterEntry"];
+                };
+            };
+        };
+    };
+    reject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                registrationId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRosterEntry"];
+                };
+            };
+        };
+    };
+    manualCheckin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                registrationId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRosterEntry"];
+                };
+            };
+        };
+    };
+    approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                registrationId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseRosterEntry"];
                 };
             };
         };
@@ -3893,6 +4338,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseCheckinResult"];
+                };
+            };
+        };
+    };
+    cancelActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseActivityView"];
                 };
             };
         };
@@ -4471,6 +4942,49 @@ export interface operations {
             };
         };
     };
+    page_1: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseNotificationPage"];
+                };
+            };
+        };
+    };
+    unread: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseInteger"];
+                };
+            };
+        };
+    };
     unreadCount: {
         parameters: {
             query?: never;
@@ -4824,28 +5338,6 @@ export interface operations {
             };
         };
     };
-    detail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["ApiResponseActivityView"];
-                };
-            };
-        };
-    };
     checkinCode: {
         parameters: {
             query?: never;
@@ -4868,7 +5360,7 @@ export interface operations {
             };
         };
     };
-    page_1: {
+    page_2: {
         parameters: {
             query?: {
                 tab?: string;
@@ -4908,6 +5400,29 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseOrganizerProfile"];
+                };
+            };
+        };
+    };
+    organized: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseActivityPage"];
                 };
             };
         };

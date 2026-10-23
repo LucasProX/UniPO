@@ -71,6 +71,7 @@ struct CreateActivityView: View {
                         TextField("名额", text: $capacityText).keyboardType(.numberPad)
                         Toggle("满员后允许候补", isOn: $input.waitlistEnabled)
                     }
+                    Toggle("报名需要我审核", isOn: $input.requireApproval)
                 }
                 Section {
                     Stepper("经验 +\(input.rewardXp)", value: $input.rewardXp, in: 0...profile.maxRewardXp, step: 5)

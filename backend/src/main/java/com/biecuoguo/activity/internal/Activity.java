@@ -39,6 +39,9 @@ public class Activity {
     /** 只在服务端使用，绝不进入任何视图或日志。 */
     private String checkinSecret;
     private String checkinCode;
+    private Boolean requireApproval;
+    private String cancelReason;
+    private LocalDateTime cancelledAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

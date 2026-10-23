@@ -10,6 +10,9 @@ final class ActivityRules {
 
     static final Set<String> CATEGORIES = Set.of("LECTURE", "COMPETITION", "VOLUNTEER", "SPORTS", "CULTURE", "CLASS", "OTHER");
     static final Set<String> SCOPES = Set.of("SCHOOL", "COLLEGE", "MAJOR");
+    /** 通知正文里的时间：不带秒，和 App 内展示一致。 */
+    static final java.time.format.DateTimeFormatter DAY_TIME = java.time.format.DateTimeFormatter.ofPattern("M月d日 HH:mm");
+    static final java.time.format.DateTimeFormatter TIME = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
 
     enum Level {
         ADMIN(100, 200), SCHOOL(100, 200), COLLEGE(50, 100), MAJOR(30, 60);

@@ -151,6 +151,9 @@ public struct RootView: View {
             tab = .messages
         }
         .task(id: identityKey) { await pollUnread() }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoNotificationsRead)) { _ in
+            Task { await refreshUnread() }
+        }
         .onChange(of: tab) { _, current in
             if current != .messages { pendingConversationId = nil }
             Task { await refreshUnread() }
@@ -185,10 +188,11 @@ public struct RootView: View {
         let userID = auth.profile?.id
         let revision = auth.authenticationRevision
         guard userID != nil else { unreadCount = 0; return }
-        if let count = try? await APIClient.shared.unreadCount(),
-           auth.profile?.id == userID, auth.authenticationRevision == revision {
-            unreadCount = count
-        }
+        let messages = try? await APIClient.shared.unreadCount()
+        let notices = try? await APIClient.shared.notificationUnreadCount()
+        guard auth.profile?.id == userID, auth.authenticationRevision == revision,
+              messages != nil || notices != nil else { return }
+        unreadCount = (messages ?? 0) + (notices ?? 0)
     }
 
     private func clearPrivatePresentation() {

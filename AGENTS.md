@@ -36,8 +36,9 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/activity/` | 校园活动（2026-10-23）：`api/`（ActivityDtos）+ `internal/`（规则、Service、Controller、活动与报名实体/Mapper）。规划见 `docs/ACTIVITY-PLAN.md` |
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
+| `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V28，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V29，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -88,7 +89,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V28）：
+后端（Flyway 自动执行 V1–V29）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -195,7 +196,7 @@ xcrun simctl launch booted com.unipo.app
   `MESSAGE_OUTBOX_ENABLED`、`MESSAGE_OUTBOX_POLL_INTERVAL_MS` 同样为可选变量（默认 true / 1000ms），仅维护示例和 Compose；暂停 worker 会保留待投递事实。
 - **新模块的 Mapper 要加进 `BieCuoGuoApplication` 的 `@MapperScan` 列表**：它是按包逐个列出的，漏了单测照样全绿，只有起 Spring 上下文才报 `required a bean of type ...Mapper`（2026-10-23 部署 activity 时踩过，Flyway 已先跑完迁移）。
 - **MyBatis 注解 SQL 只有包在 `<script>` 里才写 `&lt;`**：普通 `@Select` 字符串原样发给 MySQL，`&lt;` 会变成语法错误；不在 `<script>` 里直接写 `<`。
-- **成长奖励只来自认证组织者的活动**：`ActivityRules` 决定谁能发布（ADMIN 或带 operatorScope 的运营）、能面向哪些范围、单场奖励上限，服务端拒绝越权与超额，不静默截断。报名、取消、递补都先 `ActivityMapper.lockById` 锁活动行再改计数。内容只限同校，本校所有人可见活动，范围只限制报名。签到：动态二维码是 HMAC(活动密钥, 30 秒时间片) 加 4 位签到码，密钥与签到码绝不进视图或日志；签到事务锁顺序为报名行 → 用户行（经验）→ 钱包行，金币只经 `WalletApi.credit` 入账，余额只由流水推进。
+- **成长奖励只来自认证组织者的活动**：`ActivityRules` 决定谁能发布（ADMIN 或带 operatorScope 的运营）、能面向哪些范围、单场奖励上限，服务端拒绝越权与超额，不静默截断。报名、取消、递补都先 `ActivityMapper.lockById` 锁活动行再改计数。内容只限同校，本校所有人可见活动，范围只限制报名。签到：动态二维码是 HMAC(活动密钥, 30 秒时间片) 加 4 位签到码，密钥与签到码绝不进视图或日志；签到事务锁顺序为报名行 → 用户行（经验）→ 钱包行，金币只经 `WalletApi.credit` / `debit` 进出，余额只由流水推进。组织者操作（审核、补签、撤销签到、编辑、取消）只限发布者本人或 ADMIN；撤销签到与取消活动写 `recordRequired` 审计。**业务状态原因用 `StateConflictException`（409）返回**，`AccessDeniedException` 会被统一替换成「没有权限执行该操作」，用户看不到具体原因。
 - **有状态的东西都走 `com.biecuoguo.state` 的三个接口**（`RevocationStore` / `PresenceStore` / `RateLimitStore`）：
   各有一对 memory / redis 实现，由 `app.state.backend`（`STATE_BACKEND`）选，默认 `memory`。
   **不要在业务代码里直接 new 一个 Map 存这类状态**——那样多实例部署时「A 退出登录 B 还认」的坑会再出现一次（Q-4）。
@@ -204,7 +205,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V28 只增不改，下一次迁移按实际最高版本递增（当前应为 `V29__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V29 只增不改，下一次迁移按实际最高版本递增（当前应为 `V30__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。

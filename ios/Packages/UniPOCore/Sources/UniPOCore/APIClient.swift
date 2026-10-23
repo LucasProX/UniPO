@@ -340,6 +340,48 @@ public actor APIClient {
         return try await request(path: "wallet/me", query: query)
     }
 
+    public func organizedActivities(cursor: String?) async throws -> ActivityPage {
+        var query: [URLQueryItem] = []
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "activities/organized", query: query)
+    }
+
+    public func activityRoster(id: Int64, filter: String, cursor: String? = nil) async throws -> ActivityRosterPage {
+        var query = [URLQueryItem(name: "filter", value: filter), URLQueryItem(name: "limit", value: "50")]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "activities/\(id)/registrations", query: query)
+    }
+
+    /// action：approve / reject / checkin / revoke-checkin（撤销需要 reason）。
+    public func rosterAction(activityID: Int64, registrationID: Int64, action: String,
+                             reason: String? = nil) async throws -> ActivityRosterEntry {
+        try await request(path: "activities/\(activityID)/registrations/\(registrationID)/\(action)", method: "POST",
+                          body: reason.map { ["reason": $0] })
+    }
+
+    public func updateActivity(id: Int64, _ input: UpdateActivityInput) async throws -> ActivityView {
+        try await request(path: "activities/\(id)", method: "PUT", body: input.body)
+    }
+
+    public func cancelActivity(id: Int64, reason: String) async throws -> ActivityView {
+        try await request(path: "activities/\(id)/cancel", method: "POST", body: ["reason": reason])
+    }
+
+    public func notifications(cursor: String? = nil) async throws -> AppNotificationPage {
+        var query: [URLQueryItem] = []
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "notifications", query: query)
+    }
+
+    public func notificationUnreadCount() async throws -> Int {
+        try await request(path: "notifications/unread-count")
+    }
+
+    @discardableResult
+    public func readAllNotifications() async throws -> Int {
+        try await request(path: "notifications/read-all", method: "POST")
+    }
+
     public func activityOrganizerProfile() async throws -> ActivityOrganizerProfile {
         try await request(path: "activities/organizer-profile")
     }

@@ -338,24 +338,24 @@ struct ProfileView: View {
     }
 
     private var activityShortcuts: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             shortcut("我的活动", "ticket", tint: UniColor.blue) { activityList = "upcoming" }
             shortcut("参加过", "clock.arrow.circlepath", tint: UniColor.inkSoft) { activityList = "history" }
             shortcut("金币", "circle.hexagongrid.fill", tint: UniColor.gold) { showWallet = true }
             if organizer?.canPublish == true {
-                shortcut("发布活动", "plus.circle.fill", tint: UniColor.gold) { showPublish = true }
+                shortcut("发布", "plus.circle.fill", tint: UniColor.gold) { showPublish = true }
+                shortcut("我发布的", "list.bullet.rectangle", tint: UniColor.inkSoft) { activityList = "organized" }
             }
         }
     }
 
     private func shortcut(_ title: String, _ icon: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon).foregroundStyle(tint)
-                Text(title).foregroundStyle(UniColor.ink)
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 17, weight: .semibold)).foregroundStyle(tint)
+                Text(title).font(.uniLabel(11)).foregroundStyle(UniColor.ink).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .font(.uniLabel(12))
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 58)
             .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
