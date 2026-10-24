@@ -38,16 +38,15 @@ struct PostCardView: View {
 
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(post.title)
-                        .uniFont(18, weight: .bold)
-                        .foregroundStyle(UniColor.ink)
-                        // 标题永远占两行高度，一行标题的卡片不会比两行的矮。
-                        .lineLimit(2, reservesSpace: true)
-                        .multilineTextAlignment(.leading)
-
-                    bodyArea
-
-                    tagRow
+                    if images.isEmpty {
+                        // 纯文字：按内容高度伸缩，最高不超过有图卡片（用隐藏的有图模板量出上限），超出部分省略。
+                        CappedHeightLayout {
+                            imageBody(nil).hidden()
+                            textBody
+                        }
+                    } else {
+                        imageBody(images)
+                    }
                     HStack(spacing: 16) {
                         metric("heart", post.likeTotal)
                         metric("bubble.right", post.commentTotal)
@@ -82,44 +81,60 @@ struct PostCardView: View {
         post.excerpt?.isEmpty == false ? post.excerpt! : post.content
     }
 
-    /// 正文与图片区域。尺寸由一个隐藏的「两行摘要 + 168pt 图片」模板决定，
-    /// 纯文字、单图、多图三种卡片因此一样高（随 Dynamic Type 一起缩放，彼此仍然一致）。
-    private var bodyArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(" ").uniFont(13).lineLimit(2, reservesSpace: true)
-            Color.clear.frame(height: Self.mediaHeight)
-        }
-        .hidden()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .topLeading) {
-            if images.isEmpty {
-                // 纯文字：在同样大的区域里放更多正文，固定字数并由区域高度截断。
-                Text(String(post.content.prefix(Self.textOnlyLimit)))
-                    .uniFont(15)
-                    .foregroundStyle(UniColor.inkSoft)
-                    .lineSpacing(4)
+    /// 有图卡片的统一结构：标题占两行、摘要占两行、4:3 图片区、标签行占位。
+    /// 传 nil 时画同样尺寸的空模板，用来给纯文字卡片量出高度上限。
+    private func imageBody(_ urls: [String]?) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(post.title)
+                .uniFont(18, weight: .bold)
+                .foregroundStyle(UniColor.ink)
+                .lineLimit(2, reservesSpace: true)
+                .multilineTextAlignment(.leading)
+            VStack(alignment: .leading, spacing: 10) {
+                Text(summary)
+                    .uniFont(13)
+                    .foregroundStyle(UniColor.secondary)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .clipped()
-            } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(summary)
-                        .uniFont(13)
-                        .foregroundStyle(UniColor.secondary)
-                        .lineLimit(2, reservesSpace: true)
-                        .multilineTextAlignment(.leading)
-                    PostMediaGrid(urls: images, onTap: { _ in onOpen() })
-                        .frame(height: Self.mediaHeight)
+                Group {
+                    if let urls {
+                        PostMediaGrid(urls: urls, onTap: { _ in onOpen() })
+                    } else {
+                        Color.clear
+                    }
                 }
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
             }
+            tagRow(reserve: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// 标签行同样固定占位：没有标签的卡片留出同样高度。
-    private var tagRow: some View {
+    private var textBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(post.title)
+                .uniFont(18, weight: .bold)
+                .foregroundStyle(UniColor.ink)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+            Text(post.content)
+                .uniFont(15)
+                .foregroundStyle(UniColor.inkSoft)
+                .lineSpacing(4)
+                .multilineTextAlignment(.leading)
+                .truncationMode(.tail)
+                // 高度不够时只压缩正文，标题和标签保持完整。
+                .layoutPriority(-1)
+            if !post.tagList.isEmpty { tagRow(reserve: false) }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func tagRow(reserve: Bool) -> some View {
         HStack(spacing: 6) {
             if post.tagList.isEmpty {
-                UniChip("标签").hidden()
+                if reserve { UniChip("标签").hidden() }
             } else {
                 ForEach(post.tagList.prefix(3), id: \.self) { tag in
                     UniChip(tag).lineLimit(1)
@@ -129,9 +144,6 @@ struct PostCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipped()
     }
-
-    static let mediaHeight: CGFloat = 168
-    static let textOnlyLimit = 160
 
     private func metric(_ icon: String, _ value: Int) -> some View {
         HStack(spacing: 4) {
@@ -150,6 +162,24 @@ struct PostCardView: View {
         case "major": return "专业 PO"
         default: return "推荐"
         }
+    }
+}
+
+/// 两个子视图：第一个是上限模板（不显示），第二个是内容。
+/// 高度取 min(内容自然高度, 模板高度)，内容在这个高度内排版，放不下的文字由 Text 自己截断成省略号。
+struct CappedHeightLayout: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard subviews.count == 2 else { return .zero }
+        let width = proposal.width ?? subviews[1].sizeThatFits(.unspecified).width
+        let cap = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        let natural = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil)).height
+        return CGSize(width: width, height: min(cap, natural))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard subviews.count == 2 else { return }
+        subviews[0].place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
+        subviews[1].place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
