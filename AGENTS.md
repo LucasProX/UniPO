@@ -245,7 +245,7 @@ xcrun simctl launch booted com.unipo.app
 - **Liquid Glass**：`glassEffect` 只在 iOS 26+，旧系统退化 `.ultraThinMaterial`，统一走 `UniPOUI.GlassSurface`。
 - **字体与圆角 token（C09，2026-10-23）**：文字一律 `.uniFont(点数, weight:)`（`UniPOUI/Typography.swift`），按最接近的系统文字样式随 Dynamic Type 缩放，正文上限 2 倍、20pt 以上 1.6 倍、28pt 以上 1.35 倍；**不要再写 `.font(.system(size:))`**，它是固定点数。`Font.uniBody/uniLabel/uniTitle` 只留给必须返回 `Text` 的拼接。底栏 `DockBar` 刻意固定字号并提供大内容预览，与系统 Tab 栏一致。根视图支持到 `accessibility3`。圆角只用 `UniRadius.control/button/tile/card/panel`（12/16/18/22/30），主页网格的 13pt 是例外。列表空态与错误态用 `UniEmptyState` / `UniErrorState`。固定宽度的横向卡片和一行排不下的胶囊用 `ViewThatFits` 或 `@ScaledMetric` 宽度，`dynamicTypeSize.isAccessibilitySize` 时把右侧状态挪到标题下。
 - **不要手改 `UniPO.xcodeproj`**：改 `ios/project.yml` 后跑 `xcodegen generate`。
-- **App 图标（2026-10-24）**：白底、墨黑 `#0B0F17` 的 SF Pro Semibold 小写「up」（University + Post），字形外框长边占图标 3/4。由 `swift scripts/design/render-app-icon.swift <输出路径>` 生成到 `AppIcon.appiconset/AppIcon-1024.png`（单尺寸、无透明通道），改图标改脚本再重新生成，不要手绘替换。
+- **App 图标（2026-10-24）**：白底、墨黑 `#0B0F17` 的 SF Pro Semibold 大写「UP」（University + Post）。用大写是因为小写 p 的下伸部让上下边对不齐；U 的圆底视觉补偿被等比缩掉，U、P 顶边与底边严格对齐；整组宽占图标 3/4，按轮廓居中（左右、上下留白各自相等）。由 `swift scripts/design/render-app-icon.swift <输出路径>` 生成到 `AppIcon.appiconset/AppIcon-1024.png`（单尺寸、无透明通道），改图标改脚本再重新生成。
 - **Feature 不直接建 URLSession**：一律走 `UniPOCore.APIClient`，鉴权和错误映射只维护一份。
 - **APNs**：`AppDelegate` 请求权限并把 device token 存 `PushTokenStore`，登录后 POST `/push/tokens`；
   本地 `APNS_ENABLED=false` 时后端只打日志；模拟器用 `xcrun simctl push` 验通知 UI。
