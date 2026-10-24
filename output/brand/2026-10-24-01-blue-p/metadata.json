@@ -1,0 +1,27 @@
+{
+  "bounds" : [
+    128,
+    281.97899999999998,
+    768,
+    460.04199999999997
+  ],
+  "canvas" : [
+    1024,
+    1024
+  ],
+  "colors" : {
+    "blue" : "#2F6BFF",
+    "ink" : "#0B0F17",
+    "white" : "#FFFFFF"
+  },
+  "selectedConcept" : "01 Essential",
+  "source" : "output/brand-exploration/2026-10-24/01-essential/mark.svg",
+  "wordmarkCanvas" : [
+    320,
+    96
+  ],
+  "wordmarkRasterScales" : [
+    2,
+    3
+  ]
+}
