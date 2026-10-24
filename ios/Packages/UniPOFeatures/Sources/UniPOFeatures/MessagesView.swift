@@ -312,8 +312,16 @@ struct MessagesView: View {
 
     private func bubble(_ message: MessageView, conversation: ConversationView) -> some View {
         let mine = message.senderId == auth.profile?.id
-        return HStack {
-            if mine { Spacer(minLength: 40) }
+        return HStack(alignment: .top, spacing: 8) {
+            if mine {
+                Spacer(minLength: 40)
+            } else {
+                // 对方的每条消息左侧带头像，点头像进对方主页。
+                UserProfileLink(uid: conversation.peer.uid, name: conversation.peer.nickname) {
+                    UniAvatar(url: conversation.peer.avatarUrl, name: conversation.peer.nickname, size: 34, shape: .circle)
+                }
+                .accessibilityLabel("\(conversation.peer.nickname)的主页")
+            }
             VStack(alignment: mine ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
                 .uniFont(14)
