@@ -38,7 +38,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
 | `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V34，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V35，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -89,7 +89,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V34）：
+后端（Flyway 自动执行 V1–V35）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -205,7 +205,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V34 只增不改，下一次迁移按实际最高版本递增（当前应为 `V35__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V35 只增不改，下一次迁移按实际最高版本递增（当前应为 `V36__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -269,6 +269,7 @@ xcrun simctl launch booted com.unipo.app
 - **校园活动界面**：入口是「成长」页顶部的子入口图块「校园活动」（`AchievementsView.entryGrid`，社团、二手等以后按同样的图块追加），`ActivityListView`（全部 / 本周 / 我报名的 / 参加过）、`ActivityDetailView`（主按钮按 phase 与 myStatus 切换）、「我的」里的我的活动与组织者「发布活动」。状态以服务端 `phase`/`myStatus`/`eligible` 为准，客户端不自行推断。签到页支持输入签到码和 VisionKit 扫码（不支持的设备隐藏扫码入口）；系统相机扫到 `unipo://checkin?...` 会经 `RootView.onOpenURL` 直接签到，`project.yml` 注册了 `unipo` scheme 与相机用途说明。组织者在活动详情左上角打开「签到码」大屏，屏幕常亮、按服务端给的秒数刷新。**LazyVStack 里的区块加载时不要渲染成 `EmptyView`**：零高度会被当作离屏，`.task` 被取消后又出现，形成请求—取消死循环（见 DEVLOG）。
 - **功能联动（2026-10-24，V33）**：帖子可带 `activityId` 或 `taskId`（`CreatePostRequest`），活动只能关联本校未取消的，任务必须存在；`PostView.activity/task` 带标题。活动详情「活动帖子」、任务详情「同学经验」、签到成功页「发帖记录现场」都打开带预设关联的 `ComposeSheet(initialLink:)`；帖子详情的关联标签可点开活动/任务，卡片上只展示（卡片本身是按钮，嵌套按钮会抢点击）。本人与他人主页都用 `ProfileGrowthSection` 读 `GET /users/{uid}/growth`。后端跨模块查标题走 `ActivityParticipationApi.refs` / `TaskLookupApi.titles`，它们是只依赖 Mapper 的独立 bean，别把实现挪进 `ActivityService` / `AchievementService`，否则和 `PostService` 成环。
 - **关注流与搜索（2026-10-24，V34）**：首页板块里的「关注」不是 board，`FeedStore.followingBoard` 走 `GET /posts/following`（登录才有，访客点它先登录，退出登录后回推荐）；关注流和搜索都**按发布时间倒序**，游标是 `publishedAt|id`，与热度流的七元游标不通用。搜索在首页右上角放大镜进 `SearchView`，帖子（访客可用）和同学（需登录）两段，只在回车时发请求不边打边搜。服务端用 MySQL ngram 全文索引，搜索词由 `config/SearchText` 整体包成短语（布尔运算符不生效），至少两个字、最多 40 字；**不要改成 `LIKE '%q%'`**，也不要把原始输入直接拼进 `AGAINST`。可见性仍走 `baseVisibleWrapper`（同校、未删、拉黑过滤），搜人排除本人与双向拉黑。搜索接口在 `RateLimitFilter` 里每 IP 每分钟 60 次。关注列表、粉丝列表和搜同学共用 `FollowUserRow`，关联帖子和搜帖子共用 `CompactPostRow`。
+- **编辑资料、黑名单与设置（2026-10-24，F03–F05，V35）**：引导里的字段之后都在 `EditProfileView` 改（「我的」顶栏「编辑资料」或设置第一行），`PUT /users/me` 新增 `gender/birthYear/zodiac/mbti/showGender/showAge/showGrade`，客户端用 `ProfileEdit.changes(from:)` **只提交改动过的字段**；星座和 MBTI 传空字符串清空，性别和出生年份不能清空只能隐藏，选项集合前后端各一份（`UserService.ZODIACS/MBTIS` 与 `ProfileEdit`），改一边要同步另一边。学校、专业、入学年份仍走成长背景。黑名单 `GET /users/me/blocks`，解除仍是 `DELETE /users/{uid}/block`。意见反馈 `POST /feedback`（每 IP 每小时 10 次），`GET /admin/feedback` **只给 ADMIN**，正文不进日志。用户协议与隐私政策由 `GET /legal/{terms|privacy}` 提供，正文在 `backend/src/main/resources/legal/*.md`，登录页和设置页共用 `LegalDocumentView`；**改正文必须同时改 `LegalController` 里的版本和生效日期**。当前正文是按实际收集范围写的草稿，正式上线前要经法务审阅。设置页已拆到 `SettingsViews.swift`。
 - **互动通知列表用 `listID`（类型 + id）做 ForEach 标识**：点赞、收藏、评论来自不同表，数字 id 会撞。
 - **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
   登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。

@@ -265,6 +265,28 @@ public actor APIClient {
         try await request(path: "users/me", method: "PUT", body: ["backgroundUrl": url])
     }
 
+    /// 编辑资料：只传改动过的字段（见 `ProfileEdit.changes`）。
+    public func updateProfile(_ changes: [String: Any]) async throws -> UserProfile {
+        try await request(path: "users/me", method: "PUT", body: changes)
+    }
+
+    public func blockedUsers() async throws -> [BlockedUser] {
+        try await request(path: "users/me/blocks")
+    }
+
+    public func submitFeedback(category: FeedbackCategory, content: String,
+                               appVersion: String?, device: String?) async throws -> Int64 {
+        var body: [String: Any] = ["category": category.rawValue, "content": content]
+        if let appVersion { body["appVersion"] = appVersion }
+        if let device { body["device"] = device }
+        return try await request(path: "feedback", method: "POST", body: body)
+    }
+
+    /// kind：terms / privacy。
+    public func legalDocument(kind: String) async throws -> LegalDocument {
+        try await request(path: "legal/" + kind)
+    }
+
     public func publicProfile(uid: String) async throws -> PublicUserProfile {
         try await request(path: userPath(uid))
     }

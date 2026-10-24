@@ -295,6 +295,26 @@ public class SocialService implements BlockQueryApi {
         return result;
     }
 
+    /** 我拉黑的人，最近拉黑的在前；已注销的账号不再出现（注销时拉黑关系已删除）。 */
+    public List<UserDtos.BlockedUserView> myBlocks(CurrentUser currentUser) {
+        List<UserBlock> rows = blockMapper.selectList(new LambdaQueryWrapper<UserBlock>()
+                .eq(UserBlock::getBlockerId, currentUser.id())
+                .orderByDesc(UserBlock::getCreatedAt).orderByDesc(UserBlock::getId)
+                .last("LIMIT " + LIST_LIMIT));
+        if (rows.isEmpty()) return List.of();
+        Map<Long, User> users = new LinkedHashMap<>();
+        userMapper.selectBatchIds(rows.stream().map(UserBlock::getBlockedId).toList())
+                .forEach(user -> users.put(user.getId(), user));
+        List<UserDtos.BlockedUserView> result = new ArrayList<>();
+        for (UserBlock row : rows) {
+            User user = users.get(row.getBlockedId());
+            if (user == null || !"active".equals(user.getStatus())) continue;
+            result.add(new UserDtos.BlockedUserView(user.getPublicUid(), user.getNickname(), user.getAvatarUrl(),
+                    AppTime.toOffset(row.getCreatedAt())));
+        }
+        return result;
+    }
+
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public boolean isBlockedEitherWay(Long a, Long b) {

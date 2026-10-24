@@ -23,6 +23,7 @@ struct ProfileView: View {
     @State private var dataUserID: Int64?
     @State private var selectedPost: PostView?
     @State private var showSettings = false
+    @State private var showEditProfile = false
     @State private var showDeleteConfirm = false
     @State private var isUploadingAvatar = false
     @State private var avatarError: String?
@@ -93,8 +94,16 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showSettings) {
             settingsSheet
-                .presentationDetents([.medium, .large])
                 .presentationCornerRadius(28)
+        }
+        .sheet(isPresented: $showEditProfile) {
+            if let profile = auth.profile {
+                NavigationStack {
+                    EditProfileView(profile: profile, modal: true)
+                        .environment(auth)
+                }
+                .interactiveDismissDisabled()
+            }
         }
         .alert("注销账号", isPresented: $showDeleteConfirm) {
             Button("取消", role: .cancel) {}
@@ -169,6 +178,26 @@ struct ProfileView: View {
             }
 
             Spacer()
+
+            Button {
+                showEditProfile = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "pencil")
+                        .uniFont(13, weight: .semibold)
+                    Text("编辑资料")
+                        .uniFont(11, weight: .semibold)
+                }
+                .foregroundStyle(UniColor.inkSoft)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(Color.white.opacity(0.78), in: Capsule())
+                .overlay(Capsule().stroke(.white.opacity(0.95), lineWidth: 1))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("profile.edit")
 
             PhotosPicker(selection: $backgroundPhoto, matching: .images) {
                 HStack(spacing: 5) {
@@ -678,78 +707,21 @@ struct ProfileView: View {
     // MARK: - Settings
 
     private var settingsSheet: some View {
-        NavigationStack {
-            List {
-                if let profile = auth.profile {
-                    Section {
-                        Button { showSettings = false } label: {
-                            HStack(spacing: 12) {
-                                UniAvatar(url: profile.avatarUrl, name: profile.nickname, size: 46, shape: .circle)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(profile.nickname)
-                                        .uniFont(15, weight: .semibold)
-                                        .foregroundStyle(UniColor.ink)
-                                    Text("UID \(profile.publicUid)")
-                                        .uniFont(11, design: .monospaced)
-                                        .foregroundStyle(UniColor.tertiary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("返回我的主页")
-                    }
-                }
-
-                Section("主页背景") {
-                    PhotosPicker(selection: $backgroundPhoto, matching: .images) {
-                        HStack {
-                            Label("更换背景图", systemImage: "photo")
-                            Spacer()
-                            if isUpdatingBackground { ProgressView() }
-                        }
-                    }
-                    .disabled(isUpdatingBackground || isUploadingAvatar)
-                    if let url = auth.profile?.backgroundUrl, !url.isEmpty {
-                        Button("恢复默认背景") { Task { await resetBackground() } }
-                            .disabled(isUpdatingBackground || isUploadingAvatar)
-                    }
-                }
-
-                Section {
-                    Button {
-                        showSettings = false
-                        showDeleteConfirm = true
-                    } label: {
-                        Label("注销账号", systemImage: "trash")
-                            .foregroundStyle(UniColor.danger)
-                    }
-                    .disabled(isUpdatingBackground || isUploadingAvatar)
-                } footer: {
-                    Text("注销后账号会被停用，个人资料会被匿名化，且无法恢复。")
-                }
-
-                Section {
-                    Button(role: .destructive) {
-                        showSettings = false
-                        Task { await auth.logout() }
-                    } label: {
-                        Text("退出登录")
-                    }
-                    .disabled(isUpdatingBackground || isUploadingAvatar)
-                }
+        SettingsView(
+            backgroundPhoto: $backgroundPhoto,
+            isBusy: isUpdatingBackground || isUploadingAvatar,
+            isUpdatingBackground: isUpdatingBackground,
+            onResetBackground: { Task { await resetBackground() } },
+            onDeleteAccount: {
+                showSettings = false
+                showDeleteConfirm = true
+            },
+            onLogout: {
+                showSettings = false
+                Task { await auth.logout() }
             }
-            .scrollContentBackground(.hidden)
-            .background(UniColor.paper)
-            .navigationTitle("设置")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { showSettings = false }
-                }
-            }
-        }
+        )
+        .environment(auth)
     }
 
     private func load() async {

@@ -64,6 +64,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             // 全文检索比普通列表重，挡住脚本刷搜索。
             new Rule("post-search", "GET", "/api/posts/search", 60, Duration.ofMinutes(1)),
             new Rule("user-search", "GET", "/api/users/search", 60, Duration.ofMinutes(1)),
+            new Rule("feedback", "POST", "/api/feedback", 10, Duration.ofHours(1)),
             new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5)),
             new Rule("conversation-create", "POST", "/api/messages/conversations", 60, Duration.ofMinutes(1)),
             new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),

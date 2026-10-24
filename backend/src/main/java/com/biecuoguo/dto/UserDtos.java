@@ -19,7 +19,15 @@ public final class UserDtos {
             @Size(max = 80) String major,
             @Size(max = 30) String grade,
             @Size(max = 400) String bio,
-            @Size(max = 500) String backgroundUrl
+            @Size(max = 500) String backgroundUrl,
+            // 2026-10-24 起「编辑资料」也能改引导里填过的字段；都可选，null 表示不改。
+            String gender,
+            Integer birthYear,
+            @Size(max = 10) String zodiac,
+            @Size(max = 8) String mbti,
+            Boolean showGender,
+            Boolean showAge,
+            Boolean showGrade
     ) {}
 
     /** 3 步新手引导的最终提交；字段都可选，允许用户跳过部分信息。 */
@@ -107,4 +115,7 @@ public final class UserDtos {
                                 @Size(max = 500) String detail) {}
 
     public record BlockStatusView(boolean blocked, boolean blockedBy) {}
+
+    /** 「我拉黑的人」列表的一行，只带展示信息。 */
+    public record BlockedUserView(String publicUid, String nickname, String avatarUrl, OffsetDateTime blockedAt) {}
 }

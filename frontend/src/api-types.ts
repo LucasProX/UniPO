@@ -452,6 +452,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/verification-code": {
         parameters: {
             query?: never;
@@ -683,7 +699,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
         post: operations["add"];
         delete?: never;
@@ -1092,6 +1108,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/me/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myBlocks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -1444,6 +1476,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/legal/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["document"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/growth/term-plan": {
         parameters: {
             query?: never;
@@ -1612,6 +1660,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["list_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_3"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1830,6 +1894,14 @@ export interface components {
             grade?: string;
             bio?: string;
             backgroundUrl?: string;
+            gender?: string;
+            /** Format: int32 */
+            birthYear?: number;
+            zodiac?: string;
+            mbti?: string;
+            showGender?: boolean;
+            showAge?: boolean;
+            showGrade?: boolean;
         };
         ApiResponseUserProfile: {
             code?: string;
@@ -2412,6 +2484,12 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        CreateFeedbackRequest: {
+            category: string;
+            content: string;
+            appVersion?: string;
+            device?: string;
+        };
         VerificationRequest: {
             email: string;
             purpose: string;
@@ -2823,6 +2901,19 @@ export interface components {
             /** Format: int64 */
             count?: number;
         };
+        ApiResponseListBlockedUserView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["BlockedUserView"][];
+            requestId?: string;
+        };
+        BlockedUserView: {
+            publicUid?: string;
+            nickname?: string;
+            avatarUrl?: string;
+            /** Format: date-time */
+            blockedAt?: string;
+        };
         ApiResponseListTagView: {
             code?: string;
             message?: string;
@@ -3018,6 +3109,19 @@ export interface components {
             /** Format: int32 */
             limit?: number;
         };
+        ApiResponseLegalDocument: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["LegalDocument"];
+            requestId?: string;
+        };
+        LegalDocument: {
+            kind?: string;
+            title?: string;
+            version?: string;
+            effectiveDate?: string;
+            content?: string;
+        };
         ApiResponseTermPlanView: {
             code?: string;
             message?: string;
@@ -3193,6 +3297,30 @@ export interface components {
             hasMore?: boolean;
             /** Format: int32 */
             limit?: number;
+        };
+        ApiResponseFeedbackPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["FeedbackPage"];
+            requestId?: string;
+        };
+        FeedbackPage: {
+            items?: components["schemas"]["FeedbackView"][];
+            /** Format: int64 */
+            nextBeforeId?: number;
+        };
+        FeedbackView: {
+            /** Format: int64 */
+            id?: number;
+            category?: string;
+            content?: string;
+            appVersion?: string;
+            device?: string;
+            userUid?: string;
+            userNickname?: string;
+            status?: string;
+            /** Format: date-time */
+            createdAt?: string;
         };
         ApiResponseListAuditView: {
             code?: string;
@@ -4384,6 +4512,30 @@ export interface operations {
             };
         };
     };
+    submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLong"];
+                };
+            };
+        };
+    };
     requestVerificationCode: {
         parameters: {
             query?: never;
@@ -4734,7 +4886,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -5395,6 +5547,26 @@ export interface operations {
             };
         };
     };
+    myBlocks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListBlockedUserView"];
+                };
+            };
+        };
+    };
     tags: {
         parameters: {
             query?: never;
@@ -5893,6 +6065,28 @@ export interface operations {
             };
         };
     };
+    document: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseLegalDocument"];
+                };
+            };
+        };
+    };
     termPlan: {
         parameters: {
             query?: {
@@ -6127,6 +6321,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseDeliveryPage"];
+                };
+            };
+        };
+    };
+    list_3: {
+        parameters: {
+            query?: {
+                beforeId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseFeedbackPage"];
                 };
             };
         };

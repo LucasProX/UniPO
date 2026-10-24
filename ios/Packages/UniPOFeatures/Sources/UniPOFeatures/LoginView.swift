@@ -439,26 +439,14 @@ private struct AgreementSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Text("协议内容暂不可用")
-                        .uniFont(14)
-                        .foregroundStyle(UniColor.secondary)
-                    Text("请稍后再试。")
-                        .uniFont(13)
-                        .foregroundStyle(UniColor.secondary)
-                        .lineSpacing(5)
+            LegalDocumentView(kind: kind.rawValue, fallbackTitle: kind.title)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("关闭") { dismiss() }
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-            }
-            .navigationTitle(kind.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("关闭") { dismiss() }
-                }
-            }
         }
+        // 登录页是深色，协议正文按浅色排版。
+        .preferredColorScheme(.light)
     }
 }

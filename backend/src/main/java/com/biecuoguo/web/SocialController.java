@@ -54,6 +54,11 @@ public class SocialController {
     }
 
     /** 个人主页的「+n 新粉丝」；打开粉丝列表后调用 /seen 清零。 */
+    @GetMapping("/me/blocks")
+    public ApiResponse<List<UserDtos.BlockedUserView>> myBlocks() {
+        return ApiResponse.ok(socialService.myBlocks(SecurityUtils.currentUser()));
+    }
+
     @GetMapping("/me/followers/new-count")
     public ApiResponse<UserDtos.NewFollowersView> newFollowers() {
         return ApiResponse.ok(new UserDtos.NewFollowersView(

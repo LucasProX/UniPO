@@ -76,8 +76,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites",
                                 "/api/users/*/followers", "/api/users/*/following", "/api/users/*/growth").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/legal/*").permitAll()
                         .requestMatchers("/api/admin/users", "/api/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/message-deliveries", "/api/admin/message-deliveries/**").hasRole("ADMIN")
+                        // 反馈正文可能带个人信息，只给管理员看。
+                        .requestMatchers("/api/admin/feedback", "/api/admin/feedback/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/messages/conversations/page",
                                 "/api/messages/conversations/*", "/api/messages/conversations/*/messages/page").authenticated()

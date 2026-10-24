@@ -84,7 +84,15 @@ public class UserService {
         if (request.college() != null) user.setCollege(request.college());
         if (request.major() != null) user.setMajor(request.major());
         if (request.grade() != null) user.setGrade(request.grade());
-        if (request.bio() != null) user.setBio(request.bio());
+        if (request.bio() != null) user.setBio(request.bio().trim());
+        if (request.gender() != null && !request.gender().isBlank()) user.setGender(validGender(request.gender()));
+        if (request.birthYear() != null) user.setBirthYear(validBirthYear(request.birthYear()));
+        // 星座和 MBTI 传空字符串表示清空。
+        if (request.zodiac() != null) user.setZodiac(validChoice(request.zodiac(), ZODIACS, "星座参数不正确"));
+        if (request.mbti() != null) user.setMbti(validChoice(request.mbti().toUpperCase(java.util.Locale.ROOT), MBTIS, "MBTI 参数不正确"));
+        if (request.showGender() != null) user.setShowGender(request.showGender());
+        if (request.showAge() != null) user.setShowAge(request.showAge());
+        if (request.showGrade() != null) user.setShowGrade(request.showGrade());
         user.setUpdatedAt(AppTime.nowLocal());
         userMapper.updateById(user);
         return UserProfile.from(user, preference(userId), presenceService.isOnline(userId));
@@ -236,17 +244,10 @@ public class UserService {
             user.setNickname(nickname);
         }
         if (request.gender() != null && !request.gender().isBlank()) {
-            if (!java.util.Set.of("male", "female", "other").contains(request.gender())) {
-                throw new IllegalArgumentException("性别参数不正确");
-            }
-            user.setGender(request.gender());
+            user.setGender(validGender(request.gender()));
         }
         if (request.birthYear() != null) {
-            int current = AppTime.nowLocal().getYear();
-            if (request.birthYear() < 1950 || request.birthYear() > current - 10) {
-                throw new IllegalArgumentException("出生年份不正确");
-            }
-            user.setBirthYear(request.birthYear());
+            user.setBirthYear(validBirthYear(request.birthYear()));
         }
         if (request.grade() != null && !request.grade().isBlank()) {
             user.setGrade(request.grade().trim());
@@ -270,6 +271,33 @@ public class UserService {
         user.setUpdatedAt(AppTime.nowLocal());
         userMapper.updateById(user);
         return UserProfile.from(user, preference(user.getId()), presenceService.isOnline(userId));
+    }
+
+    private static final java.util.Set<String> GENDERS = java.util.Set.of("male", "female", "other");
+    /** 与 iOS 引导页的选项一致。 */
+    private static final java.util.Set<String> ZODIACS = java.util.Set.of(
+            "白羊", "金牛", "双子", "巨蟹", "狮子", "处女", "天秤", "天蝎", "射手", "摩羯", "水瓶", "双鱼");
+    private static final java.util.Set<String> MBTIS = java.util.Set.of(
+            "INTJ", "INTP", "ENTJ", "ENTP", "INFJ", "INFP", "ENFJ", "ENFP",
+            "ISTJ", "ISFJ", "ESTJ", "ESFJ", "ISTP", "ISFP", "ESTP", "ESFP");
+
+    private static String validGender(String value) {
+        if (!GENDERS.contains(value)) throw new IllegalArgumentException("性别参数不正确");
+        return value;
+    }
+
+    private static int validBirthYear(int year) {
+        int current = AppTime.nowLocal().getYear();
+        if (year < 1950 || year > current - 10) throw new IllegalArgumentException("出生年份不正确");
+        return year;
+    }
+
+    /** 空字符串表示清空；其他值必须在选项里。 */
+    private static String validChoice(String value, java.util.Set<String> choices, String message) {
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return "";
+        if (!choices.contains(trimmed)) throw new IllegalArgumentException(message);
+        return trimmed;
     }
 
     private UserDtos.CheckInView checkInView(User user, boolean checkedInToday, int streak, int xpGained, java.time.LocalDate checkinDate) {

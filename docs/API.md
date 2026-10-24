@@ -352,6 +352,10 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 | GET | `/api/users/{uid}/growth` | 公开主页的成长：`level/levelTitle/xp/attendedCount/badges/recentActivities`；`termLabel` 只在本人或对方开启 `showGrade` 时返回；双方任一拉黑只返回等级 |
 | GET | `/api/users/search?q=` | 按昵称（全文）或完整 UID 找人，UID 精确命中排第一，最多 20 条，返回 `FollowUserView`（`following` 为我是否已关注、`followedAt` 为空）；需登录，排除本人、非 active 与双向拉黑；每 IP 每分钟 60 次 |
+| GET | `/api/users/me/blocks` | 我拉黑的人（最近在前，最多 200），返回 `{publicUid,nickname,avatarUrl,blockedAt}`；需登录。解除用 `DELETE /api/users/{uid}/block` |
+| POST | `/api/feedback` | 意见反馈 `{category: bug\|suggestion\|content\|other, content 5–1000 字, appVersion?, device?}`，返回反馈 id；需登录，每 IP 每小时 10 次 |
+| GET | `/api/admin/feedback?beforeId=` | 反馈列表（每页 50，按 id 倒序，`nextBeforeId` 翻页）；**仅 ADMIN** |
+| GET | `/api/legal/{terms\|privacy}` | 公开。用户协议 / 隐私政策 `{kind,title,version,effectiveDate,content}`，`content` 是只含 `##` 标题、`-` 列表和 `**加粗**` 的 Markdown；未知类型 404 |
 
 返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[], stageBasis, entryYear, termLabel, nextTask }`（后四个字段 2026-10-23 加）。
 任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。完成与撤回都先锁用户行，串行同一用户的进度和经验。
@@ -461,7 +465,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 
 - `GET /api/users/me/stats`：关注/粉丝/作品等统计；
 - `GET /api/users/me/posts` / `/likes` / `/post-favorites`：作品/喜欢/收藏三栏；
-- `PUT /api/users/me`：头像更新只传 `avatarUrl`；
+- `PUT /api/users/me`：头像更新只传 `avatarUrl`；2026-10-24 起「编辑资料」还可传 `nickname`、`bio`、`gender`（male/female/other）、`birthYear`（1950 至今年减 10）、`zodiac`（12 星座中文名，不带「座」）、`mbti`（16 型，大小写不敏感）、`showGender`、`showAge`、`showGrade`。字段省略或 `null` 不修改；`zodiac`、`mbti` 传空字符串清空；性别和出生年份不能清空；选项外的值 400；
 - 主页展示字段来自 `UserProfile`：`gender` / `zodiac` / `mbti` / `birthYear` / `showGender` / `showAge` / `showGrade` / `backgroundUrl`。
 
 **背景（2026-10-21 新增，V19）**：先通过 `/api/v1/media/upload?purpose=profile-background` 上传图片，

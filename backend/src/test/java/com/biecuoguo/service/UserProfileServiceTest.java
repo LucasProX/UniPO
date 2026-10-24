@@ -246,7 +246,51 @@ class UserProfileServiceTest {
         verify(users, never()).updateById(any(User.class));
     }
 
+    @Test
+    void editProfileUpdatesOnboardingFieldsAndVisibility() {
+        service.updateProfile(OWNER, new UserDtos.UpdateProfileRequest(" 新名字 ", null, null, null, null, null, null, null,
+                "  新的简介 ", null, "male", 2005, "天秤", "enfp", true, true, false));
+        assertEquals("新名字", owner.getNickname());
+        assertEquals("新的简介", owner.getBio());
+        assertEquals("male", owner.getGender());
+        assertEquals(2005, owner.getBirthYear());
+        assertEquals("天秤", owner.getZodiac());
+        assertEquals("ENFP", owner.getMbti());
+        assertTrue(owner.getShowGender());
+        assertTrue(owner.getShowAge());
+        assertFalse(owner.getShowGrade());
+        verify(users).updateById(owner);
+    }
+
+    @Test
+    void emptyZodiacAndMbtiClearThemWhileNullLeavesFieldsAlone() {
+        owner.setZodiac("白羊");
+        owner.setMbti("INTJ");
+        service.updateProfile(OWNER, profileRequest(null, null, "", "", null));
+        assertEquals("", owner.getZodiac());
+        assertEquals("", owner.getMbti());
+        assertEquals("female", owner.getGender());
+        assertEquals(2006, owner.getBirthYear());
+        assertFalse(owner.getShowGender());
+    }
+
+    @Test
+    void invalidProfileChoicesAreRejectedBeforeWriting() {
+        assertThrows(IllegalArgumentException.class, () -> service.updateProfile(OWNER, profileRequest("robot", null, null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateProfile(OWNER, profileRequest(null, 1900, null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateProfile(OWNER, profileRequest(null, LocalDateTime.now().getYear(), null, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateProfile(OWNER, profileRequest(null, null, "蛇夫", null, null)));
+        assertThrows(IllegalArgumentException.class, () -> service.updateProfile(OWNER, profileRequest(null, null, null, "ABCD", null)));
+        verify(users, never()).updateById(any(User.class));
+    }
+
+    private UserDtos.UpdateProfileRequest profileRequest(String gender, Integer birthYear, String zodiac, String mbti, Boolean showGender) {
+        return new UserDtos.UpdateProfileRequest(null, null, null, null, null, null, null, null, null, null,
+                gender, birthYear, zodiac, mbti, showGender, null, null);
+    }
+
     private UserDtos.UpdateProfileRequest backgroundRequest(String background) {
-        return new UserDtos.UpdateProfileRequest(null, null, null, null, null, null, null, null, null, background);
+        return new UserDtos.UpdateProfileRequest(null, null, null, null, null, null, null, null, null, background,
+                null, null, null, null, null, null, null);
     }
 }
