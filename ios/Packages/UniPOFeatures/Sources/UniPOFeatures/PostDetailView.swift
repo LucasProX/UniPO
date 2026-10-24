@@ -34,6 +34,7 @@ struct PostDetailView: View {
     @State private var reporting = false
     @State private var confirmingDelete = false
     @State private var isDeleting = false
+    @State private var viewing: ImageViewerTarget?
     @FocusState private var commentFocused: Bool
 
     private let commentLimit = 1_000
@@ -136,6 +137,9 @@ struct PostDetailView: View {
                     .presentationDetents([.large])
                     .presentationCornerRadius(30)
             }
+            .fullScreenCover(item: $viewing) { target in
+                PostImageViewer(urls: target.urls, index: target.index)
+            }
             .fullScreenCover(isPresented: Binding(
                 get: { auth.loginRequested },
                 set: { auth.loginRequested = $0 }
@@ -186,6 +190,32 @@ struct PostDetailView: View {
         }
     }
 
+    /// 单图按原比例完整展示；多图用与卡片相同的宫格，格子是正方形。点任意一张全屏浏览。
+    @ViewBuilder
+    private func detailImages(_ images: [String]) -> some View {
+        if images.count == 1, let url = AppConfig.absoluteURL(images[0]) {
+            Button { viewing = ImageViewerTarget(urls: images, index: 0) } label: {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFit()
+                    } else {
+                        RoundedRectangle(cornerRadius: UniRadius.button).fill(UniColor.mist).frame(height: 220)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("查看图片")
+        } else {
+            let layout = PostMediaGrid.layout(for: min(images.count, PostMediaGrid.maxCells))
+            PostMediaGrid(urls: images, cornerRadius: UniRadius.tile) { index in
+                viewing = ImageViewerTarget(urls: images, index: index)
+            }
+            .aspectRatio(CGFloat(layout.columns) / CGFloat(layout.rows), contentMode: .fit)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(post.title)
@@ -197,20 +227,8 @@ struct PostDetailView: View {
                 .foregroundStyle(UniColor.inkSoft)
                 .lineSpacing(5)
 
-            if let images = post.images, !images.isEmpty {
-                ForEach(images, id: \.self) { raw in
-                    if let url = AppConfig.absoluteURL(raw) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().scaledToFit()
-                            } else {
-                                RoundedRectangle(cornerRadius: UniRadius.button).fill(UniColor.mist)
-                                    .frame(height: 200)
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
-                    }
-                }
+            if let images = post.images?.filter({ !$0.isEmpty }), !images.isEmpty {
+                detailImages(images)
             }
 
             if !post.tagList.isEmpty {

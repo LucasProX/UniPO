@@ -38,40 +38,16 @@ struct PostCardView: View {
 
             Button(action: onOpen) {
                 VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(post.title)
-                            .uniFont(18, weight: .bold)
-                            .foregroundStyle(UniColor.ink)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        Text(post.excerpt?.isEmpty == false ? post.excerpt! : post.content)
-                            .uniFont(13)
-                            .foregroundStyle(UniColor.secondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                    }
+                    Text(post.title)
+                        .uniFont(18, weight: .bold)
+                        .foregroundStyle(UniColor.ink)
+                        // 标题永远占两行高度，一行标题的卡片不会比两行的矮。
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
 
-                    if let cover = post.coverUrl, let url = AppConfig.absoluteURL(cover) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().scaledToFill()
-                            } else {
-                                UniColor.mist
-                            }
-                        }
-                        .frame(height: 168)
-                        .frame(maxWidth: .infinity)
-                        .clipShape(RoundedRectangle(cornerRadius: UniRadius.button, style: .continuous))
-                    }
+                    bodyArea
 
-                    if !post.tagList.isEmpty {
-                        HStack(spacing: 6) {
-                            ForEach(post.tagList.prefix(3), id: \.self) { tag in
-                                UniChip(tag)
-                            }
-                        }
-                    }
-
+                    tagRow
                     HStack(spacing: 16) {
                         metric("heart", post.likeTotal)
                         metric("bubble.right", post.commentTotal)
@@ -99,6 +75,63 @@ struct PostCardView: View {
                 .stroke(UniColor.mist.opacity(0.6), lineWidth: 1)
         )
     }
+
+    private var images: [String] { (post.images ?? []).filter { !$0.isEmpty } }
+
+    private var summary: String {
+        post.excerpt?.isEmpty == false ? post.excerpt! : post.content
+    }
+
+    /// 正文与图片区域。尺寸由一个隐藏的「两行摘要 + 168pt 图片」模板决定，
+    /// 纯文字、单图、多图三种卡片因此一样高（随 Dynamic Type 一起缩放，彼此仍然一致）。
+    private var bodyArea: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(" ").uniFont(13).lineLimit(2, reservesSpace: true)
+            Color.clear.frame(height: Self.mediaHeight)
+        }
+        .hidden()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .topLeading) {
+            if images.isEmpty {
+                // 纯文字：在同样大的区域里放更多正文，固定字数并由区域高度截断。
+                Text(String(post.content.prefix(Self.textOnlyLimit)))
+                    .uniFont(15)
+                    .foregroundStyle(UniColor.inkSoft)
+                    .lineSpacing(4)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .clipped()
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(summary)
+                        .uniFont(13)
+                        .foregroundStyle(UniColor.secondary)
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
+                    PostMediaGrid(urls: images, onTap: { _ in onOpen() })
+                        .frame(height: Self.mediaHeight)
+                }
+            }
+        }
+    }
+
+    /// 标签行同样固定占位：没有标签的卡片留出同样高度。
+    private var tagRow: some View {
+        HStack(spacing: 6) {
+            if post.tagList.isEmpty {
+                UniChip("标签").hidden()
+            } else {
+                ForEach(post.tagList.prefix(3), id: \.self) { tag in
+                    UniChip(tag).lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
+    }
+
+    static let mediaHeight: CGFloat = 168
+    static let textOnlyLimit = 160
 
     private func metric(_ icon: String, _ value: Int) -> some View {
         HStack(spacing: 4) {
