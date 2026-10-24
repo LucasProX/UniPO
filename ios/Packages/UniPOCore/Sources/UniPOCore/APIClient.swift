@@ -119,6 +119,25 @@ public actor APIClient {
         return try await request(path: "posts/page", query: query)
     }
 
+    /// 关注的人发的帖子，按发布时间倒序；需要登录。
+    public func followingFeed(cursor: String? = nil, limit: Int = 20) async throws -> PostPage {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "posts/following", query: query)
+    }
+
+    /// 搜索帖子标题、正文和标签；query 至少两个字，否则服务端返回 400。
+    public func searchPosts(query text: String, cursor: String? = nil, limit: Int = 20) async throws -> PostPage {
+        var query = [URLQueryItem(name: "q", value: text), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "posts/search", query: query)
+    }
+
+    /// 按昵称或 UID 找人；需要登录。
+    public func searchUsers(query text: String) async throws -> [FollowUserView] {
+        try await request(path: "users/search", query: [URLQueryItem(name: "q", value: text)])
+    }
+
     public func createPost(title: String, content: String, board: String = "school",
                            tags: [String] = [], images: [String] = [], link: PostLink? = nil) async throws -> PostView {
         var body: [String: Any] = [

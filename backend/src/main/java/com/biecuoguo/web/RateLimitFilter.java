@@ -61,6 +61,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("sms-login", "POST", "/api/auth/sms-login", 30, Duration.ofMinutes(5)),
             // 上传：每张图都占存储和带宽
             new Rule("upload", "POST", "/api/media/upload", 30, Duration.ofMinutes(5)),
+            // 全文检索比普通列表重，挡住脚本刷搜索。
+            new Rule("post-search", "GET", "/api/posts/search", 60, Duration.ofMinutes(1)),
+            new Rule("user-search", "GET", "/api/users/search", 60, Duration.ofMinutes(1)),
             new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5)),
             new Rule("conversation-create", "POST", "/api/messages/conversations", 60, Duration.ofMinutes(1)),
             new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),

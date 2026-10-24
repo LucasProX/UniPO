@@ -7,6 +7,7 @@ import com.biecuoguo.domain.User;
 
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
+import com.biecuoguo.config.SearchText;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
@@ -366,6 +367,66 @@ public class PostService implements PostQueryApi, PostAdminApi {
         wrapper.orderByDesc(Post::getPublishedAt).orderByDesc(Post::getId)
                 .last("LIMIT " + Math.max(1, Math.min(50, limit)));
         return toViews(postMapper.selectList(wrapper), currentUser);
+    }
+
+    /** 关注流：我关注的人的同校帖子，按发布时间倒序。游标是上一页最后一条的 publishedAt|id。 */
+    public PostDtos.PostPageView followingFeed(CurrentUser currentUser, String cursor, Integer requestedLimit) {
+        requireAuthenticated(currentUser);
+        User viewer = userMapper.selectById(currentUser.id());
+        if (viewer == null) throw new AuthenticationCredentialsNotFoundException("请先登录");
+        LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer)
+                // viewer.getId() 来自数据库的 Long，不是用户输入。
+                .inSql(Post::getAuthorId, "SELECT following_id FROM user_follows WHERE follower_id = " + viewer.getId());
+        return timeOrderedPage(wrapper, cursor, requestedLimit, currentUser);
+    }
+
+    /** 搜索帖子标题、正文和标签，按发布时间倒序；可见性与信息流相同。 */
+    public PostDtos.PostPageView search(String query, CurrentUser currentUser, String cursor, Integer requestedLimit) {
+        String phrase = SearchText.phrase(query);
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer)
+                .apply("MATCH(title, content, tags) AGAINST ({0} IN BOOLEAN MODE)", phrase);
+        return timeOrderedPage(wrapper, cursor, requestedLimit, currentUser);
+    }
+
+    private PostDtos.PostPageView timeOrderedPage(LambdaQueryWrapper<Post> wrapper, String cursor,
+                                                  Integer requestedLimit, CurrentUser currentUser) {
+        int limit = normalizeLimit(requestedLimit);
+        TimeCursor key = TimeCursor.parse(cursor);
+        if (key != null) {
+            wrapper.nested(w -> w.lt(Post::getPublishedAt, key.publishedAt())
+                    .or().eq(Post::getPublishedAt, key.publishedAt()).lt(Post::getId, key.id()));
+        }
+        wrapper.isNotNull(Post::getPublishedAt)
+                .orderByDesc(Post::getPublishedAt).orderByDesc(Post::getId)
+                .last("LIMIT " + (limit + 1));
+        List<Post> page = postMapper.selectList(wrapper);
+        boolean hasMore = page.size() > limit;
+        List<Post> items = hasMore ? page.subList(0, limit) : page;
+        String nextCursor = hasMore ? TimeCursor.of(items.get(items.size() - 1)).encode() : null;
+        return PostDtos.PostPageView.of(toViews(items, currentUser), nextCursor, limit);
+    }
+
+    /** 按时间排序的列表游标：publishedAt|id。 */
+    record TimeCursor(LocalDateTime publishedAt, long id) {
+        static TimeCursor of(Post post) {
+            return new TimeCursor(post.getPublishedAt(), post.getId());
+        }
+
+        String encode() {
+            return publishedAt + "|" + id;
+        }
+
+        static TimeCursor parse(String cursor) {
+            if (cursor == null || cursor.isBlank()) return null;
+            String[] parts = cursor.trim().split("\\|", -1);
+            if (parts.length != 2) throw new IllegalArgumentException("分页游标无效");
+            try {
+                return new TimeCursor(LocalDateTime.parse(parts[0]), Long.parseLong(parts[1]));
+            } catch (RuntimeException ex) {
+                throw new IllegalArgumentException("分页游标无效");
+            }
+        }
     }
 
     @Transactional

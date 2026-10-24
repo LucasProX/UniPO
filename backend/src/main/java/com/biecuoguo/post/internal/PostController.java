@@ -44,6 +44,22 @@ public class PostController {
                 : postService.linkedPosts("task", taskId, currentUser(authentication), limit));
     }
 
+    /** 关注的人发的帖子，需要登录（路径在 GET 白名单里，未登录由 Service 返回 401）。 */
+    @GetMapping("/following")
+    public ApiResponse<PostDtos.PostPageView> following(@RequestParam(required = false) String cursor,
+                                                        @RequestParam(required = false) Integer limit,
+                                                        Authentication authentication) {
+        return ApiResponse.ok(postService.followingFeed(currentUser(authentication), cursor, limit));
+    }
+
+    @GetMapping("/search")
+    public ApiResponse<PostDtos.PostPageView> search(@RequestParam String q,
+                                                     @RequestParam(required = false) String cursor,
+                                                     @RequestParam(required = false) Integer limit,
+                                                     Authentication authentication) {
+        return ApiResponse.ok(postService.search(q, currentUser(authentication), cursor, limit));
+    }
+
     @GetMapping("/boards")
     public ApiResponse<List<PostDtos.BoardView>> boards(Authentication authentication) {
         return ApiResponse.ok(postService.boards(currentUser(authentication)));

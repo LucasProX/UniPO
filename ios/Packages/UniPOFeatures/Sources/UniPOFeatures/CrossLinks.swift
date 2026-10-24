@@ -111,36 +111,7 @@ struct LinkedPostsSection: View {
         }
     }
 
-    private func row(_ post: PostView) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 32, shape: .circle)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(post.title)
-                    .uniFont(14, weight: .semibold)
-                    .foregroundStyle(UniColor.ink)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                HStack(spacing: 8) {
-                    Text(post.author.nickname)
-                    Label("\(post.likeTotal)", systemImage: "heart")
-                    Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
-                }
-                .uniFont(11)
-                .foregroundStyle(UniColor.tertiary)
-                .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if let first = post.images?.first, let url = AppConfig.absoluteURL(first) {
-                AsyncImage(url: url) { phase in
-                    if case .success(let image) = phase { image.resizable().scaledToFill() } else { UniColor.mist }
-                }
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
-            }
-        }
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-    }
+    private func row(_ post: PostView) -> some View { CompactPostRow(post: post) }
 
     private func load() async {
         isLoading = true
@@ -265,5 +236,42 @@ struct ProfileGrowthSection: View {
         } catch {
             failed = true
         }
+    }
+}
+
+/// 一行紧凑的帖子：标题、作者、点赞、时间和首图缩略图。用于关联帖子和搜索结果。
+struct CompactPostRow: View {
+    let post: PostView
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            UniAvatar(url: post.author.avatarUrl, name: post.author.nickname, size: 32, shape: .circle)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(post.title)
+                    .uniFont(14, weight: .semibold)
+                    .foregroundStyle(UniColor.ink)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                HStack(spacing: 8) {
+                    Text(post.author.nickname)
+                    // List 里的 Label 会把图标和文字拉开，用 HStack 排。
+                    HStack(spacing: 2) { Image(systemName: "heart"); Text("\(post.likeTotal)") }
+                    Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
+                }
+                .uniFont(11)
+                .foregroundStyle(UniColor.tertiary)
+                .lineLimit(1)
+            }
+            Spacer(minLength: 4)
+            if let first = post.images?.first, let url = AppConfig.absoluteURL(first) {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFill() } else { UniColor.mist }
+                }
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+            }
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
     }
 }

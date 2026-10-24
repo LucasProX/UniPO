@@ -17,8 +17,13 @@ public final class FeedStore {
     private var generation = 0
     private let loadPage: PageLoader
 
+    /// 「关注」不是板块，走单独的关注流接口；其余按板块分页。
+    public static let followingBoard = "following"
+
     public init(loadPage: @escaping PageLoader = { board, cursor, limit in
-        try await APIClient.shared.feed(tab: board, cursor: cursor, limit: limit)
+        board == FeedStore.followingBoard
+            ? try await APIClient.shared.followingFeed(cursor: cursor, limit: limit)
+            : try await APIClient.shared.feed(tab: board, cursor: cursor, limit: limit)
     }) {
         self.loadPage = loadPage
     }

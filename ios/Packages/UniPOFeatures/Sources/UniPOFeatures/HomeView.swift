@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var feed = FeedStore()
     @State private var selectedPost: PostView?
     @State private var previousViewerID: Int64?
+    @State private var searching = false
 
     private var board: String { feed.board }
     private var posts: [PostView] { feed.posts }
@@ -16,6 +17,7 @@ struct HomeView: View {
 
     private let boards = [
         ("recommend", "推荐"),
+        (FeedStore.followingBoard, "关注"),
         ("school", "校 PO"),
         ("college", "院 PO"),
         ("major", "专业 PO")
@@ -44,7 +46,12 @@ struct HomeView: View {
             }
             feed.clear()
             guard !auth.isRestoring else { return }
-            await load(reset: true)
+            // 「关注」只对登录用户有意义；退出登录后回到推荐。
+            if board == FeedStore.followingBoard && !auth.isAuthenticated {
+                await feed.refresh(board: "recommend")
+            } else {
+                await load(reset: true)
+            }
         }
         .task {
             #if DEBUG
@@ -60,6 +67,9 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .unipoPostDeleted)) { note in
             if let id = note.object as? Int64 { feed.remove(postID: id) }
         }
+        .sheet(isPresented: $searching) {
+            SearchView().environment(auth)
+        }
         .sheet(item: $selectedPost) { post in
             PostDetailView(post: post)
                 .environment(auth)
@@ -70,9 +80,32 @@ struct HomeView: View {
 
     private var boardPicker: some View {
         HStack(spacing: 8) {
+            ScrollView(.horizontal) {
+                boardChips
+            }
+            .scrollIndicators(.hidden)
+            Button { searching = true } label: {
+                Image(systemName: "magnifyingglass")
+                    .uniFont(15, weight: .semibold)
+                    .foregroundStyle(UniColor.ink)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white, in: Circle())
+                    .overlay(Circle().stroke(UniColor.mist, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("搜索")
+        }
+    }
+
+    private var boardChips: some View {
+        HStack(spacing: 8) {
             ForEach(boards, id: \.0) { item in
                 Button {
                     guard board != item.0 else { return }
+                    if item.0 == FeedStore.followingBoard && !auth.isAuthenticated {
+                        auth.requireLogin()
+                        return
+                    }
                     Task { await feed.refresh(board: item.0) }
                 } label: {
                     Text(item.1)
@@ -91,7 +124,6 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Spacer(minLength: 0)
         }
     }
 
@@ -101,6 +133,13 @@ struct HomeView: View {
             UniLoadingState("正在加载校园动态…")
         } else if let errorMessage, posts.isEmpty {
             UniErrorState(errorMessage) { Task { await load(reset: true) } }
+        } else if posts.isEmpty && board == FeedStore.followingBoard {
+            VStack(spacing: 12) {
+                UniEmptyState(icon: "person.2", title: "关注的人还没有发帖", message: "去搜搜同学，关注后他们的新帖会出现在这里")
+                Button("搜索同学") { searching = true }
+                    .uniFont(14, weight: .semibold)
+                    .foregroundStyle(UniColor.blue)
+            }
         } else if posts.isEmpty {
             UniEmptyState(icon: "text.bubble", title: "这个板块还没有内容", message: "同校同学发的经验贴会出现在这里")
         } else {

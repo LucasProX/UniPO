@@ -5051,3 +5051,13 @@ R04 最初的想法很直接：在 `unipo-minio` 容器里 `mc mirror` 到一个
 公开成长接口一开始想挂在 `GrowthController` 上，可那个控制器的类级前缀是 `/api/growth`，写 `/../users/{uid}/growth` 这种路径 Spring 不认。单独开了 `PublicGrowthController` 挂 `/api/users/{uid}/growth`，`SecurityConfig` 白名单加 `/api/users/*/growth`。
 
 iOS 卡片上的关联标签最开始也想做成能点的按钮，直接跳到活动详情。但整张卡片本身就是一个 `Button`（点进帖子详情），里面再放按钮，`List`/`LazyVStack` 里点击会被外层吃掉或两个都触发。卡片上只做展示，帖子详情里的标签才可以点。
+
+## 2026-10-24 搜索用 ngram 全文索引，而不是 LIKE
+
+做搜索时第一反应是 `title LIKE '%四级%' OR content LIKE '%四级%'`，写起来最快，测试库几十条帖子也看不出慢。但 `%` 开头的 LIKE 用不上任何索引，`content` 还是 TEXT，帖子一多每次搜索都是全表扫描，正好违背「按百万日活设计」。MySQL 8 自带 ngram 分词器，中文按两个字一组切词，`FULLTEXT ... WITH PARSER ngram` 就能用索引查中文，不用额外上 ES。
+
+接着碰到两个细节。一是 `ngram_token_size` 默认 2，单个字（「四」）在索引里根本不存在，查出来永远是空；与其让用户以为没内容，不如直接 400「至少输入两个字」。二是 BOOLEAN MODE 里 `+ - * ( ) ~` 都是运算符，用户输 `+联动 -测试` 会变成「必须有联动、不能有测试」。最后把整个输入去掉双引号后包成一个短语 `"..."`，短语里的运算符就是普通字符；值经 MyBatis-Plus `apply("... AGAINST ({0} ...)", phrase)` 走参数绑定，不拼 SQL。逻辑收在 `config/SearchText`，单测覆盖了运算符、引号、长度边界。
+
+迁移时 Flyway 打了两条 `InnoDB rebuilding table to add column FTS_DOC_ID` 警告：一张表第一次建 FULLTEXT 索引，InnoDB 要加隐藏列并重建整表。测试库 0.4 秒就过去了，但生产表大了以后这是一次锁表重建，上线前要挑低峰或先评估时长。InnoDB 一条 ALTER 只能建一个 FULLTEXT，posts 和 users 分成两条语句。
+
+排序上没用相关度：BOOLEAN MODE 的相关度分数不稳定，拿它做游标很难保证翻页不重不漏；校园内容时效性强，按 `publishedAt, id` 倒序，游标就是这两个字段，关注流也复用同一套。热度流的七元游标不能拿来混用，`TimeCursor` 单独解析。

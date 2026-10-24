@@ -19,6 +19,13 @@ public class SocialController {
         this.socialService = socialService;
     }
 
+    /** 按昵称或 UID 找人，需要登录；?q= 至少两个字。 */
+    @GetMapping("/search")
+    public ApiResponse<List<UserDtos.FollowUserView>> search(@RequestParam String q, Authentication authentication) {
+        CurrentUser user = authentication != null && authentication.getPrincipal() instanceof CurrentUser current ? current : null;
+        return ApiResponse.ok(socialService.searchUsers(q, user));
+    }
+
     @PostMapping("/{uid}/follow")
     public ApiResponse<Boolean> follow(@PathVariable String uid) {
         return ApiResponse.ok(socialService.follow(uid, SecurityUtils.currentUser()));

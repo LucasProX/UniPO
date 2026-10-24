@@ -3,6 +3,7 @@ package com.biecuoguo.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.config.AppTime;
+import com.biecuoguo.config.SearchText;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserBlock;
 import com.biecuoguo.domain.UserFollow;
@@ -34,6 +35,7 @@ import java.util.Set;
 public class SocialService implements BlockQueryApi {
 
     private static final int LIST_LIMIT = 200;
+    private static final int USER_SEARCH_LIMIT = 20;
     private static final Set<String> REPORT_CATEGORIES = Set.of(
             "spam", "fraud", "harassment", "porn", "impersonation", "other"
     );
@@ -217,6 +219,41 @@ public class SocialService implements BlockQueryApi {
 
     public long followerCount(Long userId) {
         return followMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowingId, userId));
+    }
+
+    /**
+     * 按昵称或 UID 找人：UID 完全相同排最前，其余按昵称全文匹配。
+     * 只返回正常状态的账号，双方任一拉黑的不出现，自己也不出现。
+     */
+    public List<UserDtos.FollowUserView> searchUsers(String query, CurrentUser currentUser) {
+        if (currentUser == null || currentUser.id() == null) {
+            throw new org.springframework.security.authentication.AuthenticationCredentialsNotFoundException("请先登录");
+        }
+        String text = SearchText.normalize(query);
+        Set<Long> hidden = new HashSet<>(blockedUserIds(currentUser.id()));
+        hidden.add(currentUser.id());
+        List<User> matches = new ArrayList<>();
+        User exact = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getPublicUid, text).eq(User::getStatus, "active"));
+        if (exact != null && !hidden.contains(exact.getId())) matches.add(exact);
+        userMapper.selectList(new LambdaQueryWrapper<User>()
+                        .eq(User::getStatus, "active")
+                        .apply("MATCH(nickname) AGAINST ({0} IN BOOLEAN MODE)", "\"" + text + "\"")
+                        .notIn(!hidden.isEmpty(), User::getId, hidden)
+                        .orderByDesc(User::getLevel).orderByAsc(User::getId)
+                        .last("LIMIT " + USER_SEARCH_LIMIT))
+                .forEach(user -> {
+                    if (matches.size() < USER_SEARCH_LIMIT && matches.stream().noneMatch(m -> m.getId().equals(user.getId()))) {
+                        matches.add(user);
+                    }
+                });
+        List<UserFollow> rows = matches.stream().map(user -> {
+            UserFollow row = new UserFollow();
+            row.setFollowerId(currentUser.id());
+            row.setFollowingId(user.getId());
+            return row;
+        }).toList();
+        return toViews(rows, false, currentUser.id());
     }
 
     private List<UserDtos.FollowUserView> toViews(List<UserFollow> rows, boolean followers, Long viewerId) {

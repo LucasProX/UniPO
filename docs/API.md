@@ -122,6 +122,8 @@
 | GET | `/interaction-notices` | 登录 | 互动通知；**路径命中 GET 白名单，未登录实际 401** |
 | GET | `/{id}` | 公开 | 帖子详情，可见性与 feed 相同（同校、未删除、未拉黑），否则 404；通知里的 `postId` 用它打开 |
 | GET | `/linked?activityId=\|taskId=&limit=` | 公开 | 关联到某场活动或某个主线任务的帖子（最新在前，默认 20、上限 50），二选一必填，否则 400 |
+| GET | `/following?cursor=&limit=` | 登录 | 关注的人的同校帖子，按发布时间倒序，返回 `{items,nextCursor,hasMore,limit}`；游标为 `publishedAt\|id`，非法 400；未登录 401（路径在 GET 白名单内，Service 判断） |
+| GET | `/search?q=&cursor=&limit=` | 公开 | 搜标题、正文、标签（ngram 全文索引，整词按短语匹配），可见性同信息流，按发布时间倒序；`q` 去引号后 2–40 字，否则 400；每 IP 每分钟 60 次 |
 | POST | `/` | 登录 | 发帖；需先选学校；官方/置顶有角色限制 |
 | DELETE | `/{id}` | 登录 | 软删除（`status=deleted`），仅作者 |
 | GET | `/{id}/comments` | 公开 | 全部评论 + 楼中楼 |
@@ -349,6 +351,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | DELETE | `/api/achievements/tasks/{taskId}/complete` | 撤回自报完成，幂等；按累计经验回退，并收回只由该任务授予的徽章 |
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 | GET | `/api/users/{uid}/growth` | 公开主页的成长：`level/levelTitle/xp/attendedCount/badges/recentActivities`；`termLabel` 只在本人或对方开启 `showGrade` 时返回；双方任一拉黑只返回等级 |
+| GET | `/api/users/search?q=` | 按昵称（全文）或完整 UID 找人，UID 精确命中排第一，最多 20 条，返回 `FollowUserView`（`following` 为我是否已关注、`followedAt` 为空）；需登录，排除本人、非 active 与双向拉黑；每 IP 每分钟 60 次 |
 
 返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[], stageBasis, entryYear, termLabel, nextTask }`（后四个字段 2026-10-23 加）。
 任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。完成与撤回都先锁用户行，串行同一用户的进度和经验。
