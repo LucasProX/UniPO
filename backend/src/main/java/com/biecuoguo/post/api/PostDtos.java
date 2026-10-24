@@ -57,8 +57,15 @@ public final class PostDtos {
             /** 攻略有效期；不设为空。 */
             OffsetDateTime expiresAt,
             /** 已过有效期。过期帖子照常可读，但不再作为任务的有效攻略。 */
-            Boolean expired
+            Boolean expired,
+            /** 关联的校园活动；没有为空。 */
+            LinkRef activity,
+            /** 关联的主线任务；没有为空。 */
+            LinkRef task
     ) {}
+
+    /** 帖子挂载的活动或任务：只给 ID 和标题，点开后再读各自的详情。 */
+    public record LinkRef(long id, String title) {}
 
     public record CreatePostRequest(
             @NotBlank @Size(max = 30) String board,
@@ -73,7 +80,11 @@ public final class PostDtos {
             OffsetDateTime deadlineAt,
             @Size(max = 500) String missConsequence,
             @Size(max = 500) String nextAction,
-            List<String> tags
+            List<String> tags,
+            /** 挂一个本校校园活动（签到后「发帖记录」）。 */
+            Long activityId,
+            /** 挂一个主线任务（任务详情里「写经验」）。 */
+            Long taskId
     ) {}
 
     public record CreateCommentRequest(@NotBlank @Size(max = 1000) String content, Long parentId) {}

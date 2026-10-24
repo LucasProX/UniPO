@@ -120,6 +120,8 @@
 | GET | `/hot-today` | 公开 | 今日热帖；无数据时回落到全量 recommend |
 | GET | `/dont-miss` | 公开 | 别错过（带 deadline） |
 | GET | `/interaction-notices` | 登录 | 互动通知；**路径命中 GET 白名单，未登录实际 401** |
+| GET | `/{id}` | 公开 | 帖子详情，可见性与 feed 相同（同校、未删除、未拉黑），否则 404；通知里的 `postId` 用它打开 |
+| GET | `/linked?activityId=\|taskId=&limit=` | 公开 | 关联到某场活动或某个主线任务的帖子（最新在前，默认 20、上限 50），二选一必填，否则 400 |
 | POST | `/` | 登录 | 发帖；需先选学校；官方/置顶有角色限制 |
 | DELETE | `/{id}` | 登录 | 软删除（`status=deleted`），仅作者 |
 | GET | `/{id}/comments` | 公开 | 全部评论 + 楼中楼 |
@@ -346,6 +348,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | PUT | `/api/admin/posts/{id}/validity` | 运营：`{verifiedAt?, expiresAt?}` 整体替换核实日期与有效期，传空即清除；必需审计 |
 | DELETE | `/api/achievements/tasks/{taskId}/complete` | 撤回自报完成，幂等；按累计经验回退，并收回只由该任务授予的徽章 |
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
+| GET | `/api/users/{uid}/growth` | 公开主页的成长：`level/levelTitle/xp/attendedCount/badges/recentActivities`；`termLabel` 只在本人或对方开启 `showGrade` 时返回；双方任一拉黑只返回等级 |
 
 返回结构：`{ level, xp, completedTasks, totalTasks, currentStageCode, stages[], badges[], stageBasis, entryYear, termLabel, nextTask }`（后四个字段 2026-10-23 加）。
 任务完成会写 `achievement_progress`，并按 `badge_code` 写 `user_badges`；重复调用不会重复加分。完成与撤回都先锁用户行，串行同一用户的进度和经验。
@@ -409,7 +412,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | POST | `/api/activities/{id}/registrations/{rid}/revoke-checkin` | 发布者或管理员 | `{reason}` 必填；签到后 24 小时内撤销，按实际发放扣回经验与金币（金币不扣成负数），撤销后不能再签到；写必需审计 |
 | PUT | `/api/activities/{id}` | 发布者或管理员 | 开始前编辑；名额不能少于已报名人数，扩容自动递补候补；时间或地点变化通知所有报名者 |
 | POST | `/api/activities/{id}/cancel` | 发布者或管理员 | `{reason}` 必填；已签到的奖励保留；通知所有报名者 |
-| GET | `/api/notifications?cursor=` · `/unread-count` · POST `/read-all` | 登录 | 站内通知：审核结果、候补转正、变更、取消、开始前 24 小时与 1 小时提醒、签到撤销 |
+| GET | `/api/notifications?cursor=` · `/unread-count` · POST `/read-all` | 登录 | 站内通知：审核结果、候补转正、变更、取消、开始前 24 小时与 1 小时提醒、签到撤销；关注的人发新帖（`type=FOLLOWING_POST`，`category=SOCIAL`，带 `postId`，单帖最多通知 2000 个粉丝，跳过拉黑） |
 | GET | `/api/wallet/me?cursor=&limit=` | 登录 | 金币余额、今日已获得与每日上限（500）、流水倒序分页（cursor 为上一页最后一条流水 ID） |
 | GET | `/api/growth/term-plan?termStart=` | 登录 | 本学期清单：活动（签到自动完成）+ 当期主线阶段 + 自己的计划，附 `summary{done,total,attended,activityXp,activityCoins}`；`termStart` 为 9 月 1 日或 2 月 1 日，默认当前学期，可往前到入学学期、往后一个学期，超出 400 |
 | GET | `/api/growth/archive` | 登录 | 成长档案：按学期倒序的参加活动、获得徽章、完成的主线任务与计划数 |

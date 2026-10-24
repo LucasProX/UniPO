@@ -359,6 +359,14 @@ struct ActivityDetailView: View {
             section("活动介绍", activity.description)
             if let notice = activity.notice, !notice.isEmpty { section("报名须知", notice) }
             if !activity.recentAttendees.isEmpty { attendees(activity) }
+            if activity.phase != "CANCELLED" {
+                LinkedPostsSection(
+                    title: "活动帖子",
+                    emptyText: "还没有人发这场活动的帖子，来记录第一篇吧",
+                    composeTitle: "发帖",
+                    link: .activity(PostLinkRef(id: activity.id, title: activity.title))
+                )
+            }
         }
         .padding(18)
         .padding(.bottom, 20)

@@ -75,7 +75,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/posts/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/media/*/content").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/*", "/api/users/*/posts", "/api/users/*/likes", "/api/users/*/post-favorites",
-                                "/api/users/*/followers", "/api/users/*/following").permitAll()
+                                "/api/users/*/followers", "/api/users/*/following", "/api/users/*/growth").permitAll()
                         .requestMatchers("/api/admin/users", "/api/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/message-deliveries", "/api/admin/message-deliveries/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")

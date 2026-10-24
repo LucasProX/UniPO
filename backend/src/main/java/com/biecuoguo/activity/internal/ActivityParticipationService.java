@@ -42,6 +42,14 @@ public class ActivityParticipationService implements ActivityParticipationApi {
                 registrationMapper.earliestCheckins(userId, Math.max(1, earliest)));
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, ActivityRef> refs(java.util.Collection<Long> ids) {
+        if (ids.isEmpty()) return Map.of();
+        return activityMapper.selectBatchIds(ids).stream().collect(Collectors.toMap(Activity::getId,
+                activity -> new ActivityRef(activity.getId(), activity.getTitle(), activity.getSchoolId(), activity.getStatus())));
+    }
+
     private List<Participation> assemble(List<ActivityRegistration> registrations, boolean newestFirst) {
         if (registrations.isEmpty()) return List.of();
         Map<Long, Activity> activities = activityMapper.selectBatchIds(

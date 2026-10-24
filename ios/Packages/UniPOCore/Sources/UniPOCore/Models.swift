@@ -206,11 +206,61 @@ public struct PostView: Codable, Identifiable, Hashable {
     /// 攻略有效期；过期后不再作为任务的有效攻略。
     public let expiresAt: String?
     public let expired: Bool?
+    /// 关联的校园活动 / 主线任务（联动）。
+    public let activity: PostLinkRef?
+    public let task: PostLinkRef?
 
     public var likeTotal: Int { likeCount ?? 0 }
     public var commentTotal: Int { commentCount ?? 0 }
     public var favoriteTotal: Int { favoriteCount ?? 0 }
     public var tagList: [String] { tags ?? [] }
+}
+
+public struct PostLinkRef: Codable, Hashable {
+    public let id: Int64
+    public let title: String
+
+    public init(id: Int64, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
+/// 发帖时挂载的对象：活动或主线任务，二选一。
+public enum PostLink: Hashable {
+    case activity(PostLinkRef)
+    case task(PostLinkRef)
+
+    public var ref: PostLinkRef {
+        switch self {
+        case .activity(let ref), .task(let ref): return ref
+        }
+    }
+
+    public var label: String {
+        switch self {
+        case .activity: return "活动"
+        case .task: return "主线任务"
+        }
+    }
+}
+
+/// 他人主页上的成长展示。
+public struct PublicGrowth: Codable, Hashable {
+    public let level: Int
+    public let levelTitle: String?
+    public let xp: Int
+    public let termLabel: String?
+    public let attendedCount: Int
+    public let badges: [AchievementBadgeView]
+    public let recentActivities: [PublicGrowthActivity]
+}
+
+public struct PublicGrowthActivity: Codable, Hashable, Identifiable {
+    public let id: Int64
+    public let title: String
+    public let category: String?
+    public let startsAt: String
 }
 
 public struct PostPage: Codable {

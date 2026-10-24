@@ -22,11 +22,22 @@ public class NotificationService implements NotificationApi {
     @Override
     @Transactional
     public void notify(Collection<Long> userIds, String type, String title, String body, Long activityId, String dedupeKey) {
+        write(userIds, "ACTIVITY", type, title, body, activityId, null, dedupeKey);
+    }
+
+    @Override
+    @Transactional
+    public void notifyPost(Collection<Long> userIds, String type, String title, String body, long postId, String dedupeKey) {
+        write(userIds, "SOCIAL", type, title, body, null, postId, dedupeKey);
+    }
+
+    private void write(Collection<Long> userIds, String category, String type, String title, String body,
+                       Long activityId, Long postId, String dedupeKey) {
         LocalDateTime now = AppTime.nowLocal();
         String safeTitle = title.length() > 80 ? title.substring(0, 80) : title;
         String safeBody = body.length() > 300 ? body.substring(0, 300) : body;
         for (Long userId : userIds) {
-            if (userId != null) mapper.insert(userId, type, safeTitle, safeBody, activityId, dedupeKey, now);
+            if (userId != null) mapper.insert(userId, category, type, safeTitle, safeBody, activityId, postId, dedupeKey, now);
         }
     }
 
@@ -38,7 +49,7 @@ public class NotificationService implements NotificationApi {
         List<NotificationMapper.Row> page = more ? rows.subList(0, limit) : rows;
         return new NotificationDtos.NotificationPage(page.stream().map(row -> new NotificationDtos.NotificationView(
                 row.id(), row.category(), row.type(), row.title(), row.body(), row.activityId(), row.readAt() != null,
-                AppTime.toOffset(row.createdAt()))).toList(),
+                AppTime.toOffset(row.createdAt()), row.postId())).toList(),
                 more ? String.valueOf(page.getLast().id()) : null, more, mapper.unread(actor.id()));
     }
 

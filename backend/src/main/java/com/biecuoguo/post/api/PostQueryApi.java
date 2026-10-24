@@ -30,6 +30,9 @@ public interface PostQueryApi {
 
     UserPostStats statsForUser(long userId);
 
+    /** 与某个活动（kind=activity）或主线任务（kind=task）关联的、viewer 可见的帖子，最新在前。 */
+    List<PostDtos.PostView> linkedPosts(String kind, long targetId, CurrentUser viewer, int limit);
+
     /** 按 viewer 的可见性筛出未过期的攻略帖，保持 postIds 的顺序。 */
     GuideSelection guidePosts(List<Long> postIds, CurrentUser viewer);
 

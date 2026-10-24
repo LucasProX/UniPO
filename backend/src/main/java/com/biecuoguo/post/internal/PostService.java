@@ -10,7 +10,10 @@ import com.biecuoguo.config.AppTime;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
+import com.biecuoguo.achievement.api.TaskLookupApi;
+import com.biecuoguo.activity.api.ActivityParticipationApi;
 import com.biecuoguo.admin.api.AdminAuditApi;
+import com.biecuoguo.notification.api.NotificationApi;
 import com.biecuoguo.post.api.PostAdminApi;
 import com.biecuoguo.post.api.PostDtos;
 import com.biecuoguo.post.api.PostQueryApi;
@@ -51,9 +54,19 @@ public class PostService implements PostQueryApi, PostAdminApi {
     private final ExperienceService experienceService;
     private final BlockQueryApi blockQueryApi;
     private final AdminAuditApi auditApi;
+    private final ActivityParticipationApi activityRefs;
+    private final TaskLookupApi taskLookup;
+    private final NotificationApi notifications;
+    private final UserFollowMapper followMapper;
 
-    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi, AdminAuditApi auditApi) {
+    public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi, AdminAuditApi auditApi,
+                       ActivityParticipationApi activityRefs, TaskLookupApi taskLookup, NotificationApi notifications,
+                       UserFollowMapper followMapper) {
         this.auditApi = auditApi;
+        this.activityRefs = activityRefs;
+        this.taskLookup = taskLookup;
+        this.notifications = notifications;
+        this.followMapper = followMapper;
         this.appProperties = appProperties;
         this.postMapper = postMapper;
         this.imageMapper = imageMapper;
@@ -278,6 +291,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
         post.setMissConsequence(request.missConsequence());
         post.setNextAction(request.nextAction());
         post.setTags(joinTags(request.tags()));
+        post.setActivityId(linkedActivity(request.activityId(), author));
+        post.setTaskId(linkedTask(request.taskId()));
         post.setLikeCount(0);
         post.setCommentCount(0);
         post.setFavoriteCount(0);
@@ -289,7 +304,68 @@ public class PostService implements PostQueryApi, PostAdminApi {
         postMapper.insert(post);
         saveImages(post.getId(), request.images(), now);
         grantXp(author, 12);
+        notifyFollowers(author, post);
         return toView(postMapper.selectById(post.getId()), currentUser);
+    }
+
+    /** 只能挂本校、未取消的活动；不存在与别校一样返回 400，不暴露别校活动是否存在。 */
+    private Long linkedActivity(Long activityId, User author) {
+        if (activityId == null) return null;
+        ActivityParticipationApi.ActivityRef ref = activityRefs.refs(List.of(activityId)).get(activityId);
+        if (ref == null || ref.schoolId() != author.getSchoolId() || "CANCELLED".equals(ref.status())) {
+            throw new IllegalArgumentException("只能关联本校进行中的活动");
+        }
+        return activityId;
+    }
+
+    private Long linkedTask(Long taskId) {
+        if (taskId == null) return null;
+        if (!taskLookup.titles(List.of(taskId)).containsKey(taskId)) {
+            throw new IllegalArgumentException("关联的任务不存在");
+        }
+        return taskId;
+    }
+
+    static final int FOLLOWER_FANOUT_LIMIT = 2000;
+
+    /**
+     * 关注的人发帖：随发帖事务写站内通知。写扩散，单次最多 {@value #FOLLOWER_FANOUT_LIMIT} 个粉丝；
+     * 粉丝更多的账号（运营号）以后改读扩散或异步 Outbox，不在发帖事务里循环写。拉黑双方不通知。
+     */
+    private void notifyFollowers(User author, Post post) {
+        List<Long> followers = followMapper.selectList(new LambdaQueryWrapper<UserFollow>()
+                        .select(UserFollow::getFollowerId)
+                        .eq(UserFollow::getFollowingId, author.getId())
+                        .last("LIMIT " + FOLLOWER_FANOUT_LIMIT))
+                .stream().map(UserFollow::getFollowerId).toList();
+        if (followers.isEmpty()) return;
+        Set<Long> blocked = blockQueryApi.blockedUserIds(author.getId());
+        List<Long> targets = followers.stream().filter(id -> !blocked.contains(id)).toList();
+        if (targets.isEmpty()) return;
+        notifications.notifyPost(targets, "FOLLOWING_POST", author.getNickname() + " 发了新 PO",
+                post.getTitle(), post.getId(), "post:" + post.getId());
+    }
+
+    /** 单篇帖子，按信息流同一套可见性；看不到的一律 404。 */
+    public PostDtos.PostView detail(long postId, CurrentUser currentUser) {
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        Post post = postMapper.selectOne(baseVisibleWrapper(viewer).eq(Post::getId, postId));
+        if (post == null) throw new NoSuchElementException("PO 不存在");
+        return toView(post, currentUser);
+    }
+
+    @Override
+    public List<PostDtos.PostView> linkedPosts(String kind, long targetId, CurrentUser currentUser, int limit) {
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer);
+        switch (kind) {
+            case "activity" -> wrapper.eq(Post::getActivityId, targetId);
+            case "task" -> wrapper.eq(Post::getTaskId, targetId);
+            default -> throw new IllegalArgumentException("kind 只能是 activity 或 task");
+        }
+        wrapper.orderByDesc(Post::getPublishedAt).orderByDesc(Post::getId)
+                .last("LIMIT " + Math.max(1, Math.min(50, limit)));
+        return toViews(postMapper.selectList(wrapper), currentUser);
     }
 
     @Transactional
@@ -861,6 +937,12 @@ public class PostService implements PostQueryApi, PostAdminApi {
         Map<Long, Major> majors = majorIds.isEmpty() ? Map.of() : majorMapper.selectList(new LambdaQueryWrapper<Major>().in(Major::getId, majorIds))
                 .stream().collect(Collectors.toMap(Major::getId, Function.identity(), (a, b) -> a));
 
+        // 6) 关联的活动、任务标题一次批量查完
+        Map<Long, ActivityParticipationApi.ActivityRef> activities = activityRefs.refs(posts.stream()
+                .map(Post::getActivityId).filter(Objects::nonNull).collect(Collectors.toSet()));
+        Map<Long, String> tasks = taskLookup.titles(posts.stream()
+                .map(Post::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet()));
+
         return posts.stream()
                 .map(post -> new PostDtos.PostView(
                         post.getId(), post.getBoard(), post.getSourceType(), post.getTitle(), post.getContent(), post.getExcerpt(),
@@ -871,7 +953,11 @@ public class PostService implements PostQueryApi, PostAdminApi {
                         authorView(authors.get(post.getAuthorId()), schools, colleges, majors),
                         post.getVerifiedAt() == null ? null : post.getVerifiedAt().toString(),
                         AppTime.toOffset(post.getExpiresAt()),
-                        isExpired(post, AppTime.nowLocal())
+                        isExpired(post, AppTime.nowLocal()),
+                        post.getActivityId() == null || !activities.containsKey(post.getActivityId()) ? null
+                                : new PostDtos.LinkRef(post.getActivityId(), activities.get(post.getActivityId()).title()),
+                        post.getTaskId() == null || !tasks.containsKey(post.getTaskId()) ? null
+                                : new PostDtos.LinkRef(post.getTaskId(), tasks.get(post.getTaskId()))
                 ))
                 .toList();
     }

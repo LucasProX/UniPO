@@ -33,6 +33,10 @@ struct PublicProfileView: View {
                     if let value {
                         header(value)
                         if let loadError { errorNotice(loadError) }
+                        if !value.isBlockedEitherWay {
+                            ProfileGrowthSection(uid: value.profile.publicUid)
+                                .padding(.horizontal, 20)
+                        }
                         if value.isBlockedEitherWay {
                             Text("暂时无法查看此用户的内容").uniFont(14).foregroundStyle(UniColor.secondary)
                         } else if loading && posts.isEmpty {

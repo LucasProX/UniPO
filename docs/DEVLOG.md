@@ -5041,3 +5041,13 @@ R04 最初的想法很直接：在 `unipo-minio` 容器里 `mc mirror` 到一个
 最后干脆不在容器里落任何文件：备份用 `mc ls --json` 列 key，再逐个 `docker exec ... mc cat` 流到宿主机；恢复逐个 `docker exec -i ... mc pipe` 从标准输入写回。对象多了会慢（每个对象一次 exec），校园规模先够用，量大以后换异机 `mc mirror` 增量。凭据也顺带解决了：Bitnami 镜像启动时已经用 root 账号配好 `local` 别名，脚本只用别名，密码不出现在任何参数里。
 
 核对脚本第一次在真实迁移出来的库上跑就报 `Illegal mix of collations for operation 'UNION'`：V1 的表用默认排序规则，后来的迁移是 `utf8mb4_unicode_ci`，把六张表的 URL 列 UNION 到一起就炸。每列先 `CONVERT(... USING utf8mb4) COLLATE utf8mb4_bin` 再合并。另一个差点漏掉的：awk 里用 `NR == FNR` 判断「第一个文件」，第一个文件为空时这个条件会落到第二个文件上，缺失列表一空就会把整张 media 表当成缺失——改成 `FILENAME == ARGV[1]`。
+
+## 2026-10-24 联动：帖子要查活动标题，差点让 PostService 和 ActivityService 成环
+
+做活动、帖子、成长、主页之间的联动时，帖子要知道「关联了哪场活动 / 哪个主线任务、叫什么」。最顺手的是在 `PostService` 里注入 `AchievementService` 查任务标题；但 `AchievementService` 已经依赖 `PostQueryApi`（实现就是 `PostService`，用来算发帖类任务），这样就成环了，Spring 6 默认不允许循环依赖，启动会直接拒绝。活动这边 `ActivityService` 依赖钱包、通知、审计、成就一长串，直接注入同样容易越绕越远。
+
+最后的做法是每个模块对外再开一个只查数据的小 facade：`ActivityParticipationApi.refs(ids)` 由已有的 `ActivityParticipationService`（只依赖 Mapper）实现，任务标题新开 `TaskLookupApi`，实现 `TaskLookupService` 也只依赖 `AchievementTaskMapper`。这类 facade 不依赖任何别的 Service，所以谁都能注入它而不成环。批量查，`toViews` 一次拿一页帖子的活动/任务标题，没有 N+1。
+
+公开成长接口一开始想挂在 `GrowthController` 上，可那个控制器的类级前缀是 `/api/growth`，写 `/../users/{uid}/growth` 这种路径 Spring 不认。单独开了 `PublicGrowthController` 挂 `/api/users/{uid}/growth`，`SecurityConfig` 白名单加 `/api/users/*/growth`。
+
+iOS 卡片上的关联标签最开始也想做成能点的按钮，直接跳到活动详情。但整张卡片本身就是一个 `Button`（点进帖子详情），里面再放按钮，`List`/`LazyVStack` 里点击会被外层吃掉或两个都触发。卡片上只做展示，帖子详情里的标签才可以点。

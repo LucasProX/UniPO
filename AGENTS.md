@@ -267,6 +267,7 @@ xcrun simctl launch booted com.unipo.app
 - **发帖图片一律转 JPEG**：相册原图可能是 HEIC，服务端只认 JPEG/PNG/GIF/WebP 文件头，`ComposeSheet` 上传前统一转成最长边 2048 的 JPEG；最多 9 张，标签最多 5 个。
 - **首页只放帖子流（2026-10-23）**：板块切换 + PO 列表，不再有品牌头、头像、学期卡和本周活动；成长和活动的入口都在「成长」页。
 - **校园活动界面**：入口是「成长」页顶部的子入口图块「校园活动」（`AchievementsView.entryGrid`，社团、二手等以后按同样的图块追加），`ActivityListView`（全部 / 本周 / 我报名的 / 参加过）、`ActivityDetailView`（主按钮按 phase 与 myStatus 切换）、「我的」里的我的活动与组织者「发布活动」。状态以服务端 `phase`/`myStatus`/`eligible` 为准，客户端不自行推断。签到页支持输入签到码和 VisionKit 扫码（不支持的设备隐藏扫码入口）；系统相机扫到 `unipo://checkin?...` 会经 `RootView.onOpenURL` 直接签到，`project.yml` 注册了 `unipo` scheme 与相机用途说明。组织者在活动详情左上角打开「签到码」大屏，屏幕常亮、按服务端给的秒数刷新。**LazyVStack 里的区块加载时不要渲染成 `EmptyView`**：零高度会被当作离屏，`.task` 被取消后又出现，形成请求—取消死循环（见 DEVLOG）。
+- **功能联动（2026-10-24，V33）**：帖子可带 `activityId` 或 `taskId`（`CreatePostRequest`），活动只能关联本校未取消的，任务必须存在；`PostView.activity/task` 带标题。活动详情「活动帖子」、任务详情「同学经验」、签到成功页「发帖记录现场」都打开带预设关联的 `ComposeSheet(initialLink:)`；帖子详情的关联标签可点开活动/任务，卡片上只展示（卡片本身是按钮，嵌套按钮会抢点击）。本人与他人主页都用 `ProfileGrowthSection` 读 `GET /users/{uid}/growth`。后端跨模块查标题走 `ActivityParticipationApi.refs` / `TaskLookupApi.titles`，它们是只依赖 Mapper 的独立 bean，别把实现挪进 `ActivityService` / `AchievementService`，否则和 `PostService` 成环。
 - **互动通知列表用 `listID`（类型 + id）做 ForEach 标识**：点赞、收藏、评论来自不同表，数字 id 会撞。
 - **「我的」是登录后专属**：未登录点 Dock 的「我的」不切 tab，直接 `auth.requireLogin()`；`ProfileView` 未登录不渲染任何游客态主页。
   登录/引导完成后由 RootView 的 `pendingProfileTab` 自动落到「我的」，别再往 ProfileView 里加登录按钮。

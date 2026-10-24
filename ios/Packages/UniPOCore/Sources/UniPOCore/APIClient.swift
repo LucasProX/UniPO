@@ -120,18 +120,36 @@ public actor APIClient {
     }
 
     public func createPost(title: String, content: String, board: String = "school",
-                           tags: [String] = [], images: [String] = []) async throws -> PostView {
-        try await request(
-            path: "posts",
-            method: "POST",
-            body: [
-                "board": board,
-                "title": title,
-                "content": content,
-                "tags": tags,
-                "images": images
-            ]
-        )
+                           tags: [String] = [], images: [String] = [], link: PostLink? = nil) async throws -> PostView {
+        var body: [String: Any] = [
+            "board": board,
+            "title": title,
+            "content": content,
+            "tags": tags,
+            "images": images
+        ]
+        switch link {
+        case .activity(let ref): body["activityId"] = ref.id
+        case .task(let ref): body["taskId"] = ref.id
+        case nil: break
+        }
+        return try await request(path: "posts", method: "POST", body: body)
+    }
+
+    public func post(id: Int64) async throws -> PostView {
+        try await request(path: "posts/\(id)")
+    }
+
+    /// 关联到活动或主线任务的帖子，最新在前。
+    public func linkedPosts(activityID: Int64? = nil, taskID: Int64? = nil, limit: Int = 20) async throws -> [PostView] {
+        var query = [URLQueryItem(name: "limit", value: String(limit))]
+        if let activityID { query.append(URLQueryItem(name: "activityId", value: String(activityID))) }
+        if let taskID { query.append(URLQueryItem(name: "taskId", value: String(taskID))) }
+        return try await request(path: "posts/linked", query: query)
+    }
+
+    public func publicGrowth(uid: String) async throws -> PublicGrowth {
+        try await request(path: "users/\(uid)/growth")
     }
 
     public func comments(postId: Int64) async throws -> [CommentView] {

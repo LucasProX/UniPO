@@ -13,16 +13,16 @@ import java.util.List;
 
 public interface NotificationMapper {
     @Insert("""
-            INSERT IGNORE INTO user_notifications (user_id, category, type, title, body, activity_id, dedupe_key, created_at)
-            VALUES (#{userId}, 'ACTIVITY', #{type}, #{title}, #{body}, #{activityId}, #{dedupeKey}, #{now})
+            INSERT IGNORE INTO user_notifications (user_id, category, type, title, body, activity_id, post_id, dedupe_key, created_at)
+            VALUES (#{userId}, #{category}, #{type}, #{title}, #{body}, #{activityId}, #{postId}, #{dedupeKey}, #{now})
             """)
-    int insert(@Param("userId") long userId, @Param("type") String type, @Param("title") String title,
-               @Param("body") String body, @Param("activityId") Long activityId, @Param("dedupeKey") String dedupeKey,
-               @Param("now") LocalDateTime now);
+    int insert(@Param("userId") long userId, @Param("category") String category, @Param("type") String type,
+               @Param("title") String title, @Param("body") String body, @Param("activityId") Long activityId,
+               @Param("postId") Long postId, @Param("dedupeKey") String dedupeKey, @Param("now") LocalDateTime now);
 
     @Select("""
             <script>
-            SELECT id, category, type, title, body, activity_id, read_at, created_at FROM user_notifications
+            SELECT id, category, type, title, body, activity_id, read_at, created_at, post_id FROM user_notifications
             WHERE user_id = #{userId}
               <if test="beforeId != null">AND id &lt; #{beforeId}</if>
             ORDER BY id DESC LIMIT #{limit}
@@ -37,7 +37,8 @@ public interface NotificationMapper {
             @Arg(column = "body", javaType = String.class),
             @Arg(column = "activity_id", javaType = Long.class),
             @Arg(column = "read_at", javaType = LocalDateTime.class),
-            @Arg(column = "created_at", javaType = LocalDateTime.class)
+            @Arg(column = "created_at", javaType = LocalDateTime.class),
+            @Arg(column = "post_id", javaType = Long.class)
     })
     List<Row> page(@Param("userId") long userId, @Param("beforeId") Long beforeId, @Param("limit") int limit);
 
@@ -49,5 +50,5 @@ public interface NotificationMapper {
     int readAll(@Param("userId") long userId, @Param("now") LocalDateTime now);
 
     record Row(Long id, String category, String type, String title, String body, Long activityId,
-               LocalDateTime readAt, LocalDateTime createdAt) {}
+               LocalDateTime readAt, LocalDateTime createdAt, Long postId) {}
 }

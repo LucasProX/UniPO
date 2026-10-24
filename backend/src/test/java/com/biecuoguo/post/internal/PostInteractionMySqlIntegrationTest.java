@@ -1351,7 +1351,11 @@ class PostInteractionMySqlIntegrationTest {
                     template.getMapper(UserMapper.class), template.getMapper(SchoolMapper.class),
                     template.getMapper(CollegeMapper.class), template.getMapper(MajorMapper.class),
                     new PresenceService(new MemoryPresenceStore()), experienceService, socialService,
-                    org.mockito.Mockito.mock(com.biecuoguo.admin.api.AdminAuditApi.class));
+                    org.mockito.Mockito.mock(com.biecuoguo.admin.api.AdminAuditApi.class),
+                    org.mockito.Mockito.mock(com.biecuoguo.activity.api.ActivityParticipationApi.class),
+                    org.mockito.Mockito.mock(com.biecuoguo.achievement.api.TaskLookupApi.class),
+                    org.mockito.Mockito.mock(com.biecuoguo.notification.api.NotificationApi.class),
+                    template.getMapper(com.biecuoguo.mapper.UserFollowMapper.class));
         }
 
         @Bean

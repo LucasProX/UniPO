@@ -126,15 +126,28 @@ struct PostCardView: View {
                 .truncationMode(.tail)
                 // 高度不够时只压缩正文，标题和标签保持完整。
                 .layoutPriority(-1)
-            if !post.tagList.isEmpty { tagRow(reserve: false) }
+            if !post.tagList.isEmpty || PostLinkChips.hasLinks(post) { tagRow(reserve: false) }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func tagRow(reserve: Bool) -> some View {
         HStack(spacing: 6) {
+            // 卡片整体可点进详情，关联标签在这里只展示；详情页里的标签才能点开活动/任务。
+            if let link = post.activity.map(PostLink.activity) ?? post.task.map(PostLink.task) {
+                HStack(spacing: 3) {
+                    Image(systemName: link.icon)
+                    Text(link.ref.title).lineLimit(1)
+                }
+                .uniFont(11, weight: .semibold)
+                .foregroundStyle(UniColor.blue)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(UniColor.blue.opacity(0.08), in: Capsule())
+                .layoutPriority(1)
+            }
             if post.tagList.isEmpty {
-                if reserve { UniChip("标签").hidden() }
+                if reserve && !PostLinkChips.hasLinks(post) { UniChip("标签").hidden() }
             } else {
                 ForEach(post.tagList.prefix(3), id: \.self) { tag in
                     UniChip(tag).lineLimit(1)

@@ -25,6 +25,25 @@ public class PostController {
         return ApiResponse.ok(postService.list(tab, currentUser(authentication)));
     }
 
+    @GetMapping("/{id:\\d+}")
+    public ApiResponse<PostDtos.PostView> detail(@PathVariable long id, Authentication authentication) {
+        return ApiResponse.ok(postService.detail(id, currentUser(authentication)));
+    }
+
+    /** 关联到某个活动或主线任务的帖子：?activityId= 或 ?taskId= 二选一。 */
+    @GetMapping("/linked")
+    public ApiResponse<java.util.List<PostDtos.PostView>> linked(@RequestParam(required = false) Long activityId,
+                                                                @RequestParam(required = false) Long taskId,
+                                                                @RequestParam(defaultValue = "20") int limit,
+                                                                Authentication authentication) {
+        if ((activityId == null) == (taskId == null)) {
+            throw new IllegalArgumentException("activityId 与 taskId 需要且只能给一个");
+        }
+        return ApiResponse.ok(activityId != null
+                ? postService.linkedPosts("activity", activityId, currentUser(authentication), limit)
+                : postService.linkedPosts("task", taskId, currentUser(authentication), limit));
+    }
+
     @GetMapping("/boards")
     public ApiResponse<List<PostDtos.BoardView>> boards(Authentication authentication) {
         return ApiResponse.ok(postService.boards(currentUser(authentication)));

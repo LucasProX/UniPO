@@ -222,6 +222,8 @@ struct PostDetailView: View {
                 .uniFont(24, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
 
+            if PostLinkChips.hasLinks(post) { PostLinkChips(post: post) }
+
             Text(post.content)
                 .uniFont(15)
                 .foregroundStyle(UniColor.inkSoft)

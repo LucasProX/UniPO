@@ -114,6 +114,13 @@ struct TaskDetailView: View {
 
             guidesSection(detail)
 
+            LinkedPostsSection(
+                title: "同学经验",
+                emptyText: "还没有同学分享这项任务的经验",
+                composeTitle: "写经验",
+                link: .task(PostLinkRef(id: detail.id, title: detail.title))
+            )
+
             if let badge = detail.badge {
                 card(title: "完成可得徽章") {
                     HStack(spacing: 12) {

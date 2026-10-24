@@ -42,6 +42,10 @@ public class Post {
     private java.time.LocalDate verifiedAt;
     /** 攻略有效期；过期后不再作为任务的有效攻略。 */
     private LocalDateTime expiresAt;
+    /** 关联的校园活动（V33）。 */
+    private Long activityId;
+    /** 关联的主线任务（V33）。 */
+    private Long taskId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

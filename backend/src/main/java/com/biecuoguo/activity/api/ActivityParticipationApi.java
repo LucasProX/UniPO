@@ -37,4 +37,9 @@ public interface ActivityParticipationApi {
     record AttendanceSummary(int count, List<LocalDateTime> earliestCheckins) {}
 
     AttendanceSummary attendance(long userId, int earliest);
+
+    /** 帖子挂活动时用：活动标题、所属学校和状态。 */
+    record ActivityRef(long id, String title, long schoolId, String status) {}
+
+    java.util.Map<Long, ActivityRef> refs(java.util.Collection<Long> ids);
 }

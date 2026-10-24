@@ -10,6 +10,7 @@ import com.biecuoguo.domain.User;
 import com.biecuoguo.error.StateConflictException;
 import com.biecuoguo.growth.api.GrowthDtos;
 import com.biecuoguo.mapper.UserMapper;
+import com.biecuoguo.social.api.BlockQueryApi;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,9 +43,11 @@ public class GrowthPlanService {
     private final UserMapper userMapper;
     private final AchievementQueryApi achievements;
     private final ActivityParticipationApi participation;
+    private final BlockQueryApi blockQueryApi;
 
     public GrowthPlanService(UserTaskMapper taskMapper, UserMapper userMapper, AchievementQueryApi achievements,
-                             ActivityParticipationApi participation) {
+                             ActivityParticipationApi participation, BlockQueryApi blockQueryApi) {
+        this.blockQueryApi = blockQueryApi;
         this.taskMapper = taskMapper;
         this.userMapper = userMapper;
         this.achievements = achievements;
@@ -298,6 +301,36 @@ public class GrowthPlanService {
     /** DATETIME 不存小数秒；先截断，响应与之后读回的时间才一致。 */
     private static LocalDateTime now() {
         return AppTime.nowLocal().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+    }
+
+    static final int RECENT_ACTIVITY_LIMIT = 6;
+
+    /**
+     * 主页上的成长展示。徽章与参加过的活动本来就是公开信息（活动报名名单公开）；
+     * 年级/学期跟随对方的「展示年级」开关；双方任一方拉黑时只返回等级，不列活动和徽章。
+     */
+    @Transactional(readOnly = true)
+    public GrowthDtos.PublicGrowthView publicGrowth(String uid, Long viewerId) {
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getPublicUid, uid));
+        if (user == null || !"active".equals(user.getStatus())) throw new NoSuchElementException("用户不存在或已注销");
+        boolean mine = viewerId != null && viewerId.equals(user.getId());
+        boolean hidden = viewerId != null && !mine && blockQueryApi.isBlockedEitherWay(viewerId, user.getId());
+        String term = null;
+        if (user.getEntryYear() != null && (mine || Boolean.TRUE.equals(user.getShowGrade()))) {
+            term = GrowthTerms.termLabel(GrowthTerms.termIndex(user.getEntryYear(), AppTime.nowLocal().toLocalDate()));
+        }
+        int level = user.getLevel() == null ? 1 : user.getLevel();
+        int xp = user.getXp() == null ? 0 : user.getXp();
+        if (hidden) {
+            return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, null, 0, List.of(), List.of());
+        }
+        List<AchievementDtos.BadgeView> badges = achievements.view(user.getId()).badges().stream()
+                .filter(AchievementDtos.BadgeView::earned).toList();
+        ActivityParticipationApi.AttendanceSummary attendance = participation.attendance(user.getId(), 1);
+        List<GrowthDtos.RecentActivity> recent = participation.attended(user.getId(), RECENT_ACTIVITY_LIMIT).stream()
+                .map(item -> new GrowthDtos.RecentActivity(item.activityId(), item.title(), item.category(), item.startsAt()))
+                .toList();
+        return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, term, attendance.count(), badges, recent);
     }
 
     private User user(long userId) {

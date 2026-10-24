@@ -86,6 +86,14 @@ export interface PostView {
   /** 攻略有效期；过期后不再作为任务的有效攻略 */
   expiresAt?: string;
   expired?: boolean;
+  /** 关联的校园活动 / 主线任务（联动） */
+  activity?: PostLinkRef;
+  task?: PostLinkRef;
+}
+
+export interface PostLinkRef {
+  id: number;
+  title: string;
 }
 
 export interface CommentView {

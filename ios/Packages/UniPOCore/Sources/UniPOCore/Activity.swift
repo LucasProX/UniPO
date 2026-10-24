@@ -223,6 +223,8 @@ public struct AppNotification: Codable, Identifiable, Hashable {
     public let activityId: Int64?
     public let read: Bool
     public let createdAt: String?
+    /// 与帖子相关的通知（关注的人发帖等）。
+    public let postId: Int64?
 }
 
 public struct AppNotificationPage: Codable {

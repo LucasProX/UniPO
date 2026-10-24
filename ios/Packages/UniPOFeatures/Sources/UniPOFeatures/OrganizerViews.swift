@@ -277,6 +277,8 @@ struct NotificationsView: View {
     @State private var page: AppNotificationPage?
     @State private var errorMessage: String?
     @State private var selected: Int64?
+    @State private var openedPost: PostView?
+    @State private var postError: String?
 
     var body: some View {
         List {
@@ -288,13 +290,13 @@ struct NotificationsView: View {
                         UniLoadingState("加载通知…")
                     } else {
                         UniEmptyState(icon: "bell", title: "还没有通知",
-                                      message: "活动审核、变更、取消、开始提醒和签到结果会出现在这里")
+                                      message: "活动审核、变更、提醒、签到结果和关注的人发的新帖会出现在这里")
                     }
                 }
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
             }
             ForEach(items) { item in
-                Button { selected = item.activityId } label: {
+                Button { open(item) } label: {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: icon(item.type))
                             .uniFont(15, weight: .semibold)
@@ -315,7 +317,7 @@ struct NotificationsView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(item.activityId == nil)
+                .disabled(item.activityId == nil && item.postId == nil)
                 .listRowBackground(Color.clear)
                 .onAppear { if item.id == items.last?.id { Task { await loadMore() } } }
             }
@@ -326,6 +328,25 @@ struct NotificationsView: View {
         .task(id: auth.profile?.id) { await load() }
         .sheet(item: Binding(get: { selected.map(ActivityRef.init) }, set: { selected = $0?.id })) { ref in
             NavigationStack { ActivityDetailView(activityID: ref.id) }.environment(auth)
+        }
+        .sheet(item: $openedPost) { post in
+            PostDetailView(post: post).environment(auth)
+        }
+        .alert("打不开这条帖子", isPresented: Binding(get: { postError != nil }, set: { if !$0 { postError = nil } })) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text(postError ?? "")
+        }
+    }
+
+    private func open(_ item: AppNotification) {
+        if let postId = item.postId {
+            Task {
+                do { openedPost = try await APIClient.shared.post(id: postId) }
+                catch { postError = (error as? LocalizedError)?.errorDescription ?? "帖子可能已删除" }
+            }
+        } else {
+            selected = item.activityId
         }
     }
 
@@ -359,6 +380,7 @@ struct NotificationsView: View {
         case "REGISTRATION_REJECTED", "CHECKIN_REVOKED": return "exclamationmark.circle.fill"
         case "ACTIVITY_CANCELLED": return "xmark.circle.fill"
         case "ACTIVITY_CHANGED": return "calendar.badge.exclamationmark"
+        case "FOLLOWING_POST": return "square.text.square.fill"
         default: return "bell.fill"
         }
     }

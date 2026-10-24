@@ -73,6 +73,20 @@ public final class GrowthDtos {
             int activityCoins
     ) {}
 
+    /** 他人主页上的成长：等级、已获得的徽章、参加过的活动。学期只在对方公开年级时给出。 */
+    public record PublicGrowthView(
+            int level,
+            String levelTitle,
+            int xp,
+            String termLabel,
+            int attendedCount,
+            List<AchievementDtos.BadgeView> badges,
+            /** 最近参加的活动，最多 6 场。 */
+            List<RecentActivity> recentActivities
+    ) {}
+
+    public record RecentActivity(long id, String title, String category, OffsetDateTime startsAt) {}
+
     /** 成长档案：按学期倒序归档参加过的活动、获得的徽章和完成数。 */
     public record ArchiveView(
             int attendedTotal,

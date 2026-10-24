@@ -145,6 +145,7 @@ struct ProfileView: View {
 
             statsCard
             activityShortcuts
+            ProfileGrowthSection(uid: profile.publicUid)
         }
         .padding(.horizontal, 20)
         .padding(.top, 6)

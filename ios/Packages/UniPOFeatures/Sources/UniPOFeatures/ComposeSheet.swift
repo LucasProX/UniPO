@@ -7,6 +7,11 @@ import UniPOUI
 struct ComposeSheet: View {
     @Environment(AuthStore.self) private var auth
     @Environment(\.dismiss) private var dismiss
+    /// 从活动（签到后）或主线任务进入时带上的关联；用户可以去掉。
+    var initialLink: PostLink? = nil
+    var initialTitle: String = ""
+    @State private var link: PostLink?
+    @State private var linkInitialized = false
 
     @State private var board = "school"
     @State private var title = ""
@@ -46,6 +51,12 @@ struct ComposeSheet: View {
                 }
             }
             .navigationTitle("发一条校园 PO")
+            .onAppear {
+                guard !linkInitialized else { return }
+                linkInitialized = true
+                link = initialLink
+                if title.isEmpty { title = initialTitle }
+            }
             .onChange(of: pickerItems) { _, items in
                 guard !items.isEmpty else { return }
                 Task { await upload(items) }
@@ -91,6 +102,28 @@ struct ComposeSheet: View {
     private var editor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if let link {
+                    HStack(spacing: 8) {
+                        Image(systemName: link.icon)
+                            .uniFont(12, weight: .semibold)
+                        Text("\(link.label) · \(link.ref.title)")
+                            .uniFont(12, weight: .semibold)
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Button {
+                            self.link = nil
+                        } label: {
+                            Image(systemName: "xmark")
+                                .uniFont(11, weight: .bold)
+                                .frame(width: 44, height: 32)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("取消关联")
+                    }
+                    .foregroundStyle(UniColor.blue)
+                    .padding(.leading, 12)
+                    .background(UniColor.blue.opacity(0.08), in: Capsule())
+                }
                 HStack(spacing: 8) {
                     ForEach(boards, id: \.0) { item in
                         Button {
@@ -364,7 +397,8 @@ struct ComposeSheet: View {
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
                 board: board,
                 tags: tags,
-                images: imageURLs
+                images: imageURLs,
+                link: link
             )
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             NotificationCenter.default.post(name: .unipoPostPublished, object: nil)
@@ -377,5 +411,14 @@ struct ComposeSheet: View {
 
     private func isCurrentIdentity(userID: Int64, revision: UInt64) -> Bool {
         auth.profile?.id == userID && auth.authenticationRevision == revision
+    }
+}
+
+extension PostLink {
+    var icon: String {
+        switch self {
+        case .activity: return "flag.2.crossed"
+        case .task: return "map"
+        }
     }
 }

@@ -26,6 +26,7 @@ struct CheckinSheet: View {
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var result: ActivityCheckinResult?
+    @State private var composing = false
     @FocusState private var codeFocused: Bool
 
     var body: some View {
@@ -113,8 +114,20 @@ struct CheckinSheet: View {
                 Text(result.alreadyCheckedIn ? "奖励已在首次签到时发放" : "奖励已到账")
                     .uniFont(12, weight: .semibold).foregroundStyle(UniColor.tertiary)
             }
+            Button { composing = true } label: {
+                Label("发帖记录现场", systemImage: "square.and.pencil")
+                    .uniFont(15, weight: .semibold)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(.bordered)
+            .tint(UniColor.blue)
+            .padding(.top, 8)
         }
         .padding(.top, 40)
+        .sheet(isPresented: $composing) {
+            ComposeSheet(initialLink: .activity(PostLinkRef(id: result.activity.id, title: result.activity.title)))
+                .environment(auth)
+        }
     }
 
     private func reward(_ value: String, _ unit: String, _ icon: String) -> some View {
