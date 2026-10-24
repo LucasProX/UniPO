@@ -342,6 +342,7 @@ xcrun simctl launch booted com.unipo.app
 - [`docs/DP03-VERIFICATION.md`](docs/DP03-VERIFICATION.md) — 拉黑、关注、私信的真实依赖证据、并发边界与剩余 UI 验收
 - [`docs/DP14-VERIFICATION.md`](docs/DP14-VERIFICATION.md) — 持久投递、进程退出恢复、小连接池与分设备进度证据
 - [`docs/DP15-VERIFICATION.md`](docs/DP15-VERIFICATION.md) — 消息分页、断线增量补齐、发送幂等与 iOS 重试证据
+- [`docs/REVIEW-2026-10-24.md`](docs/REVIEW-2026-10-24.md) — 多角色项目审查：是否偏离核心、缺失功能与入口、UI 与架构待办，以及按批次排好的下一步清单（F/U/E 编号）
 - [`docs/ROADMAP-SMALL-TASKS.md`](docs/ROADMAP-SMALL-TASKS.md) — 暂停长期大目标后的可独立领取小任务路线图
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改
 
