@@ -152,9 +152,10 @@ curl -s http://127.0.0.1/actuator/health          # 只有 health 对外，其�
 
 ## 7. MySQL 备份与恢复（R03）
 
-> **现状（2026-10-23）**：脚本已在仓库，本机隔离演练通过；**服务器上还没装 cron、也没跑过第一次备份**，
-> `unipo_mysql_data` 目前仍是唯一副本（10-21 那次手工 `database.sql.gz` 除外）。安装是单独一步，需要负责人同意后按 §7.3 执行。
-> 媒体（MinIO）备份是 R04，告警是 R05，都不在这里。
+> **现状（2026-10-24 已安装）**：负责人同意后，脚本已装到 `/opt/unipo/scripts/ops/`（root 所有，哈希与仓库一致），
+> `/etc/cron.d/unipo-backup` 每天 03:30 备份 `biecuoguo`、03:45 备份 `unipo_test`（留 7 份），03:40 / 03:50 跟着备份对应媒体桶（§7.7）。
+> 首次手动备份：`biecuoguo` 10 KB、1 秒，`unipo_test` 36 KB、0 秒，`sha256sum -c` 全部 OK；在 cron 的最小环境里重跑一遍也成功。
+> 备份和数据仍在同一块盘上，异机副本（§7.4）和备份失败告警（R05）还没做。
 
 ### 7.1 目标与边界
 
@@ -306,8 +307,10 @@ bash scripts/integration/mysql-backup-restore.sh
 
 ## 7.7 媒体备份与恢复（R04）
 
-> **现状（2026-10-24）**：脚本已在仓库，本机隔离演练通过，服务器 test 数据只读核对通过；**服务器上还没装 cron、也没做过第一次媒体备份**。
-> 安装需负责人同意，和 §7.3 的 MySQL cron 一起装。
+> **现状（2026-10-24 已安装）**：和 §7.3 一起装在 `/etc/cron.d/unipo-backup`，日志 `/var/log/unipo-media-backup.log`，归档在 `/var/backups/unipo/media`（700）。
+> 首次备份：`campuspo` 1 个对象 67 B、0 秒，`unipo-test-media` 10 个对象 9.7 MB、2 秒，校验全部 OK。
+> 引用核对：生产 `biecuoguo × campuspo` 1 个对象、15 条引用、0 缺失（生产库还没有 `users.background_url`、`activities` 两处，核对时自动跳过）；
+> 测试 `unipo_test × unipo-test-media` 10 个对象、53 条引用、0 缺失。
 
 **为什么要「联合」**：图片对象在 MinIO，谁用了哪张图记在 MySQL（`media_objects` 记 bucket + key；`post_images.url`、`posts.cover_url`、
 `users.avatar_url` / `background_url`、`activities.cover_url`、`spotlights.image_url` 里是 `/api/media/{id}/content` 或公开读 URL）。
@@ -347,7 +350,6 @@ sudo scripts/ops/media-reference-check.sh --mysql-container unipo-mysql --databa
 ## 8. 还没做的（按优先级）
 
 1. **HTTPS**：现在 80 明文。上域名 + Caddy（`Caddyfile` 已就绪）或云厂商证书，然后把 `AUTH_COOKIE_SECURE` 改成 true。
-2. **备份**：MySQL 备份/恢复脚本和本机演练已就绪（§7），服务器 cron、首次服务器演练和异机副本还没做；媒体备份脚本和本机演练已就绪（§7.7），同样还没装到服务器；备份告警（R05）未开始。
-   在 cron 装上之前，`unipo_mysql_data` 仍是唯一的持续副本。
+2. **备份**：数据库与媒体的每日备份已装到服务器（§7.3、§7.7，2026-10-24）。还缺：异机副本（备份与数据同盘）、服务器上的恢复演练、备份失败告警（R05）。
 3. **多实例**：`STATE_BACKEND=memory` + WebSocket 单机 broker，扩到两台之前必须先切 Redis（或直接换 CloudBase）。
 4. **漏洞面**：80 端口直接对外，限流是唯一的第一道闸；数据库/MinIO 目前靠「只绑 127.0.0.1」保护，别改。

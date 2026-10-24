@@ -67,15 +67,24 @@ ops_sql "$mysql_container" "SELECT id, object_key FROM \`$database\`.media_objec
 # Every business column that may hold a media URL: source<TAB>url. The tables were created by different migrations
 # with different collations, so each value is converted before the UNION.
 ref_columns="post_images:url posts:cover_url users:avatar_url users:background_url activities:cover_url spotlights:image_url"
+# Older schemas (production lagging behind test) may lack some of them; only existing columns are checked.
+existing_columns="$(ops_sql "$mysql_container" "SELECT CONCAT(table_name, ':', column_name) FROM information_schema.columns
+  WHERE table_schema = '$database'")"
 ref_sql=''
+skipped=''
 for ref in $ref_columns; do
   table="${ref%%:*}"; column="${ref#*:}"
+  if ! grep -qx -- "$ref" <<<"$existing_columns"; then
+    skipped="$skipped $table.$column"
+    continue
+  fi
   [ -z "$ref_sql" ] || ref_sql="$ref_sql UNION ALL "
   label="$table"; [ "$table" = post_images ] || label="$table.$column"
   ref_sql="${ref_sql}SELECT CONVERT('$label' USING utf8mb4) COLLATE utf8mb4_bin, CONVERT($column USING utf8mb4) COLLATE utf8mb4_bin
     FROM \`$database\`.$table WHERE $column IS NOT NULL AND $column <> ''"
 done
-ops_sql "$mysql_container" "$ref_sql" >"$work/refs"
+if [ -n "$ref_sql" ]; then ops_sql "$mysql_container" "$ref_sql" >"$work/refs"; else : >"$work/refs"; fi
+[ -z "$skipped" ] || ops_log "Not in this schema, skipped:$skipped"
 
 # 1) media rows whose object is gone
 cut -f2 "$work/media" | LC_ALL=C sort -u >"$work/media_keys"
