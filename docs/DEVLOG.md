@@ -5033,3 +5033,11 @@ M03 验收一开始就卡住：消息页顶部「正在确认登录状态…」�
 以后挑方向要把大图、小尺寸和主屏一起看，不能只在大画板上磨轮廓。`scripts/design/explore-brand.swift` 用同一份路径生成 1024 RGB PNG、SVG、尺寸取样和矢量提案册，避免大图和小图变成两份不同的字形。十款放在 `output/brand-exploration/2026-10-24/`，选定前保留现有 App 图标；正式字标与深色、着色变体等选定方向后一起收口。
 
 这轮用户选了 01，并把 P 整字定为品牌蓝 `#2F6BFF`，覆盖最初只允许蓝色小点缀的限制。白底用墨黑 U，墨黑底用白 U，P 两版同色。改色直接读取选中 SVG 的两条原始路径，没有重新排字体，保证选中的字形、字距和位置不漂移。交付在 `output/brand/2026-10-24-01-blue-p/`，包括两版不透明 PNG、透明白色着色版、路径 SVG / 双页 PDF、横版字标和一页规范；生成入口是 `scripts/design/render-brand-assets.swift`。应用工程里的图标这次没有替换。
+
+## 2026-10-24 媒体备份：MinIO 容器里连 tar 和 rm 都没有
+
+R04 最初的想法很直接：在 `unipo-minio` 容器里 `mc mirror` 到一个临时目录，再 `tar czf -` 流出来。上服务器一看，Bitnami 这个镜像里只有 `mc` 和极少几个命令，`tar`、`find`、`rm`、`cat` 全都没有。改成 `mc mirror` 到容器 `/tmp` 再用 `docker cp` 拷出（`docker cp` 是 daemon 打包，不依赖容器里的 tar），备份跑通了；但恢复时反方向 `docker cp` 进去的文件属主是宿主机用户，模式还是我脚本 `umask 077` 下的 600，容器里以 uid 1001 跑的 `mc` 先是读不了（「Insufficient permissions」），加了 `chmod a+rX` 能读了，最后用 `mc rm` 清理临时目录时又删不掉——等于在生产容器的 `/tmp` 里留一整份用户原图。中间还在 Mac 上撞到 `chmod -- dir` 不认 `--`、bsdtar 把 `com.apple.provenance` 扩展属性打进包里、Linux daemon 写不了 xattr 这两个坑（现在打包统一加 `--no-xattrs` 和 `COPYFILE_DISABLE=1`）。
+
+最后干脆不在容器里落任何文件：备份用 `mc ls --json` 列 key，再逐个 `docker exec ... mc cat` 流到宿主机；恢复逐个 `docker exec -i ... mc pipe` 从标准输入写回。对象多了会慢（每个对象一次 exec），校园规模先够用，量大以后换异机 `mc mirror` 增量。凭据也顺带解决了：Bitnami 镜像启动时已经用 root 账号配好 `local` 别名，脚本只用别名，密码不出现在任何参数里。
+
+核对脚本第一次在真实迁移出来的库上跑就报 `Illegal mix of collations for operation 'UNION'`：V1 的表用默认排序规则，后来的迁移是 `utf8mb4_unicode_ci`，把六张表的 URL 列 UNION 到一起就炸。每列先 `CONVERT(... USING utf8mb4) COLLATE utf8mb4_bin` 再合并。另一个差点漏掉的：awk 里用 `NR == FNR` 判断「第一个文件」，第一个文件为空时这个条件会落到第二个文件上，缺失列表一空就会把整张 media 表当成缺失——改成 `FILENAME == ARGV[1]`。

@@ -304,10 +304,50 @@ bash scripts/integration/mysql-backup-restore.sh
 
 还没验证的：服务器上的首次备份和恢复演练、实际数据量下的导入时长、cron、异机副本、备份失败告警、媒体与数据库引用的联合恢复。
 
+## 7.7 媒体备份与恢复（R04）
+
+> **现状（2026-10-24）**：脚本已在仓库，本机隔离演练通过，服务器 test 数据只读核对通过；**服务器上还没装 cron、也没做过第一次媒体备份**。
+> 安装需负责人同意，和 §7.3 的 MySQL cron 一起装。
+
+**为什么要「联合」**：图片对象在 MinIO，谁用了哪张图记在 MySQL（`media_objects` 记 bucket + key；`post_images.url`、`posts.cover_url`、
+`users.avatar_url` / `background_url`、`activities.cover_url`、`spotlights.image_url` 里是 `/api/media/{id}/content` 或公开读 URL）。
+只恢复其中一边，帖子会显示裂图。对象只增不改，所以**先跑 `mysql-backup.sh`、紧接着跑 `media-backup.sh`**：数据库里引用到的对象一定已经在桶里，
+备份期间新传的对象只是多出来的孤儿，无害。
+
+| 脚本 | 作用 |
+|---|---|
+| `scripts/ops/media-backup.sh` | 只读环境变量（`UNIPO_MEDIA_BACKUP_DIR`、`UNIPO_MEDIA_BUCKET` 必填；`UNIPO_MEDIA_CONTAINER` 默认 `unipo-minio`、`UNIPO_MEDIA_MC_ALIAS` 默认 `local`、`UNIPO_MEDIA_RETENTION` 默认 7）。用容器里 Bitnami 预置的 `mc` 别名逐个 `mc cat` 拉出对象（不在容器里落临时文件，不经过任何密钥参数），写 `<桶>-<UTC>.tar.gz` + `.sha256` + `.manifest.tsv`（每个对象的 sha256、字节数、key），先写 `.partial` 再改名，按份数保留 |
+| `scripts/ops/media-restore.sh` | `--archive --container --bucket` 必填。先核对 `.sha256`、gzip、路径（无绝对/`..`/链接）、逐对象哈希与清单，**全部通过才连 MinIO**；目标桶必须不存在或为空；`unipo-minio`、`campuspo`、含 prod/production/live 的名字不加 `--allow-production-target` 一律拒绝；逐个 `mc pipe` 写入后核对对象数 |
+| `scripts/ops/media-reference-check.sh` | 只读。拿数据库的引用对桶里的对象：缺对象的 `media_objects` 行、指向缺失对象或不存在 media id 的业务引用都会列出并以退出码 3 结束；没人记录的对象只计为孤儿。恢复后、以及日常巡检都可以跑 |
+
+服务器安装（**需同意后执行，本次未执行**）：把 `mysql-ops-lib.sh` 和三个 `media-*.sh` 放到 `/opt/unipo/scripts/ops/`，先手跑一次：
+
+```bash
+cd /opt/unipo
+sudo UNIPO_MEDIA_BACKUP_DIR=/var/backups/unipo/media UNIPO_MEDIA_BUCKET=campuspo scripts/ops/media-backup.sh
+sudo scripts/ops/media-reference-check.sh --mysql-container unipo-mysql --database biecuoguo --minio-container unipo-minio --bucket campuspo
+```
+
+再在 §7.3 的 cron 文件里，紧跟 MySQL 那一行加一行（03:30 数据库，03:40 媒体）：
+
+```bash
+40 3 * * * root UNIPO_MEDIA_BACKUP_DIR=/var/backups/unipo/media UNIPO_MEDIA_BUCKET=campuspo /opt/unipo/scripts/ops/media-backup.sh >>/var/log/unipo-media-backup.log 2>&1
+```
+
+每次是全量归档，图片多了以后要换成增量（例如异机 `mc mirror`）；异机副本同 §7.4，归档里是用户上传的原图，上传前同样要加密。
+
+恢复顺序：`mysql-restore.sh` 进空库 → `media-restore.sh` 进空桶 → 若桶名变了，把 `media_objects.bucket`（公开读时还有 URL 里的桶名）改成新桶 →
+`media-reference-check.sh` 退出 0 再切流量。
+
+**本机演练**：`bash scripts/integration/media-backup-restore.sh`（需先 `mvn -DskipTests package`、本机缓存 `mysql:8.4` 与 `bitnamilegacy/minio`）。
+2026-10-24 run `70bd0cd128529324` 通过：5 个对象（含带空格的 key、一个孤儿）与帖子图片、头像、公开读背景引用一起备份；
+篡改归档、生产名、生产模式名、非空桶四条拒绝路径都拒绝；恢复后 5 个对象逐字节一致、核对 0 缺失；删掉 2 个对象后核对报出 2 条缺失（含公开读引用），
+再删掉一条 `media_objects` 后报出悬空引用。服务器 test 实例只读核对：10 个对象、10 条记录、53 条引用，0 缺失。
+
 ## 8. 还没做的（按优先级）
 
 1. **HTTPS**：现在 80 明文。上域名 + Caddy（`Caddyfile` 已就绪）或云厂商证书，然后把 `AUTH_COOKIE_SECURE` 改成 true。
-2. **备份**：MySQL 备份/恢复脚本和本机演练已就绪（§7），服务器 cron、首次服务器演练和异机副本还没做；媒体备份（R04）和备份告警（R05）未开始。
+2. **备份**：MySQL 备份/恢复脚本和本机演练已就绪（§7），服务器 cron、首次服务器演练和异机副本还没做；媒体备份脚本和本机演练已就绪（§7.7），同样还没装到服务器；备份告警（R05）未开始。
    在 cron 装上之前，`unipo_mysql_data` 仍是唯一的持续副本。
 3. **多实例**：`STATE_BACKEND=memory` + WebSocket 单机 broker，扩到两台之前必须先切 Redis（或直接换 CloudBase）。
 4. **漏洞面**：80 端口直接对外，限流是唯一的第一道闸；数据库/MinIO 目前靠「只绑 127.0.0.1」保护，别改。

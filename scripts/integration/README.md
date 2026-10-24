@@ -213,3 +213,10 @@ Redis 夹具证明 R06 存储撤销与 TTL，MySQL 夹具证明设备身份领�
 每轮建两个带本轮 run 标签的容器：源库映射固定 `127.0.0.1:22316`（占用即退出），目标库不映射端口，数据目录都是 tmpfs；随机 root/应用密码只走环境变量。源库先由容器内部写入 marker，`FixtureFlywayMigrate.java` 用后端 jar 里打包的 Flyway、连接器和迁移（先与源码目录逐文件比对）核对 marker 后从 V1 迁到最新版本，再导入 `mysql-backup-restore-seed.sql` 的合成数据。随后调用 `scripts/ops/mysql-backup.sh` 与 `mysql-restore.sh` 跑正常路径、保留策略和九条拒绝路径，最后比对两库的逐表行数、`CHECKSUM TABLE`、information_schema 结构指纹与特殊值。退出时核对容器 ID、run 标签和项目网络后清理，产物留在 `.logs/r03/{运行ID}/`。
 
 2026-10-23 最终 run `f1d350bd9a88e138` 通过，结果与边界见 [部署文档](../../docs/DEPLOY-SERVER.md) §7.6。它证明脚本和恢复链路正确，不代表服务器已装定时备份，也不代表生产数据量下的恢复耗时。
+
+## R04 媒体备份恢复演练
+
+先 `cd backend && mvn -DskipTests package`，再从仓库根执行 `bash scripts/integration/media-backup-restore.sh`。需要本机已缓存 `docker.m.daocloud.io/library/mysql:8.4` 和 `bitnamilegacy/minio:latest`（可用 `UNIPO_R04_MYSQL_IMAGE` / `UNIPO_R04_MINIO_IMAGE` 指定），不拉镜像、不读 `.env`。
+
+每轮建四个带 run 标签的容器（源/目标 MySQL、源/目标 MinIO，数据都在 tmpfs），源库固定映射 `127.0.0.1:22317`。源库沿用 R03 的 marker + `FixtureFlywayMigrate.java` 迁到最新版本并导入 R03 的合成用户和帖子，再上传 5 个带真实 JPEG/PNG 文件头的对象、记录其中 4 个并挂到帖子图片、头像和公开读背景上。之后依次跑 `mysql-backup.sh`、`media-backup.sh`、四条恢复拒绝路径、`mysql-restore.sh`、`media-restore.sh`、逐字节比对和 `media-reference-check.sh` 的通过 / 缺失 / 悬空三种结果。退出时核对 run 标签后清理，产物在 `.logs/r04/{运行ID}/`。结果见 [部署文档](../../docs/DEPLOY-SERVER.md) §7.7。
+

@@ -1,0 +1,59 @@
+services:
+  source-mysql:
+    image: ${UNIPO_R04_MYSQL_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R04_SOURCE_MYSQL:?container name is required}
+    labels:
+      com.unipo.fixture: r04-media-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${UNIPO_R04_SOURCE_ROOT_PASSWORD:?password is required}
+      MYSQL_DATABASE: ${UNIPO_R03_SCHEMA:?schema is required}
+      MYSQL_USER: unipo_fixture
+      MYSQL_PASSWORD: ${UNIPO_R03_SOURCE_PASSWORD:?password is required}
+      TZ: Asia/Shanghai
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --innodb-buffer-pool-size=64M,
+              --innodb-redo-log-capacity=64M, --max-connections=30, --performance-schema=OFF, --mysqlx=OFF]
+    ports:
+      - "127.0.0.1:22317:3306"
+    tmpfs:
+      - /var/lib/mysql
+
+  target-mysql:
+    image: ${UNIPO_R04_MYSQL_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R04_TARGET_MYSQL:?container name is required}
+    labels:
+      com.unipo.fixture: r04-media-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${UNIPO_R04_TARGET_ROOT_PASSWORD:?password is required}
+      TZ: Asia/Shanghai
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_unicode_ci, --innodb-buffer-pool-size=64M,
+              --innodb-redo-log-capacity=64M, --max-connections=30, --performance-schema=OFF, --mysqlx=OFF]
+    tmpfs:
+      - /var/lib/mysql
+
+  # Same Bitnami MinIO image as the server; it preconfigures the "local" mc alias the ops scripts use.
+  source-minio:
+    image: ${UNIPO_R04_MINIO_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R04_SOURCE_MINIO:?container name is required}
+    labels:
+      com.unipo.fixture: r04-media-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    environment:
+      MINIO_ROOT_USER: r04fixture
+      MINIO_ROOT_PASSWORD: ${UNIPO_R04_MINIO_PASSWORD:?password is required}
+      MINIO_DEFAULT_BUCKETS: ${UNIPO_R04_SOURCE_BUCKET:?bucket is required}
+    tmpfs:
+      - /bitnami/minio/data
+
+  target-minio:
+    image: ${UNIPO_R04_MINIO_IMAGE:?fixture image is required}
+    container_name: ${UNIPO_R04_TARGET_MINIO:?container name is required}
+    labels:
+      com.unipo.fixture: r04-media-backup
+      com.unipo.fixture.run: ${UNIPO_R03_RUN_ID:?fixture run id is required}
+    environment:
+      MINIO_ROOT_USER: r04fixture
+      MINIO_ROOT_PASSWORD: ${UNIPO_R04_MINIO_PASSWORD:?password is required}
+    tmpfs:
+      - /bitnami/minio/data
