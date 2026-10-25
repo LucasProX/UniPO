@@ -43,7 +43,8 @@ class UserProfileServiceTest {
     private final PostQueryApi posts = mock(PostQueryApi.class);
     private final UserService service = new UserService(users, preferences, follows, blocks,
             mock(UserCheckInMapper.class), mock(DeviceTokenMapper.class), presence,
-            mock(PasswordEncoder.class), mock(SessionService.class), posts, mock(ExperienceService.class));
+            mock(PasswordEncoder.class), mock(SessionService.class), posts, mock(ExperienceService.class),
+            mock(com.biecuoguo.mapper.SchoolMapper.class), mock(com.biecuoguo.permission.api.PermissionApi.class));
     private User owner;
     private UserPreference preference;
     private boolean viewerFollowsOwner;

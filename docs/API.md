@@ -282,13 +282,16 @@
 | GET | `/api/admin/analytics/overview` | 用户/帖子/已发布/评论总量 |
 | GET | `/api/admin/users` | ADMIN 用户列表，不返回 passwordHash/authVersion |
 | PUT | `/api/admin/users/{id}/status` | ADMIN 封禁/解封（仅 `active` / `disabled`），同时撤销旧身份 |
-| PUT | `/api/admin/users/{id}/role` | ADMIN 改合法角色与运营范围，同时撤销旧身份；非法角色返回 400 |
-| GET | `/api/admin/posts?keyword=&status=&limit=` | 帖子搜索（含已下架） |
+| PUT | `/api/admin/users/{id}/role` | ADMIN。**旧接口，保留兼容**（ADR-0006）：`ADMIN`/`USER` 改平台角色（`USER` 同时撤销此人全部授权）；运营角色撤销现有授权后，按此人当前资料里的学校/学院/专业新建一条授权（理由「旧接口授予」，到学年结束）；资料缺对应范围返回 400。同时撤销旧会话；审计在同一事务必需写入。新代码用 `/api/admin/role-grants` |
+| GET | `/api/admin/role-grants?userUid=&scopeType=&scopeId=&includeInactive=` | ADMIN。授权列表（最多 200 条，默认只看有效的） |
+| POST | `/api/admin/role-grants` | ADMIN。`{userUid, role: CONTENT_EDITOR\|SCHOOL_OPERATOR\|COLLEGE_OPERATOR\|MAJOR_OPERATOR\|MODERATOR, scopeId?, reason, expiresAt?}`；范围层级由角色决定（内容编辑不带 scopeId），范围不存在 400，同一人同角色同范围已有有效授权 409，`expiresAt` 省略为当前学年 8 月 31 日 23:59:59 |
+| POST | `/api/admin/role-grants/{id}/revoke` | ADMIN。`{reason}`；已撤销 409。撤销后下一次请求即失去权限 |
+| GET | `/api/admin/posts?keyword=&status=&limit=` | 帖子搜索（含已下架），**只返回调用者授权范围内的帖子**：学校授权看全校，学院授权看本院的院 PO 与专业 PO，专业授权看本专业的专业 PO。`PATCH /{id}` 改 `status` 需要下架权限、改 `pinned` 需要置顶权限、改 `official`/`dontMiss` 需要官方帖权限，均按帖子范围判断，越权 403 |
 | PATCH | `/api/admin/posts/{id}` | 置顶/官方/免错过/上下架（部分更新） |
 | GET/POST/PUT/DELETE | `/api/admin/spotlights[/{id}]` | 轮播位 CRUD（见 9.2） |
 | GET | `/api/admin/reports/daily?days=14` | 近 N 天新增用户/发布帖子（缺失日期补 0） |
 | GET | `/api/admin/monitor/summary` | 健康状态、运行时长、堆内存、实时连接、事件/限流计数 |
-| GET | `/api/admin/audit-logs?limit=50` | 最近审计记录 |
+| GET | `/api/admin/audit-logs?limit=50` | 最近审计记录。2026-10-25 起与报表、监控、轮播管理一样**只给 ADMIN** |
 
 `PATCH /api/admin/posts/{id}` 请求体：`{"pinned":true,"official":false,"dontMiss":true,"status":"removed"}`，
 只更新传入的字段；`status` 只允许 `published / removed / draft`。
@@ -352,6 +355,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | PUT | `/api/users/me/growth-background` | 保存成长背景 `{schoolId?, collegeId?, majorId?, entryYear}`（需登录） |
 | GET | `/api/users/{uid}/growth` | 公开主页的成长：`level/levelTitle/xp/attendedCount/badges/recentActivities`；`termLabel` 只在本人或对方开启 `showGrade` 时返回；双方任一拉黑只返回等级 |
 | GET | `/api/users/search?q=` | 按昵称（全文）或完整 UID 找人，UID 精确命中排第一，最多 20 条，返回 `FollowUserView`（`following` 为我是否已关注、`followedAt` 为空）；需登录，排除本人、非 active 与双向拉黑；每 IP 每分钟 60 次 |
+| GET | `/api/users/me/capabilities` | 需登录。`{platformRole: ADMIN\|USER, grants:[{role, roleLabel, scopeType, scopeId, scopeName, expiresAt, …}], capabilities:[{capability: "activity.publish", scopes: ["SCHOOL:1"]}]}`；平台管理员的每个能力范围为 `PLATFORM`。客户端按它显示运营入口 |
 | GET | `/api/users/me/blocks` | 我拉黑的人（最近在前，最多 200），返回 `{publicUid,nickname,avatarUrl,blockedAt}`；需登录。解除用 `DELETE /api/users/{uid}/block` |
 | POST | `/api/feedback` | 意见反馈 `{category: bug\|suggestion\|content\|other, content 5–1000 字, appVersion?, device?}`，返回反馈 id；需登录，每 IP 每小时 10 次 |
 | GET | `/api/admin/feedback?beforeId=` | 反馈列表（每页 50，按 id 倒序，`nextBeforeId` 翻页）；**仅 ADMIN** |

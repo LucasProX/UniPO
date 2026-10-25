@@ -35,10 +35,8 @@ public class AdminController {
 
     @PutMapping("/users/{id}/role")
     public ApiResponse<User> updateUserRole(@PathVariable Long id, @Valid @RequestBody AdminDtos.UserRoleRequest request) {
-        User updated = adminService.updateUserRole(id, request);
-        auditApi.record(SecurityUtils.currentUser(), "user.role.update", "user", id,
-                "role=" + request.role() + " scope=" + request.operatorScope());
-        return ApiResponse.ok(updated);
+        // 审计在 applyLegacyRole 的事务里以必需审计写入。
+        return ApiResponse.ok(adminService.updateUserRole(id, request, SecurityUtils.currentUser()));
     }
 
     @GetMapping("/analytics/overview")

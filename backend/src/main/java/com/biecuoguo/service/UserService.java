@@ -7,6 +7,7 @@ import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.mapper.*;
+import com.biecuoguo.permission.api.PermissionApi;
 import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.security.SessionService;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -33,11 +34,16 @@ public class UserService {
     /** 帖子统计走 facade，不直接注入 PostMapper（ADR-0002）。 */
     private final PostQueryApi postQueryApi;
     private final ExperienceService experienceService;
+    private final SchoolMapper schoolMapper;
+    private final PermissionApi permissions;
 
     public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
                        UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper, DeviceTokenMapper deviceTokenMapper,
                        PresenceService presenceService, PasswordEncoder passwordEncoder, SessionService sessionService,
-                       PostQueryApi postQueryApi, ExperienceService experienceService) {
+                       PostQueryApi postQueryApi, ExperienceService experienceService, SchoolMapper schoolMapper,
+                       PermissionApi permissions) {
+        this.schoolMapper = schoolMapper;
+        this.permissions = permissions;
         this.userMapper = userMapper;
         this.preferenceMapper = preferenceMapper;
         this.userFollowMapper = userFollowMapper;
@@ -78,7 +84,15 @@ public class UserService {
         if (request.backgroundUrl() != null) {
             user.setBackgroundUrl(backgroundUrl(request.backgroundUrl()));
         }
-        if (request.schoolId() != null) user.setSchoolId(request.schoolId());
+        if (request.schoolId() != null && !request.schoolId().equals(user.getSchoolId())) {
+            School school = schoolMapper.selectById(request.schoolId());
+            if (school == null || !"active".equals(school.getStatus())) throw new IllegalArgumentException("请选择有效的学校");
+            // 运营授权绑定在原学校上（ADR-0006），先撤销再换。
+            if (permissions.hasScopedGrant(userId)) {
+                throw new com.biecuoguo.error.StateConflictException("你在当前学校担任运营角色，换学校前请联系管理员撤销授权");
+            }
+            user.setSchoolId(request.schoolId());
+        }
         if (request.collegeId() != null) user.setCollegeId(request.collegeId());
         if (request.majorId() != null) user.setMajorId(request.majorId());
         if (request.college() != null) user.setCollege(request.college());

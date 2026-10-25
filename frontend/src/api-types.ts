@@ -676,6 +676,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/role-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_2"];
+        put?: never;
+        post: operations["grant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/role-grants/{id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["revoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/message-deliveries/{id}/retry": {
         parameters: {
             query?: never;
@@ -699,7 +731,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_4"];
+        get: operations["list_5"];
         put?: never;
         post: operations["add"];
         delete?: never;
@@ -1100,6 +1132,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["newFollowers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/me/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["capabilities"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1659,7 +1707,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_2"];
+        get: operations["list_3"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1675,7 +1723,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2552,6 +2600,47 @@ export interface components {
             password: string;
             confirmPassword?: string;
         };
+        GrantRequest: {
+            userUid: string;
+            /** @enum {string} */
+            role: "CONTENT_EDITOR" | "SCHOOL_OPERATOR" | "COLLEGE_OPERATOR" | "MAJOR_OPERATOR" | "MODERATOR";
+            /** Format: int64 */
+            scopeId?: number;
+            reason: string;
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        ApiResponseGrantView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["GrantView"];
+            requestId?: string;
+        };
+        GrantView: {
+            /** Format: int64 */
+            id?: number;
+            userUid?: string;
+            userNickname?: string;
+            role?: string;
+            roleLabel?: string;
+            scopeType?: string;
+            /** Format: int64 */
+            scopeId?: number;
+            scopeName?: string;
+            reason?: string;
+            grantedByUid?: string;
+            /** Format: date-time */
+            startsAt?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            revokeReason?: string;
+            active?: boolean;
+        };
+        RevokeRequest: {
+            reason: string;
+        };
         RetryRequest: {
             /** Format: int32 */
             expectedAttempts: number;
@@ -2901,6 +2990,21 @@ export interface components {
             /** Format: int64 */
             count?: number;
         };
+        ApiResponseCapabilitiesView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CapabilitiesView"];
+            requestId?: string;
+        };
+        CapabilitiesView: {
+            platformRole?: string;
+            grants?: components["schemas"]["GrantView"][];
+            capabilities?: components["schemas"]["CapabilityScope"][];
+        };
+        CapabilityScope: {
+            capability?: string;
+            scopes?: string[];
+        };
         ApiResponseListBlockedUserView: {
             code?: string;
             message?: string;
@@ -3237,6 +3341,12 @@ export interface components {
             code?: string;
             message?: string;
             data?: components["schemas"]["User"][];
+            requestId?: string;
+        };
+        ApiResponseListGrantView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["GrantView"][];
             requestId?: string;
         };
         ApiResponseReportView: {
@@ -4860,6 +4970,81 @@ export interface operations {
             };
         };
     };
+    list_2: {
+        parameters: {
+            query?: {
+                userUid?: string;
+                scopeType?: "PLATFORM" | "SCHOOL" | "COLLEGE" | "MAJOR";
+                scopeId?: number;
+                includeInactive?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseListGrantView"];
+                };
+            };
+        };
+    };
+    grant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrantRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseGrantView"];
+                };
+            };
+        };
+    };
+    revoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseGrantView"];
+                };
+            };
+        };
+    };
     retry: {
         parameters: {
             query?: never;
@@ -4886,7 +5071,7 @@ export interface operations {
             };
         };
     };
-    list_4: {
+    list_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -5543,6 +5728,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseNewFollowersView"];
+                };
+            };
+        };
+    };
+    capabilities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCapabilitiesView"];
                 };
             };
         };
@@ -6300,7 +6505,7 @@ export interface operations {
             };
         };
     };
-    list_2: {
+    list_3: {
         parameters: {
             query?: {
                 state?: string;
@@ -6325,7 +6530,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: {
                 beforeId?: number;

@@ -32,7 +32,8 @@ import java.util.List;
 public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter,
-                                              SessionService sessionService, ObjectMapper objectMapper) throws Exception {
+                                              SessionService sessionService, ObjectMapper objectMapper,
+                                              AdminAccessManager adminAccess) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -81,7 +82,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/admin/message-deliveries", "/api/admin/message-deliveries/**").hasRole("ADMIN")
                         // 反馈正文可能带个人信息，只给管理员看。
                         .requestMatchers("/api/admin/feedback", "/api/admin/feedback/**").hasRole("ADMIN")
-                        .requestMatchers("/api/admin/**").hasAnyRole("OPERATOR", "SCHOOL_OPERATOR", "COLLEGE_OPERATOR", "MAJOR_OPERATOR", "ADMIN")
+                        // 全平台的审计、报表、监控、轮播与授权管理：第一期只给平台管理员（ADR-0006）。
+                        .requestMatchers("/api/admin/audit-logs", "/api/admin/audit-logs/**", "/api/admin/reports/**",
+                                "/api/admin/monitor/**", "/api/admin/analytics/**", "/api/admin/spotlights",
+                                "/api/admin/spotlights/**", "/api/admin/role-grants", "/api/admin/role-grants/**").hasRole("ADMIN")
+                        // 其余后台接口：平台管理员或持有有效范围授权；能不能动具体对象由业务服务按范围判断。
+                        .requestMatchers("/api/admin/**").access(adminAccess)
                         .requestMatchers(HttpMethod.GET, "/api/messages/conversations/page",
                                 "/api/messages/conversations/*", "/api/messages/conversations/*/messages/page").authenticated()
                         // WebSocket 握手必须放行：浏览器握手带不了 Authorization 头，

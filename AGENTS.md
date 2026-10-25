@@ -35,10 +35,11 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/spotlight/` | 首页轮播模块：`api/`（SpotlightDtos）+ `internal/`（公开只读 Controller、后台 CRUD、Service、实体/Mapper）。`source=MANUAL/ALGORITHM` 预留算法位 |
 | `backend/src/main/java/com/biecuoguo/post/` | 帖子模块：`api/`（PostDtos、**PostQueryApi 查询 facade**）+ `internal/`（PostService、两个 Controller、8 个实体、8 个 Mapper）。UserService / AdminService / 用户相关 Controller 只依赖 `PostQueryApi`，不再碰帖子表 |
 | `backend/src/main/java/com/biecuoguo/activity/` | 校园活动（2026-10-23）：`api/`（ActivityDtos）+ `internal/`（规则、Service、Controller、活动与报名实体/Mapper）。规划见 `docs/ACTIVITY-PLAN.md` |
+| `backend/src/main/java/com/biecuoguo/permission/` | 角色权限（2026-10-25，ADR-0006）：`api/`（Capability、Role、Grants、PermissionApi、RoleGrantApi）+ `internal/`（只依赖 Mapper 的 PermissionService、负责授予撤销的 RoleGrantService、控制器）。所有模块的权限判断都经 `PermissionApi` |
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
 | `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V35，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V36，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -89,7 +90,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V35）：
+后端（Flyway 自动执行 V1–V36）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -188,7 +189,7 @@ xcrun simctl launch booted com.unipo.app
   数值是「挡脚本」不是「精确配额」，本地连着跑三四遍 `smoke.ps1` 有可能撞到，等窗口过去或临时 `RATE_LIMIT_ENABLED=false`。
   **部署在代理后面时必须开 `RATE_LIMIT_TRUST_FORWARDED_FOR`**（compose 里默认 true）：否则所有请求的 `remoteAddr` 都是代理地址，全站共用一个桶。
 - DTO 一律 Java `record`，放 `dto/XxxDtos`，命名 `XxxRequest` / `XxxView`。
-- 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的 `hasAnyRole`；业务角色判断在 Service 手写（如 `PostService.canPostOfficial`）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
+- 权限：`SecurityConfig` 白名单 + `/api/admin/**` 的粗粒度门（`AdminAccessManager`：平台管理员或至少一条有效授权）；对具体对象能不能做，由 Service 用 `PermissionApi` 按对象范围判断（见下条与 ADR-0006）。**新增受保护接口必须同时改 `SecurityConfig`**，否则要么被拦要么裸奔。`/api/v1` 独有端点（如 `/api/v1/posts/page`，由 `web/v1/` 包的 Controller 自己挂前缀、不会被改写）要单独加白名单。
 - **不要用 `WebMvcConfigurer.configurePathMatch` 的 `addPathPrefix` 做版本前缀**（2026-10-20 实测）：它会重建整套路径匹配配置，导致 `AntPathRequestMatcher` 白名单全局失效，连 `/api/schools`、`/api/auth/login` 都变 401。用过滤器改 URI 的方式，见 `security/ApiVersionPrefixFilterConfig.java`。
 - 新增环境变量：`APP_TIME_ZONE`、`APP_DEFAULT_SCHOOL_ID`、`RATE_LIMIT_ENABLED`、`RATE_LIMIT_TRUST_FORWARDED_FOR`、
   `STATE_BACKEND`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 只加在 `.env.example` 与 `docker-compose.yml`，
@@ -196,7 +197,8 @@ xcrun simctl launch booted com.unipo.app
   `MESSAGE_OUTBOX_ENABLED`、`MESSAGE_OUTBOX_POLL_INTERVAL_MS` 同样为可选变量（默认 true / 1000ms），仅维护示例和 Compose；暂停 worker 会保留待投递事实。
 - **新模块的 Mapper 要加进 `BieCuoGuoApplication` 的 `@MapperScan` 列表**：它是按包逐个列出的，漏了单测照样全绿，只有起 Spring 上下文才报 `required a bean of type ...Mapper`（2026-10-23 部署 activity 时踩过，Flyway 已先跑完迁移）。
 - **MyBatis 注解 SQL 只有包在 `<script>` 里才写 `&lt;`**：普通 `@Select` 字符串原样发给 MySQL，`&lt;` 会变成语法错误；不在 `<script>` 里直接写 `<`。
-- **成长奖励只来自认证组织者的活动**：`ActivityRules` 决定谁能发布（ADMIN 或带 operatorScope 的运营）、能面向哪些范围、单场奖励上限，服务端拒绝越权与超额，不静默截断。报名、取消、递补都先 `ActivityMapper.lockById` 锁活动行再改计数。内容只限同校，本校所有人可见活动，范围只限制报名。签到：动态二维码是 HMAC(活动密钥, 30 秒时间片) 加 4 位签到码，密钥与签到码绝不进视图或日志；签到事务锁顺序为报名行 → 用户行（经验）→ 钱包行，金币只经 `WalletApi.credit` / `debit` 进出，余额只由流水推进。组织者操作（审核、补签、撤销签到、编辑、取消）只限发布者本人或 ADMIN；撤销签到与取消活动写 `recordRequired` 审计。**业务状态原因用 `StateConflictException`（409）返回**，`AccessDeniedException` 会被统一替换成「没有权限执行该操作」，用户看不到具体原因。
+- **角色与权限走范围授权（2026-10-25，V36，ADR-0006）**：平台管理员是 `users.role = 'ADMIN'`；其余运营权限只认 `role_grants`（角色 × PLATFORM/SCHOOL/COLLEGE/MAJOR 范围，带授予人、理由、到期、撤销）。能力清单与角色模板在 `permission.api.Capability` / `Role`，**写在代码里，不做在线可编辑的角色表**；判断一律 `permissions.grantsOf(...)` 后 `can(能力, ScopeTarget)`，默认拒绝。**权限范围不能再从用户资料取**（以前院运营改了自己的学院就能替别的学院发活动）；`users.role/operator_scope` 只是展示缓存，由 `RoleGrantService` 在授予、撤销和每小时重算，除 `ADMIN` 外任何判断都不读它。授权不进 JWT，撤销后下一次请求即生效，所以授予与撤销范围授权不推进身份版本。授予与撤销第一期只有平台管理员（`/api/admin/role-grants`），与必需审计同事务，默认到学年结束 8 月 31 日；旧 `PUT /admin/users/{id}/role` 保留兼容。有运营授权的人不能自己换学校（409）。审计日志、报表、监控、轮播与授权管理只给平台管理员。演示运营的授权由 `DemoOperatorGrantSeeder` 在应用就绪后补（只在 seed-demo-data 打开时）。
+- **成长奖励只来自认证组织者的活动**：谁能发布、能面向哪些范围、单场奖励上限都来自发布授权（`Grants.rewardCap`，上限是 `Role` 的属性），服务端拒绝越权与超额，不静默截断。报名、取消、递补都先 `ActivityMapper.lockById` 锁活动行再改计数。内容只限同校，本校所有人可见活动，范围只限制报名。签到：动态二维码是 HMAC(活动密钥, 30 秒时间片) 加 4 位签到码，密钥与签到码绝不进视图或日志；签到事务锁顺序为报名行 → 用户行（经验）→ 钱包行，金币只经 `WalletApi.credit` / `debit` 进出，余额只由流水推进。组织者操作（审核、补签、撤销签到、编辑、取消）要求覆盖活动面向范围的 `activity.manage` 授权（发布者本人也一样，换届撤销后由同范围或上级运营接手）；撤销签到与取消活动写 `recordRequired` 审计。**业务状态原因用 `StateConflictException`（409）返回**，`AccessDeniedException` 会被统一替换成「没有权限执行该操作」，用户看不到具体原因。
 - **有状态的东西都走 `com.biecuoguo.state` 的三个接口**（`RevocationStore` / `PresenceStore` / `RateLimitStore`）：
   各有一对 memory / redis 实现，由 `app.state.backend`（`STATE_BACKEND`）选，默认 `memory`。
   **不要在业务代码里直接 new 一个 Map 存这类状态**——那样多实例部署时「A 退出登录 B 还认」的坑会再出现一次（Q-4）。
@@ -205,7 +207,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V35 只增不改，下一次迁移按实际最高版本递增（当前应为 `V36__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V36 只增不改，下一次迁移按实际最高版本递增（当前应为 `V37__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -343,7 +345,7 @@ xcrun simctl launch booted com.unipo.app
 - [`docs/DP03-VERIFICATION.md`](docs/DP03-VERIFICATION.md) — 拉黑、关注、私信的真实依赖证据、并发边界与剩余 UI 验收
 - [`docs/DP14-VERIFICATION.md`](docs/DP14-VERIFICATION.md) — 持久投递、进程退出恢复、小连接池与分设备进度证据
 - [`docs/DP15-VERIFICATION.md`](docs/DP15-VERIFICATION.md) — 消息分页、断线增量补齐、发送幂等与 iOS 重试证据
-- [`docs/ROLE-PERMISSION-PLAN.md`](docs/ROLE-PERMISSION-PLAN.md) — 角色与权限系统现状研究与方案（提议）：现有越权漏洞、范围授权模型、迁移与分期
+- [`docs/ROLE-PERMISSION-PLAN.md`](docs/ROLE-PERMISSION-PLAN.md) — 角色与权限系统研究与方案：越权漏洞、范围授权模型、迁移与分期（第一期已实现，决定见 ADR-0006）
 - [`docs/REVIEW-2026-10-24.md`](docs/REVIEW-2026-10-24.md) — 多角色项目审查：是否偏离核心、缺失功能与入口、UI 与架构待办，以及按批次排好的下一步清单（F/U/E 编号）
 - [`docs/ROADMAP-SMALL-TASKS.md`](docs/ROADMAP-SMALL-TASKS.md) — 暂停长期大目标后的可独立领取小任务路线图
 - [`docs/DEVLOG.md`](docs/DEVLOG.md) — **开发手记**：踩过的坑、当时的思路、为什么这么改

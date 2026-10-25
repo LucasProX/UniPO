@@ -3,6 +3,9 @@ package com.biecuoguo.achievement.internal;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.biecuoguo.achievement.api.AchievementDtos;
 import com.biecuoguo.admin.api.AdminAuditApi;
+import com.biecuoguo.permission.api.Capability;
+import com.biecuoguo.permission.api.Grants;
+import com.biecuoguo.permission.api.PermissionApi;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.error.StateConflictException;
 import com.biecuoguo.post.api.PostAdminApi;
@@ -30,19 +33,26 @@ public class TaskGuideAdminService {
     private final TaskGuidePostMapper guideMapper;
     private final PostAdminApi postAdminApi;
     private final AdminAuditApi audit;
+    private final PermissionApi permissions;
 
     public TaskGuideAdminService(AchievementTaskMapper taskMapper, TaskGuidePostMapper guideMapper,
-                                 PostAdminApi postAdminApi, AdminAuditApi audit) {
+                                 PostAdminApi postAdminApi, AdminAuditApi audit, PermissionApi permissions) {
+        this.permissions = permissions;
         this.taskMapper = taskMapper;
         this.guideMapper = guideMapper;
         this.postAdminApi = postAdminApi;
         this.audit = audit;
     }
 
+    /** 只列出 actor 有 guide.manage 权限的帖子：主线任务是全平台共用的，各校只看见、只能动自己学校的攻略。 */
     @Transactional(readOnly = true)
-    public List<AchievementDtos.GuideLinkView> list(long taskId) {
+    public List<AchievementDtos.GuideLinkView> list(long taskId, CurrentUser actor) {
         requireTask(taskId);
-        List<TaskGuidePost> links = links(taskId);
+        Grants grants = permissions.grantsOf(actor);
+        List<TaskGuidePost> links = links(taskId).stream()
+                .filter(link -> postAdminApi.scopeOf(link.getPostId())
+                        .map(target -> grants.can(Capability.GUIDE_MANAGE, target)).orElse(grants.platformAdmin()))
+                .toList();
         Map<Long, PostDtos.PostView> posts = postAdminApi.byIds(links.stream().map(TaskGuidePost::getPostId).toList())
                 .stream().collect(Collectors.toMap(PostDtos.PostView::id, Function.identity()));
         return links.stream().map(link -> new AchievementDtos.GuideLinkView(
@@ -56,10 +66,11 @@ public class TaskGuideAdminService {
         if (taskMapper.lockById(taskId) == null) throw new NoSuchElementException("任务不存在");
         List<PostDtos.PostView> post = postAdminApi.byIds(List.of(request.postId()));
         if (post.isEmpty()) throw new NoSuchElementException("帖子不存在");
+        permissions.require(actor, Capability.GUIDE_MANAGE, postAdminApi.scopeOf(request.postId()).orElseThrow());
         List<TaskGuidePost> existing = links(taskId);
         // 已经关联过的直接幂等返回，不因为帖子之后过期或下架而报错。
         if (existing.stream().anyMatch(link -> link.getPostId().equals(request.postId()))) {
-            return list(taskId);
+            return list(taskId, actor);
         }
         if (!"published".equals(post.get(0).status())) throw new StateConflictException("只能关联已发布的帖子");
         if (Boolean.TRUE.equals(post.get(0).expired())) throw new StateConflictException("这篇帖子已过有效期，请先续期");
@@ -78,18 +89,22 @@ public class TaskGuideAdminService {
             // 唯一键兜底：重复关联视为成功
         }
         audit.recordRequired(actor, "TASK_GUIDE_ADD", "achievement_task", taskId, "post=" + request.postId());
-        return list(taskId);
+        return list(taskId, actor);
     }
 
     @Transactional
     public List<AchievementDtos.GuideLinkView> remove(long taskId, long postId, CurrentUser actor) {
         if (taskMapper.lockById(taskId) == null) throw new NoSuchElementException("任务不存在");
+        // 帖子已被删除时只有平台管理员能清理这条关联。
+        Grants grants = permissions.grantsOf(actor);
+        boolean allowed = postAdminApi.scopeOf(postId).map(t -> grants.can(Capability.GUIDE_MANAGE, t)).orElse(grants.platformAdmin());
+        if (!allowed) throw new org.springframework.security.access.AccessDeniedException("没有权限执行该操作");
         int removed = guideMapper.delete(new LambdaQueryWrapper<TaskGuidePost>()
                 .eq(TaskGuidePost::getTaskId, taskId).eq(TaskGuidePost::getPostId, postId));
         if (removed > 0) {
             audit.recordRequired(actor, "TASK_GUIDE_REMOVE", "achievement_task", taskId, "post=" + postId);
         }
-        return list(taskId);
+        return list(taskId, actor);
     }
 
     private List<TaskGuidePost> links(long taskId) {

@@ -8,6 +8,12 @@ import com.biecuoguo.domain.User;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.config.SearchText;
+import com.biecuoguo.permission.api.Capability;
+import com.biecuoguo.permission.api.Grant;
+import com.biecuoguo.permission.api.Grants;
+import com.biecuoguo.permission.api.PermissionApi;
+import com.biecuoguo.permission.api.ScopeTarget;
+import com.biecuoguo.permission.api.ScopeType;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.biecuoguo.domain.*;
@@ -60,9 +66,12 @@ public class PostService implements PostQueryApi, PostAdminApi {
     private final NotificationApi notifications;
     private final UserFollowMapper followMapper;
 
+    private final PermissionApi permissions;
+
     public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi, AdminAuditApi auditApi,
                        ActivityParticipationApi activityRefs, TaskLookupApi taskLookup, NotificationApi notifications,
-                       UserFollowMapper followMapper) {
+                       UserFollowMapper followMapper, PermissionApi permissions) {
+        this.permissions = permissions;
         this.auditApi = auditApi;
         this.activityRefs = activityRefs;
         this.taskLookup = taskLookup;
@@ -285,9 +294,13 @@ public class PostService implements PostQueryApi, PostAdminApi {
         post.setExcerpt(excerpt(request.content()));
         post.setCoverUrl(firstNonBlank(request.coverUrl(), null));
         post.setRiskLevel(firstNonBlank(request.riskLevel(), "normal"));
-        post.setOfficial(canPostOfficial(author, request.board()) && Boolean.TRUE.equals(request.official()));
-        post.setDontMiss(Boolean.TRUE.equals(request.dontMiss()) && canPostOfficial(author, request.board()));
-        post.setPinned(Boolean.TRUE.equals(request.pinned()) && "ADMIN".equals(author.getRole()));
+        // 官方、别错过、置顶都按授权范围判断（ADR-0006），帖子所在范围由板块和作者此刻的学校、学院、专业决定。
+        Grants grants = permissions.grantsOf(author.getId());
+        ScopeTarget target = postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId());
+        boolean official = grants.can(Capability.POST_OFFICIAL, target);
+        post.setOfficial(official && Boolean.TRUE.equals(request.official()));
+        post.setDontMiss(Boolean.TRUE.equals(request.dontMiss()) && official);
+        post.setPinned(Boolean.TRUE.equals(request.pinned()) && grants.can(Capability.POST_FEATURE, target));
         post.setDeadlineAt(AppTime.toLocal(request.deadlineAt()));
         post.setMissConsequence(request.missConsequence());
         post.setNextAction(request.nextAction());
@@ -629,13 +642,29 @@ public class PostService implements PostQueryApi, PostAdminApi {
         return new PostDtos.ShareResponse("/posts/" + postId, share.getResultShareCount());
     }
 
+    /** 后台能看到哪些帖子：有任一帖子管理能力的授权范围之内；平台级不限。 */
+    private static final List<Capability> ADMIN_POST_CAPABILITIES = List.of(Capability.POST_MODERATE,
+            Capability.POST_FEATURE, Capability.POST_OFFICIAL, Capability.POST_VALIDITY, Capability.GUIDE_MANAGE);
+
     @Override
-    public List<PostDtos.PostView> search(String keyword, String status, int limit) {
+    public List<PostDtos.PostView> search(String keyword, String status, int limit, CurrentUser actor) {
         int safeLimit = Math.max(1, Math.min(limit, 100));
         LambdaQueryWrapper<Post> wrapper = new LambdaQueryWrapper<Post>()
                 .eq(status != null && !status.isBlank(), Post::getStatus, status)
                 .orderByDesc(Post::getId)
                 .last("LIMIT " + safeLimit);
+        Grants grants = permissions.grantsOf(actor);
+        List<Grant> scoped = ADMIN_POST_CAPABILITIES.stream().flatMap(c -> grants.with(c).stream()).distinct().toList();
+        boolean unrestricted = grants.platformAdmin() || scoped.stream().anyMatch(g -> g.scopeType() == ScopeType.PLATFORM);
+        if (!unrestricted) {
+            if (scoped.isEmpty()) return List.of();
+            wrapper.and(w -> {
+                for (int i = 0; i < scoped.size(); i++) {
+                    Grant grant = scoped.get(i);
+                    if (i == 0) w.nested(x -> withinGrant(x, grant)); else w.or(x -> withinGrant(x, grant));
+                }
+            });
+        }
         if (keyword != null && !keyword.isBlank()) {
             String like = "%" + keyword.trim() + "%";
             wrapper.and(w -> w.like(Post::getTitle, like).or().like(Post::getContent, like));
@@ -643,12 +672,49 @@ public class PostService implements PostQueryApi, PostAdminApi {
         return toViews(postMapper.selectList(wrapper), null);
     }
 
+    /** 与 {@link #postTarget} 的口径一致：学校授权管全校；学院授权只管本院的院 PO 和专业 PO；专业授权只管本专业的专业 PO。 */
+    private static void withinGrant(LambdaQueryWrapper<Post> w, Grant grant) {
+        switch (grant.scopeType()) {
+            case SCHOOL -> w.eq(Post::getSchoolId, grant.scopeId());
+            case COLLEGE -> w.eq(Post::getSchoolId, grant.schoolId()).eq(Post::getCollegeId, grant.scopeId())
+                    .in(Post::getBoard, List.of("college", "major"));
+            case MAJOR -> w.eq(Post::getSchoolId, grant.schoolId()).eq(Post::getMajorId, grant.scopeId())
+                    .eq(Post::getBoard, "major");
+            case PLATFORM -> { }
+        }
+    }
+
+    /** 帖子所在范围：校 PO 和推荐属于学校；院 PO 属于作者学院；专业 PO 属于作者专业。 */
+    static ScopeTarget postTarget(String board, Long schoolId, Long collegeId, Long majorId) {
+        long school = schoolId == null ? 0L : schoolId;
+        return switch (board == null ? "" : board) {
+            case "college" -> new ScopeTarget(school, collegeId, null);
+            case "major" -> new ScopeTarget(school, collegeId, majorId);
+            default -> ScopeTarget.school(school);
+        };
+    }
+
+    @Override
+    public java.util.Optional<ScopeTarget> scopeOf(long postId) {
+        Post post = postMapper.selectById(postId);
+        return post == null ? java.util.Optional.empty()
+                : java.util.Optional.of(postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()));
+    }
+
     @Override
     @Transactional
-    public PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status) {
+    public PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status,
+                                      CurrentUser actor) {
         Post post = postMapper.lockById(postId);
         if (post == null) {
             throw new NoSuchElementException("帖子不存在");
+        }
+        Grants grants = permissions.grantsOf(actor);
+        ScopeTarget target = postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId());
+        if ((status != null && !grants.can(Capability.POST_MODERATE, target))
+                || (pinned != null && !grants.can(Capability.POST_FEATURE, target))
+                || ((official != null || dontMiss != null) && !grants.can(Capability.POST_OFFICIAL, target))) {
+            throw new AccessDeniedException("没有权限处理这条帖子");
         }
         if (status != null) {
             if (!Set.of("published", "removed", "draft").contains(status)) {
@@ -1055,6 +1121,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (post == null) {
             throw new NoSuchElementException("帖子不存在");
         }
+        permissions.require(actor, Capability.POST_VALIDITY,
+                postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()));
         LocalDateTime expires = expiresAt == null ? null : AppTime.toLocal(expiresAt);
         postMapper.update(null, new LambdaUpdateWrapper<Post>().eq(Post::getId, postId)
                 .set(Post::getVerifiedAt, verifiedAt)
@@ -1246,18 +1314,6 @@ public class PostService implements PostQueryApi, PostAdminApi {
         return comment;
     }
 
-
-    private boolean canPostOfficial(User user, String board) {
-        if ("ADMIN".equals(user.getRole())) {
-            return true;
-        }
-        return switch (firstNonBlank(user.getOperatorScope(), "")) {
-            case "school" -> Set.of("recommend", "school").contains(normalizeBoard(board));
-            case "college" -> "college".equals(normalizeBoard(board));
-            case "major" -> "major".equals(normalizeBoard(board));
-            default -> false;
-        };
-    }
 
     private void validateBoard(String board) {
         if (!BOARDS.contains(normalizeBoard(board))) {

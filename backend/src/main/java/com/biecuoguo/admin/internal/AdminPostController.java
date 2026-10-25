@@ -37,13 +37,13 @@ public class AdminPostController {
     public ApiResponse<List<PostDtos.PostView>> search(@RequestParam(required = false) String keyword,
                                                        @RequestParam(required = false) String status,
                                                        @RequestParam(defaultValue = "50") int limit) {
-        return ApiResponse.ok(postAdminApi.search(keyword, status, limit));
+        return ApiResponse.ok(postAdminApi.search(keyword, status, limit, SecurityUtils.currentUser()));
     }
 
     @PatchMapping("/{id}")
     public ApiResponse<PostDtos.PostView> moderate(@PathVariable Long id, @RequestBody ModerateRequest request) {
         PostDtos.PostView view = postAdminApi.moderate(id, request.pinned(), request.official(),
-                request.dontMiss(), request.status());
+                request.dontMiss(), request.status(), SecurityUtils.currentUser());
         auditApi.record(SecurityUtils.currentUser(), "post.moderate", "post", id,
                 "status=" + view.status() + " pinned=" + view.pinned()
                         + " official=" + view.official() + " dontMiss=" + view.dontMiss());

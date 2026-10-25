@@ -1,5 +1,6 @@
 package com.biecuoguo.activity.internal;
 
+import com.biecuoguo.permission.api.Role;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -11,37 +12,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ActivityRulesTest {
     @Test
-    void onlyAdminsAndScopedOperatorsCanPublish() {
-        assertEquals(ActivityRules.Level.ADMIN, ActivityRules.levelOf("ADMIN", null));
-        assertEquals(ActivityRules.Level.COLLEGE, ActivityRules.levelOf("COLLEGE_OPERATOR", "college"));
-        assertEquals(ActivityRules.Level.SCHOOL, ActivityRules.levelOf("OPERATOR", "school"));
-        assertNull(ActivityRules.levelOf("USER", "school"));
-        assertNull(ActivityRules.levelOf("OPERATOR", null));
-    }
-
-    @Test
-    void organizersStayInsideTheirOwnScope() {
-        var college = ActivityRules.Level.COLLEGE;
-        assertThrows(IllegalArgumentException.class,
-                () -> ActivityRules.checkAudience(college, 1L, null, "SCHOOL", null, null, null));
-        assertThrows(IllegalArgumentException.class,
-                () -> ActivityRules.checkAudience(college, 1L, null, "COLLEGE", 2L, null, null));
-        assertDoesNotThrow(() -> ActivityRules.checkAudience(college, 1L, null, "COLLEGE", 1L, null, null));
-        assertDoesNotThrow(() -> ActivityRules.checkAudience(college, 1L, null, "MAJOR", 1L, 7L, 1L));
-        assertThrows(IllegalArgumentException.class,
-                () -> ActivityRules.checkAudience(college, 1L, null, "MAJOR", 3L, 9L, 3L));
-        var major = ActivityRules.Level.MAJOR;
-        assertThrows(IllegalArgumentException.class,
-                () -> ActivityRules.checkAudience(major, 1L, 7L, "MAJOR", 1L, 8L, 1L));
-        assertDoesNotThrow(() -> ActivityRules.checkAudience(ActivityRules.Level.SCHOOL, null, null, "MAJOR", 3L, 9L, 3L));
-    }
-
-    @Test
-    void rewardsAreCappedByLevelAndNeverNegative() {
-        assertDoesNotThrow(() -> ActivityRules.checkReward(ActivityRules.Level.COLLEGE, 50, 100));
-        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(ActivityRules.Level.COLLEGE, 51, 0));
-        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(ActivityRules.Level.MAJOR, 0, 61));
-        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(ActivityRules.Level.ADMIN, -1, 0));
+    void rewardsAreCappedByRoleAndNeverNegative() {
+        // 发布权限与面向范围的矩阵测试在 permission 模块的 GrantsTest。
+        var college = Role.COLLEGE_OPERATOR.rewardCap();
+        assertDoesNotThrow(() -> ActivityRules.checkReward(college, 50, 100));
+        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(college, 51, 0));
+        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(Role.MAJOR_OPERATOR.rewardCap(), 0, 61));
+        assertThrows(IllegalArgumentException.class, () -> ActivityRules.checkReward(Role.ADMIN_REWARD_CAP, -1, 0));
     }
 
     @Test

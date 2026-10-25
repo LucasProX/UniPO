@@ -424,7 +424,7 @@ class SmsLoginMySqlIntegrationTest {
         switch (action) {
             case LOGOUT_ALL -> sessions.revokeAllForUser(id);
             case DISABLE -> admin.updateUserStatus(id, new AdminDtos.UserStatusRequest("disabled"));
-            case ROLE_DOWNGRADE -> admin.updateUserRole(id, new AdminDtos.UserRoleRequest("USER", "student"));
+            case ROLE_DOWNGRADE -> admin.updateUserRole(id, new AdminDtos.UserRoleRequest("USER", "student"), null);
         }
     }
 
@@ -532,7 +532,9 @@ class SmsLoginMySqlIntegrationTest {
             return new SessionService(new MemorySessionStore(), properties, authority);
         }
         @Bean AdminService admin(@Qualifier("realUsers") UserMapper users, SessionService sessions) {
-            return new AdminService(users, mock(PostQueryApi.class), sessions);
+            // 授权逻辑由 permission 模块单测覆盖，这里只验证改角色后的会话撤销。
+            return new AdminService(users, mock(PostQueryApi.class), sessions,
+                    mock(com.biecuoguo.permission.api.RoleGrantApi.class));
         }
         @Bean("loginUsers") @SuppressWarnings("unchecked")
         UserMapper loginUsers(@Qualifier("realUsers") UserMapper real) {

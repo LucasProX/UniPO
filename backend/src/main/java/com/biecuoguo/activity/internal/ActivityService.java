@@ -6,6 +6,14 @@ import com.biecuoguo.achievement.api.AttendanceBadges;
 import com.biecuoguo.activity.api.ActivityDtos;
 import com.biecuoguo.admin.api.AdminAuditApi;
 import com.biecuoguo.notification.api.NotificationApi;
+import com.biecuoguo.permission.api.Capability;
+import com.biecuoguo.permission.api.Grant;
+import com.biecuoguo.permission.api.Grants;
+import com.biecuoguo.permission.api.PermissionApi;
+import com.biecuoguo.permission.api.RewardCap;
+import com.biecuoguo.permission.api.Role;
+import com.biecuoguo.permission.api.ScopeTarget;
+import com.biecuoguo.permission.api.ScopeType;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.College;
@@ -57,11 +65,13 @@ public class ActivityService {
     private final WalletApi walletApi;
     private final NotificationApi notifications;
     private final AdminAuditApi audit;
+    private final PermissionApi permissions;
 
     public ActivityService(ActivityMapper activityMapper, ActivityRegistrationMapper registrationMapper,
                            UserMapper userMapper, CollegeMapper collegeMapper, MajorMapper majorMapper,
                            AppProperties properties, ExperienceService experienceService, WalletApi walletApi,
-                           NotificationApi notifications, AdminAuditApi audit) {
+                           NotificationApi notifications, AdminAuditApi audit, PermissionApi permissions) {
+        this.permissions = permissions;
         this.notifications = notifications;
         this.audit = audit;
         this.experienceService = experienceService;
@@ -76,25 +86,47 @@ public class ActivityService {
 
     // ---- 发布 ----
 
+    /**
+     * 发布页的默认范围与奖励上限，来自级别最高的一条发布授权（ADR-0006），不再来自用户资料。
+     * 院运营、专业运营给出的学院和专业是授权本身的范围。
+     */
     public ActivityDtos.OrganizerProfile organizerProfile(CurrentUser actor) {
         User user = activeUser(actor.id());
-        ActivityRules.Level level = ActivityRules.levelOf(user.getRole(), user.getOperatorScope());
-        if (level == null) {
+        Grants grants = permissions.grantsOf(user.getId());
+        Grant publisher = grants.primaryPublisher().orElse(null);
+        if (!grants.platformAdmin() && publisher == null) {
             return new ActivityDtos.OrganizerProfile(false, null, List.of(), user.getCollegeId(), user.getCollege(),
                     user.getMajorId(), user.getMajor(), 0, 0);
         }
-        return new ActivityDtos.OrganizerProfile(true, level.name(), level.allowedScopes(), user.getCollegeId(),
-                user.getCollege(), user.getMajorId(), user.getMajor(), level.maxXp, level.maxCoins);
+        if (grants.platformAdmin() || publisher.scopeType() == ScopeType.SCHOOL) {
+            RewardCap cap = grants.platformAdmin() ? Role.ADMIN_REWARD_CAP : publisher.role().rewardCap();
+            return new ActivityDtos.OrganizerProfile(true, grants.platformAdmin() ? "ADMIN" : "SCHOOL",
+                    List.of("SCHOOL", "COLLEGE", "MAJOR"), user.getCollegeId(), user.getCollege(),
+                    user.getMajorId(), user.getMajor(), cap.maxXp(), cap.maxCoins());
+        }
+        RewardCap cap = publisher.role().rewardCap();
+        if (publisher.scopeType() == ScopeType.COLLEGE) {
+            College college = collegeMapper.selectById(publisher.scopeId());
+            return new ActivityDtos.OrganizerProfile(true, "COLLEGE", List.of("COLLEGE", "MAJOR"), publisher.scopeId(),
+                    college == null ? null : college.getName(), null, null, cap.maxXp(), cap.maxCoins());
+        }
+        Major major = majorMapper.selectById(publisher.scopeId());
+        College college = major == null ? null : collegeMapper.selectById(major.getCollegeId());
+        return new ActivityDtos.OrganizerProfile(true, "MAJOR", List.of("MAJOR"), major == null ? null : major.getCollegeId(),
+                college == null ? null : college.getName(), publisher.scopeId(), major == null ? null : major.getName(),
+                cap.maxXp(), cap.maxCoins());
     }
 
     @Transactional
     public ActivityDtos.ActivityView create(ActivityDtos.CreateActivityRequest request, CurrentUser actor) {
         User organizer = activeUser(actor.id());
-        ActivityRules.Level level = ActivityRules.levelOf(organizer.getRole(), organizer.getOperatorScope());
-        if (level == null) {
+        Grants grants = permissions.grantsOf(organizer.getId());
+        Grant publisher = grants.primaryPublisher().orElse(null);
+        if (!grants.platformAdmin() && publisher == null) {
             throw new AccessDeniedException("只有认证的校园运营可以发布官方活动");
         }
-        Long schoolId = schoolOf(organizer);
+        // 学校取自授权，不取自资料：运营改了自己的学校也不能替别的学校发活动。
+        Long schoolId = grants.platformAdmin() ? schoolOf(organizer) : publisher.schoolId();
         String scope = upper(request.audienceScope());
         String category = upper(request.category());
         if (!ActivityRules.SCOPES.contains(scope)) throw new IllegalArgumentException("面向范围不合法");
@@ -113,12 +145,15 @@ public class ActivityService {
                 throw new IllegalArgumentException("学院不属于本校");
             }
         }
-        ActivityRules.checkAudience(level, organizer.getCollegeId(), organizer.getMajorId(), scope,
-                collegeId, majorId, major == null ? null : major.getCollegeId());
+        if ("COLLEGE".equals(scope) && collegeId == null) throw new IllegalArgumentException("请选择面向的学院");
+        if ("MAJOR".equals(scope) && majorId == null) throw new IllegalArgumentException("请选择面向的专业");
+        ScopeTarget target = new ScopeTarget(schoolId, "SCHOOL".equals(scope) ? null : collegeId, majorId);
+        RewardCap cap = grants.rewardCap(target)
+                .orElseThrow(() -> new IllegalArgumentException("当前身份不能面向这个范围发布活动"));
 
         int xp = request.rewardXp() == null ? 0 : request.rewardXp();
         int coins = request.rewardCoins() == null ? 0 : request.rewardCoins();
-        ActivityRules.checkReward(level, xp, coins);
+        ActivityRules.checkReward(cap, xp, coins);
 
         LocalDateTime now = AppTime.nowLocal();
         LocalDateTime startsAt = AppTime.toLocal(request.startsAt()).withNano(0);
@@ -300,8 +335,11 @@ public class ActivityService {
     public ActivityDtos.OrganizerCheckinView organizerCheckin(long id, CurrentUser actor) {
         User user = activeUser(actor.id());
         Activity activity = activityMapper.selectById(id);
-        if (activity == null || !activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
-        if (!canManage(activity, user)) throw new AccessDeniedException("只有活动发布者可以查看签到码");
+        if (activity == null) throw new NoSuchElementException("活动不存在");
+        if (!canManage(activity, permissions.grantsOf(user.getId()))) {
+            if (!activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
+            throw new AccessDeniedException("只有活动的组织者可以查看签到码");
+        }
         Instant instant = Instant.now();
         LocalDateTime now = AppTime.nowLocal();
         String token = CheckinTokens.token(activity.getCheckinSecret(), id, CheckinTokens.slot(instant));
@@ -558,11 +596,11 @@ public class ActivityService {
         if (capacity != null && capacity < activity.getRegisteredCount()) {
             throw new IllegalArgumentException("名额不能少于已报名的 " + activity.getRegisteredCount() + " 人");
         }
-        ActivityRules.Level level = ActivityRules.levelOf(user.getRole(), user.getOperatorScope());
+        RewardCap cap = permissions.grantsOf(user.getId()).rewardCap(targetOf(activity))
+                .orElseThrow(() -> new AccessDeniedException("当前身份不能编辑官方活动"));
         int xp = request.rewardXp() == null ? nz(activity.getRewardXp()) : request.rewardXp();
         int coins = request.rewardCoins() == null ? nz(activity.getRewardCoins()) : request.rewardCoins();
-        if (level == null) throw new AccessDeniedException("当前身份不能编辑官方活动");
-        ActivityRules.checkReward(level, xp, coins);
+        ActivityRules.checkReward(cap, xp, coins);
         boolean scheduleChanged = !startsAt.equals(activity.getStartsAt()) || !endsAt.equals(activity.getEndsAt())
                 || (request.location() != null && !request.location().trim().equals(activity.getLocation()));
         LambdaUpdateWrapper<Activity> update = new LambdaUpdateWrapper<Activity>().eq(Activity::getId, id)
@@ -639,8 +677,12 @@ public class ActivityService {
     /** 发布者本人或管理员；lock=true 时锁住活动行（改名额、状态时）。 */
     private Activity managed(long id, User user, boolean lock) {
         Activity activity = lock ? activityMapper.lockById(id) : activityMapper.selectById(id);
-        if (activity == null || !activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
-        if (!canManage(activity, user)) throw new AccessDeniedException("只有活动发布者可以管理这个活动");
+        if (activity == null) throw new NoSuchElementException("活动不存在");
+        if (!canManage(activity, permissions.grantsOf(user.getId()))) {
+            // 别的学校的活动对他来说不存在；同校但无权管理才说没有权限。
+            if (!activity.getSchoolId().equals(schoolOf(user))) throw new NoSuchElementException("活动不存在");
+            throw new AccessDeniedException("只有活动的组织者可以管理这个活动");
+        }
         return activity;
     }
 
@@ -668,8 +710,20 @@ public class ActivityService {
         return Long.parseLong(value);
     }
 
-    private static boolean canManage(Activity activity, User user) {
-        return user != null && ("ADMIN".equals(user.getRole()) || user.getId().equals(activity.getOrganizerId()));
+    /**
+     * 能管理 = 持有覆盖活动面向范围的 activity.manage 授权（含平台管理员）。发布者本人也要靠授权：
+     * 换届撤销授权后，旧负责人就不能再管，由同范围或上级运营接手。
+     */
+    private static boolean canManage(Activity activity, Grants grants) {
+        return grants.can(Capability.ACTIVITY_MANAGE, targetOf(activity));
+    }
+
+    static ScopeTarget targetOf(Activity activity) {
+        return switch (activity.getAudienceScope() == null ? "SCHOOL" : activity.getAudienceScope()) {
+            case "COLLEGE" -> new ScopeTarget(activity.getSchoolId(), activity.getAudienceCollegeId(), null);
+            case "MAJOR" -> new ScopeTarget(activity.getSchoolId(), activity.getAudienceCollegeId(), activity.getAudienceMajorId());
+            default -> ScopeTarget.school(activity.getSchoolId());
+        };
     }
 
     // ---- 组装 ----
@@ -699,6 +753,7 @@ public class ActivityService {
         Map<Long, List<ActivityDtos.AttendeeView>> attendees = recentAttendees(ids);
         Map<Long, String> collegeNames = names(activities.stream().map(Activity::getAudienceCollegeId), true);
         Map<Long, String> majorNames = names(activities.stream().map(Activity::getAudienceMajorId), false);
+        Grants viewerGrants = viewer == null ? Grants.none() : permissions.grantsOf(viewer.getId());
         LocalDateTime now = AppTime.nowLocal();
 
         List<ActivityDtos.ActivityView> views = new ArrayList<>();
@@ -732,7 +787,7 @@ public class ActivityService {
                     registration == null ? null : AppTime.toOffset(registration.getCheckedInAt()),
                     "PUBLISHED".equals(activity.getStatus())
                             && CheckinTokens.windowOpen(activity.getStartsAt(), activity.getEndsAt(), now),
-                    canManage(activity, viewer),
+                    canManage(activity, viewerGrants),
                     Boolean.TRUE.equals(activity.getRequireApproval()), activity.getCancelReason(),
                     registration != null && registration.getCheckinRevokedAt() != null));
         }

@@ -8,6 +8,8 @@ import com.biecuoguo.domain.Major;
 import com.biecuoguo.domain.School;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.dto.UserDtos;
+import com.biecuoguo.error.StateConflictException;
+import com.biecuoguo.permission.api.PermissionApi;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.mapper.CollegeMapper;
 import com.biecuoguo.mapper.MajorMapper;
@@ -30,8 +32,11 @@ public class GrowthBackgroundService {
     private final MajorMapper majorMapper;
     private final UserService userService;
 
+    private final PermissionApi permissions;
+
     public GrowthBackgroundService(UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper,
-                                   MajorMapper majorMapper, UserService userService) {
+                                   MajorMapper majorMapper, UserService userService, PermissionApi permissions) {
+        this.permissions = permissions;
         this.userMapper = userMapper;
         this.schoolMapper = schoolMapper;
         this.collegeMapper = collegeMapper;
@@ -53,6 +58,7 @@ public class GrowthBackgroundService {
             throw new IllegalArgumentException("入学年份不正确");
         }
         Long schoolId = request.schoolId() == null ? user.getSchoolId() : request.schoolId();
+        requireNoGrantForSchoolChange(user, schoolId);
         School school = schoolId == null ? null : schoolMapper.selectById(schoolId);
         if (school == null || !"active".equals(school.getStatus())) {
             throw new IllegalArgumentException("请选择有效的学校");
@@ -81,5 +87,12 @@ public class GrowthBackgroundService {
                 .set(User::getGrade, GrowthTerms.gradeLabel(term))
                 .set(User::getUpdatedAt, now));
         return userService.profile(userId);
+    }
+
+    /** 担任运营的人不能自己换学校：授权绑定在原学校上，换了学校会让身份和内容对不上。先撤销授权再换。 */
+    private void requireNoGrantForSchoolChange(User user, Long schoolId) {
+        if (schoolId != null && !schoolId.equals(user.getSchoolId()) && permissions.hasScopedGrant(user.getId())) {
+            throw new StateConflictException("你在当前学校担任运营角色，换学校前请联系管理员撤销授权");
+        }
     }
 }

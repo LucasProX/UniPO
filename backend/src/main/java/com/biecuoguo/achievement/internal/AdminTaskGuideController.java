@@ -20,7 +20,7 @@ public class AdminTaskGuideController {
 
     @GetMapping
     public ApiResponse<List<AchievementDtos.GuideLinkView>> list(@PathVariable long taskId) {
-        return ApiResponse.ok(service.list(taskId));
+        return ApiResponse.ok(service.list(taskId, SecurityUtils.currentUser()));
     }
 
     @PostMapping

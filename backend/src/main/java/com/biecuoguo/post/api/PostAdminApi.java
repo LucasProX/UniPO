@@ -10,11 +10,18 @@ import java.util.List;
  */
 public interface PostAdminApi {
 
-    /** 条件搜索；status 为空表示全部，limit 最大 100。 */
-    List<PostDtos.PostView> search(String keyword, String status, int limit);
+    /** 条件搜索；status 为空表示全部，limit 最大 100。只返回 actor 授权范围内的帖子。 */
+    List<PostDtos.PostView> search(String keyword, String status, int limit, com.biecuoguo.security.CurrentUser actor);
 
-    /** 部分更新：只改传入的字段。status 只允许 published / removed / draft。 */
-    PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status);
+    /**
+     * 部分更新：只改传入的字段。status 只允许 published / removed / draft。
+     * 改 status 需要 post.moderate、改置顶需要 post.feature、改官方和别错过需要 post.official，都按帖子所在范围判断。
+     */
+    PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status,
+                               com.biecuoguo.security.CurrentUser actor);
+
+    /** 帖子所在的权限范围（不论状态）；帖子不存在为空。 */
+    java.util.Optional<com.biecuoguo.permission.api.ScopeTarget> scopeOf(long postId);
 
     /** 后台查看：不论状态与学校，按传入顺序返回存在的帖子。 */
     List<PostDtos.PostView> byIds(List<Long> postIds);

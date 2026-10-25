@@ -79,6 +79,9 @@ import static org.mockito.Mockito.mock;
 @EnabledIfEnvironmentVariable(named = "UNIPO_DP17_MYSQL_INTEGRATION", matches = "1")
 @Timeout(30)
 class PostInteractionMySqlIntegrationTest {
+    /** 只用来做后台下架、置顶的测试身份；不对应真实用户行。 */
+    private static final CurrentUser MODERATOR = new CurrentUser(-1L, "moderator@unipo.invalid", "ADMIN", 0L, "moderator");
+
     private static final AtomicInteger PUBLIC_UID = new AtomicInteger(71_000_000);
     private static final AtomicInteger CONNECTION_OPENS = new AtomicInteger();
     private static final AtomicReference<StatusReadGate> STATUS_READ_GATE = new AtomicReference<>();
@@ -249,7 +252,7 @@ class PostInteractionMySqlIntegrationTest {
                 if ("deleted".equals(finalStatus)) {
                     assertTrue(posts.deleteOwnPost(postId, author));
                 } else {
-                    posts.moderate(postId, null, null, null, finalStatus);
+                    posts.moderate(postId, null, null, null, finalStatus, MODERATOR);
                 }
             }, () -> posts.like(postId, liker), true);
 
@@ -958,7 +961,7 @@ class PostInteractionMySqlIntegrationTest {
                         if ("deleted".equals(finalStatus)) {
                             return posts.deleteOwnPost(postId, author);
                         }
-                        posts.moderate(postId, true, null, null, finalStatus);
+                        posts.moderate(postId, true, null, null, finalStatus, MODERATOR);
                         return true;
                     });
 
@@ -1355,7 +1358,14 @@ class PostInteractionMySqlIntegrationTest {
                     org.mockito.Mockito.mock(com.biecuoguo.activity.api.ActivityParticipationApi.class),
                     org.mockito.Mockito.mock(com.biecuoguo.achievement.api.TaskLookupApi.class),
                     org.mockito.Mockito.mock(com.biecuoguo.notification.api.NotificationApi.class),
-                    template.getMapper(com.biecuoguo.mapper.UserFollowMapper.class));
+                    template.getMapper(com.biecuoguo.mapper.UserFollowMapper.class), new com.biecuoguo.permission.api.PermissionApi() {
+                    public com.biecuoguo.permission.api.Grants grantsOf(Long userId) {
+                        return Long.valueOf(MODERATOR.id()).equals(userId)
+                                ? new com.biecuoguo.permission.api.Grants(true, java.util.List.of())
+                                : com.biecuoguo.permission.api.Grants.none();
+                    }
+                    public boolean hasScopedGrant(long userId) { return false; }
+                });
         }
 
         @Bean
@@ -1364,7 +1374,15 @@ class PostInteractionMySqlIntegrationTest {
             return new UserService(template.getMapper(UserMapper.class), null,
                     template.getMapper(UserFollowMapper.class), template.getMapper(UserBlockMapper.class),
                     null, template.getMapper(DeviceTokenMapper.class), new PresenceService(new MemoryPresenceStore()),
-                    new BCryptPasswordEncoder(4), mock(SessionService.class), postService, experienceService);
+                    new BCryptPasswordEncoder(4), mock(SessionService.class), postService, experienceService,
+                    template.getMapper(SchoolMapper.class), new com.biecuoguo.permission.api.PermissionApi() {
+                    public com.biecuoguo.permission.api.Grants grantsOf(Long userId) {
+                        return Long.valueOf(MODERATOR.id()).equals(userId)
+                                ? new com.biecuoguo.permission.api.Grants(true, java.util.List.of())
+                                : com.biecuoguo.permission.api.Grants.none();
+                    }
+                    public boolean hasScopedGrant(long userId) { return false; }
+                });
         }
 
         @Bean

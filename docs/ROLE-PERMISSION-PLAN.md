@@ -1,6 +1,6 @@
 # 角色与权限系统：现状研究与方案（2026-10-25）
 
-> 状态：**提议，待拍板**。拍板后按第 6 节分期实现，实现完成再补 ADR-0006。
+> 状态：**第一期已实现（2026-10-25）**，决定记录在 [ADR-0006](adr/0006-scoped-role-permissions.md)。第 7 节的决策按建议拍板。第二、三期待排期。
 > 依据：读了现有后端的全部角色判断点（`SecurityConfig`、`ActivityRules`、`PostService.canPostOfficial`、`AdminService`、各 `/api/admin/**` 控制器）和 iOS 对 `role` 的使用，以及 [PRODUCT-PLAN](PRODUCT-PLAN.md) §3、§6.6、§8 和 [DEVELOPMENT-PLAN](DEVELOPMENT-PLAN.md) §5.8 对角色的要求。
 
 ---
@@ -230,7 +230,29 @@ public interface PermissionApi {
 
 ## 6. 分期
 
-### 6.1 第一期：堵漏洞 + 给 O01 铺路（约 4–6 人日）
+### 6.1 第一期：堵漏洞 + 给 O01 铺路（约 4–6 人日）——已完成
+
+实现与本节原计划的差异：
+
+- 平台管理员继续用 `users.role = 'ADMIN'`，不写 PLATFORM 授权行；`role_grants` 只放范围角色和平台内容编辑。
+- 审计日志、报表、监控和首页轮播第一期只给平台管理员，没有给轮播加 `school_id`：按学校开放需要审计行与轮播带上学校字段，放到第三期。
+- 能力清单先落地 8 项（发官方帖、置顶、下架、攻略有效期、发活动、管活动、攻略关联、处理举报）；申诉、金V 审核、授予下级等能力随对应功能再加。
+- 活动发布者本人不再有管理例外，管理活动只看授权。
+- iOS 不需要改：发布活动、签到码等入口原本就由服务端的组织者资料和 `canManage` 决定；`/users/me/capabilities` 已提供，供后续入口使用。
+
+迁移后核对「没迁过去的旧运营」：
+
+```sql
+SELECT u.id, u.public_uid, u.nickname, u.role, u.operator_scope
+FROM users u
+WHERE u.role NOT IN ('USER', 'ADMIN')
+  AND NOT EXISTS (SELECT 1 FROM role_grants g WHERE g.user_id = u.id AND g.revoked_at IS NULL);
+```
+
+测试实例迁移结果：两名校运营、一名院运营转成授权，没有遗漏。
+
+原计划：
+
 
 1. V36：`role_grants` 表 + 历史数据迁移 + 迁移报告。
 2. `permission` 模块：能力清单、角色模板、`PermissionApi`，以及越权矩阵单测。

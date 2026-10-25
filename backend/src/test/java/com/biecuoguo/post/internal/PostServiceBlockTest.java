@@ -50,7 +50,10 @@ class PostServiceBlockTest {
                 mock(SchoolMapper.class), mock(CollegeMapper.class), mock(MajorMapper.class),
                 mock(PresenceService.class), experience, blocks, mock(com.biecuoguo.admin.api.AdminAuditApi.class),
                 mock(com.biecuoguo.activity.api.ActivityParticipationApi.class), mock(com.biecuoguo.achievement.api.TaskLookupApi.class),
-                mock(com.biecuoguo.notification.api.NotificationApi.class), mock(UserFollowMapper.class));
+                mock(com.biecuoguo.notification.api.NotificationApi.class), mock(UserFollowMapper.class), new com.biecuoguo.permission.api.PermissionApi() {
+                    public com.biecuoguo.permission.api.Grants grantsOf(Long userId) { return com.biecuoguo.permission.api.Grants.none(); }
+                    public boolean hasScopedGrant(long userId) { return false; }
+                });
 
         assertThrows(NoSuchElementException.class, () -> service.comment(70L,
                 new PostDtos.CreateCommentRequest("Blocked reply", 80L),
