@@ -515,6 +515,34 @@ public struct ShareResponse: Codable {
 }
 
 /** 举报分类的稳定 key 由后端校验；标题只用于展示。 */
+/// 我提交过的一条举报和处理结果。result 是给举报人看的结果文字，不含处理人和理由。
+public struct MyReport: Codable, Identifiable, Hashable {
+    public let id: Int64
+    public let targetType: String
+    public let excerpt: String?
+    public let category: String
+    public let categoryLabel: String
+    public let status: String
+    public let result: String
+    public let createdAt: String?
+    public let handledAt: String?
+
+    public var isOpen: Bool { status == "PENDING" || status == "IN_PROGRESS" }
+
+    public var targetLabel: String {
+        switch targetType {
+        case "POST": return "PO"
+        case "COMMENT": return "评论"
+        default: return "用户"
+        }
+    }
+}
+
+public struct MyReportPage: Codable, Hashable {
+    public let items: [MyReport]
+    public let nextBeforeId: Int64?
+}
+
 /// 举报受理回执：只有编号和状态，不含处理细节。
 public struct ReportReceipt: Codable, Hashable {
     public let id: Int64

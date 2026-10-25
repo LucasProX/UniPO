@@ -15,4 +15,7 @@ public interface CommentMapper extends BaseMapper<Comment> {
 
     @Update("UPDATE comments SET reply_count = reply_count + 1, updated_at = #{now} WHERE id = #{id}")
     int incrementReplies(@Param("id") long id, @Param("now") LocalDateTime now);
+
+    @Update("UPDATE comments SET reply_count = GREATEST(0, reply_count - 1), updated_at = #{now} WHERE id = #{id}")
+    int decrementReplies(@Param("id") long id, @Param("now") LocalDateTime now);
 }

@@ -314,6 +314,11 @@
 | POST | `/api/users/{uid}/report` | 举报用户 `{category, detail?}`，返回举报单 id（兼容旧契约）；2026-10-25 起写入统一的 `content_reports`，重复举报同一人返回原 id |
 | POST | `/api/posts/{id}/report` | 举报帖子 `{category: spam\|fraud\|harassment\|porn\|impersonation\|other, detail?（≤500）}`，返回回执 `{id, status: PENDING}`；看不到的帖子（别校、已删、待审核、已拉黑）404，举报自己 400，同一人重复举报返回原回执；每 IP 每 10 分钟 30 次 |
 | POST | `/api/posts/comments/{id}/report` | 举报评论，规则同上 |
+| GET | `/api/users/me/reports?beforeId=` | 需登录。我提交过的举报（每页 30）：`{id, targetType, excerpt, category, categoryLabel, status: PENDING\|IN_PROGRESS\|RESOLVED\|REJECTED, result, createdAt, handledAt}`；`result` 是给举报人看的结果文字，不含处理人和理由 |
+| GET | `/api/admin/report-cases?status=&beforeId=` | 需要 `report.handle` 授权，只返回授权范围内的处理单（默认未结案的）。每项含对象类型与当前状态、被举报人、举报数与理由分布、最近摘录、领取人、`version` |
+| GET | `/api/admin/report-cases/{id}` | 处理单详情与每条举报（来源 USER/FILTER、理由、补充说明、举报人 UID） |
+| POST | `/api/admin/report-cases/{id}/claim` | `{version}`；已结案或被别人领取 409，version 不符 409 |
+| POST | `/api/admin/report-cases/{id}/resolve` | `{version, action: REMOVE_CONTENT\|APPROVE_CONTENT\|NO_VIOLATION\|HANDLED, reason}`；用户单不能下架、非待审核帖子不能通过（400）；结果通知举报人（`REPORT_RESOLVED`）与作者（`CONTENT_REMOVED` / `POST_APPROVED`，后者带 `postId`），均为 `category=SYSTEM` |
 
 **新粉丝 +n**：服务端用 `users.followers_seen_at` 做游标，第一次没有该值时为 0（不补历史），
 打开粉丝列表后调用 `/seen` 清零，跨设备一致。

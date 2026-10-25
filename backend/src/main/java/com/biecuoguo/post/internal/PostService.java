@@ -332,7 +332,13 @@ public class PostService implements PostQueryApi, PostAdminApi {
         postMapper.insert(post);
         saveImages(post.getId(), request.images(), now);
         grantXp(author, 12);
-        if (!holdForReview) notifyFollowers(author, post);
+        if (holdForReview) {
+            // 待审核的帖子进举报队列，审核员和用户举报在同一个地方处理（O01）。
+            reportFlags.flag("POST", post.getId(), author.getId(), target,
+                    verdict.needsReview() ? verdict.category() : "review_all", post.getTitle() + "\n" + post.getContent());
+        } else {
+            notifyFollowers(author, post);
+        }
         return toView(postMapper.selectById(post.getId()), currentUser);
     }
 
@@ -746,6 +752,30 @@ public class PostService implements PostQueryApi, PostAdminApi {
             case "major" -> new ScopeTarget(school, collegeId, majorId);
             default -> ScopeTarget.school(school);
         };
+    }
+
+    @Override
+    @Transactional
+    public void hideComment(long commentId, CurrentUser actor) {
+        Comment comment = commentMapper.lockById(commentId);
+        if (comment == null || comment.getPostId() == null) throw new NoSuchElementException("评论不存在");
+        Post post = postMapper.selectById(comment.getPostId());
+        if (post == null) throw new NoSuchElementException("评论不存在");
+        permissions.require(actor, Capability.POST_MODERATE,
+                postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()));
+        if ("hidden".equals(comment.getStatus())) return;
+        LocalDateTime now = AppTime.nowLocal();
+        commentMapper.update(null, new LambdaUpdateWrapper<Comment>().eq(Comment::getId, commentId)
+                .set(Comment::getStatus, "hidden").set(Comment::getUpdatedAt, now));
+        postMapper.adjustCounters(post.getId(), 0, -1, 0, 0, now);
+        if (comment.getParentId() != null) commentMapper.decrementReplies(comment.getParentId(), now);
+    }
+
+    @Override
+    public java.util.Optional<String> targetStatus(String type, long id) {
+        if ("POST".equals(type)) return java.util.Optional.ofNullable(postMapper.selectById(id)).map(Post::getStatus);
+        if ("COMMENT".equals(type)) return java.util.Optional.ofNullable(commentMapper.selectById(id)).map(Comment::getStatus);
+        return java.util.Optional.empty();
     }
 
     @Override

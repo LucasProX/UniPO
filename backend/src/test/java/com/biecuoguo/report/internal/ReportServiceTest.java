@@ -24,8 +24,9 @@ import static org.mockito.Mockito.*;
 class ReportServiceTest {
     private final ContentReportMapper mapper = mock(ContentReportMapper.class);
     private final PostQueryApi posts = mock(PostQueryApi.class);
+    private final ReportCases cases = mock(ReportCases.class);
     private final ReportService service = new ReportService(mapper, mock(UserMapper.class), posts,
-            new AppProperties(null, null, null, null, null, null, 1L));
+            new AppProperties(null, null, null, null, null, null, 1L), cases, mock(ReportCaseMapper.class));
     private final CurrentUser reporter = new CurrentUser(7L, "r@unipo.invalid", "USER", 1L, "s");
     private final ReportDtos.ReportRequest spam = new ReportDtos.ReportRequest("spam", "  一直发广告  ");
 
@@ -51,6 +52,7 @@ class ReportServiceTest {
         assertEquals("一直发广告", saved.getValue().getDetail());
         assertEquals("标题\n正文", saved.getValue().getSnapshot());
         assertEquals("USER", saved.getValue().getSource());
+        verify(cases).attach(saved.getValue());
     }
 
     @Test

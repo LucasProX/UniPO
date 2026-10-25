@@ -10,9 +10,11 @@ import java.time.temporal.ChronoUnit;
 @Service
 public class ReportFlagService implements ReportFlagApi {
     private final ContentReportMapper mapper;
+    private final ReportCases cases;
 
-    public ReportFlagService(ContentReportMapper mapper) {
+    public ReportFlagService(ContentReportMapper mapper, ReportCases cases) {
         this.mapper = mapper;
+        this.cases = cases;
     }
 
     @Override
@@ -30,5 +32,6 @@ public class ReportFlagService implements ReportFlagApi {
         row.setStatus("PENDING");
         row.setCreatedAt(AppTime.nowLocal().truncatedTo(ChronoUnit.SECONDS));
         mapper.insert(row);
+        cases.attach(row);
     }
 }

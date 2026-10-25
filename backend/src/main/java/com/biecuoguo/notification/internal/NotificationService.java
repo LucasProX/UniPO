@@ -31,6 +31,12 @@ public class NotificationService implements NotificationApi {
         write(userIds, "SOCIAL", type, title, body, null, postId, dedupeKey);
     }
 
+    @Override
+    @Transactional
+    public void notifySystem(Collection<Long> userIds, String type, String title, String body, Long postId, String dedupeKey) {
+        write(userIds, "SYSTEM", type, title, body, null, postId, dedupeKey);
+    }
+
     private void write(Collection<Long> userIds, String category, String type, String title, String body,
                        Long activityId, Long postId, String dedupeKey) {
         LocalDateTime now = AppTime.nowLocal();

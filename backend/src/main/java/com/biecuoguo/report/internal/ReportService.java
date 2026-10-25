@@ -7,6 +7,7 @@ import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.permission.api.ScopeTarget;
 import com.biecuoguo.post.api.PostQueryApi;
+import com.biecuoguo.report.api.ReportCaseDtos;
 import com.biecuoguo.report.api.ReportDtos;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.dao.DuplicateKeyException;
@@ -31,8 +32,13 @@ public class ReportService {
     private final UserMapper userMapper;
     private final PostQueryApi posts;
     private final AppProperties properties;
+    private final ReportCases cases;
+    private final ReportCaseMapper caseMapper;
 
-    public ReportService(ContentReportMapper mapper, UserMapper userMapper, PostQueryApi posts, AppProperties properties) {
+    public ReportService(ContentReportMapper mapper, UserMapper userMapper, PostQueryApi posts, AppProperties properties,
+                         ReportCases cases, ReportCaseMapper caseMapper) {
+        this.cases = cases;
+        this.caseMapper = caseMapper;
         this.mapper = mapper;
         this.userMapper = userMapper;
         this.posts = posts;
@@ -83,7 +89,45 @@ public class ReportService {
             if (winner == null) throw race;
             return receipt(winner);
         }
+        cases.attach(row);
         return receipt(row);
+    }
+
+    /** 我提交过的举报和处理结果（O03）；状态以处理单为准，所以「处理中」也能看到。 */
+    @Transactional(readOnly = true)
+    public ReportCaseDtos.MyReportPage myReports(CurrentUser actor, Long beforeId) {
+        int limit = 30;
+        java.util.List<ContentReport> rows = mapper.selectList(new LambdaQueryWrapper<ContentReport>()
+                .eq(ContentReport::getReporterId, actor.id())
+                .lt(beforeId != null, ContentReport::getId, beforeId)
+                .orderByDesc(ContentReport::getId)
+                .last("LIMIT " + (limit + 1)));
+        boolean more = rows.size() > limit;
+        java.util.List<ContentReport> page = more ? rows.subList(0, limit) : rows;
+        java.util.List<Long> caseIds = page.stream().map(ContentReport::getCaseId).filter(Objects::nonNull).distinct().toList();
+        java.util.Map<Long, ReportCase> byId = caseIds.isEmpty() ? java.util.Map.of()
+                : caseMapper.selectBatchIds(caseIds).stream().collect(java.util.stream.Collectors.toMap(ReportCase::getId, c -> c));
+        java.util.List<ReportCaseDtos.MyReport> items = page.stream().map(r -> {
+            ReportCase kase = r.getCaseId() == null ? null : byId.get(r.getCaseId());
+            String status = kase != null ? kase.getStatus() : r.getStatus();
+            String resolution = kase != null ? kase.getResolution() : r.getResolution();
+            String excerpt = r.getSnapshot() == null ? null : r.getSnapshot().replace('\n', ' ');
+            if (excerpt != null && excerpt.codePointCount(0, excerpt.length()) > 60) {
+                excerpt = excerpt.substring(0, excerpt.offsetByCodePoints(0, 60)) + "…";
+            }
+            return new ReportCaseDtos.MyReport(r.getId(), r.getTargetType(), excerpt, r.getCategory(),
+                    ReportCaseService.label(r.getCategory()), status, result(status, resolution),
+                    AppTime.toOffset(r.getCreatedAt()), AppTime.toOffset(kase != null ? kase.getHandledAt() : r.getHandledAt()));
+        }).toList();
+        return new ReportCaseDtos.MyReportPage(items, more ? page.getLast().getId() : null);
+    }
+
+    static String result(String status, String resolution) {
+        if ("PENDING".equals(status)) return "已受理，等待处理";
+        if ("IN_PROGRESS".equals(status)) return "处理中";
+        if ("REMOVED".equals(resolution)) return "已处理：内容已下架";
+        if ("HANDLED".equals(resolution)) return "已处理";
+        return "经核实未发现违规";
     }
 
     private ContentReport existing(long reporterId, String type, long targetId) {

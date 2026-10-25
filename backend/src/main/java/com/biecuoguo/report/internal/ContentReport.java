@@ -29,4 +29,5 @@ public class ContentReport {
     private String resolution;
     private String handleNote;
     private LocalDateTime createdAt;
+    private Long caseId;
 }

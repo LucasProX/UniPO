@@ -60,6 +60,11 @@ struct SettingsView: View {
                         } label: {
                             Label("黑名单", systemImage: "hand.raised")
                         }
+                        NavigationLink {
+                            MyReportsView().environment(auth)
+                        } label: {
+                            Label("我的举报", systemImage: "exclamationmark.bubble")
+                        }
                     }
                 }
 
@@ -301,6 +306,96 @@ struct BlockedUsersView: View {
             NotificationCenter.default.post(name: .unipoRelationshipsChanged, object: nil)
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "操作失败，请重试"
+        }
+    }
+}
+
+/// 我提交过的举报和处理结果（O03）。只展示结果，不展示处理人和其他人的举报。
+struct MyReportsView: View {
+    @Environment(AuthStore.self) private var auth
+    @State private var reports: [MyReport] = []
+    @State private var nextBeforeId: Int64?
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    var body: some View {
+        List {
+            if isLoading && reports.isEmpty {
+                UniLoadingState("加载中…").listRowBackground(Color.clear)
+            } else if let errorMessage, reports.isEmpty {
+                UniErrorState(errorMessage) { Task { await load(reset: true) } }.listRowBackground(Color.clear)
+            } else if reports.isEmpty {
+                UniEmptyState(icon: "exclamationmark.bubble", title: "还没有举报记录",
+                              message: "在帖子、评论的菜单或对方主页里可以举报，处理结果会出现在这里")
+                    .listRowBackground(Color.clear)
+            } else {
+                Section {
+                    ForEach(reports) { report in
+                        row(report)
+                            .onAppear {
+                                if report.id == reports.last?.id, nextBeforeId != nil { Task { await load(reset: false) } }
+                            }
+                    }
+                } footer: {
+                    Text("处理结果同时会发到「消息 → 通知」。")
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(UniColor.paper)
+        .navigationTitle("我的举报")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await load(reset: true) }
+        .task { await load(reset: true) }
+    }
+
+    private func row(_ report: MyReport) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("举报\(report.targetLabel) · \(report.categoryLabel)")
+                    .uniFont(13, weight: .semibold)
+                    .foregroundStyle(UniColor.ink)
+                Spacer()
+                Text(report.status == "PENDING" ? "待处理" : report.status == "IN_PROGRESS" ? "处理中" : "已结束")
+                    .uniFont(11, weight: .semibold)
+                    .foregroundStyle(report.isOpen ? UniColor.gold : UniColor.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background((report.isOpen ? UniColor.gold : UniColor.mist).opacity(report.isOpen ? 0.12 : 0.6), in: Capsule())
+            }
+            if let excerpt = report.excerpt, !excerpt.isEmpty {
+                Text(excerpt)
+                    .uniFont(13)
+                    .foregroundStyle(UniColor.inkSoft)
+                    .lineLimit(2)
+            }
+            HStack {
+                Text(report.result)
+                    .uniFont(12, weight: .semibold)
+                    .foregroundStyle(report.isOpen ? UniColor.secondary : UniColor.blue)
+                Spacer()
+                Text(RelativeTime.text(from: report.handledAt ?? report.createdAt))
+                    .uniFont(11)
+                    .foregroundStyle(UniColor.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func load(reset: Bool) async {
+        let owner = auth.profile?.id
+        if reset { isLoading = true }
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let page = try await APIClient.shared.myReports(beforeId: reset ? nil : nextBeforeId)
+            guard auth.profile?.id == owner else { return }
+            reports = reset ? page.items : reports + page.items.filter { item in !reports.contains { $0.id == item.id } }
+            nextBeforeId = page.nextBeforeId
+        } catch {
+            guard auth.profile?.id == owner else { return }
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "加载失败，请重试"
         }
     }
 }

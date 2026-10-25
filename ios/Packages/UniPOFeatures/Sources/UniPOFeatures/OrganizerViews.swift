@@ -290,7 +290,7 @@ struct NotificationsView: View {
                         UniLoadingState("加载通知…")
                     } else {
                         UniEmptyState(icon: "bell", title: "还没有通知",
-                                      message: "活动审核、变更、提醒、签到结果和关注的人发的新帖会出现在这里")
+                                      message: "活动提醒、签到结果、关注的人发的新帖，以及举报和审核结果会出现在这里")
                     }
                 }
                 .listRowSeparator(.hidden).listRowBackground(Color.clear)
@@ -381,13 +381,16 @@ struct NotificationsView: View {
         case "ACTIVITY_CANCELLED": return "xmark.circle.fill"
         case "ACTIVITY_CHANGED": return "calendar.badge.exclamationmark"
         case "FOLLOWING_POST": return "square.text.square.fill"
+        case "REPORT_RESOLVED": return "checkmark.shield.fill"
+        case "CONTENT_REMOVED": return "exclamationmark.triangle.fill"
+        case "POST_APPROVED": return "checkmark.seal.fill"
         default: return "bell.fill"
         }
     }
 
     private func tint(_ type: String) -> Color {
         switch type {
-        case "REGISTRATION_REJECTED", "CHECKIN_REVOKED", "ACTIVITY_CANCELLED": return UniColor.danger
+        case "REGISTRATION_REJECTED", "CHECKIN_REVOKED", "ACTIVITY_CANCELLED", "CONTENT_REMOVED": return UniColor.danger
         case "ACTIVITY_CHANGED": return UniColor.gold
         default: return UniColor.blue
         }

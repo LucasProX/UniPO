@@ -20,6 +20,14 @@ public interface PostAdminApi {
     PostDtos.PostView moderate(long postId, Boolean pinned, Boolean official, Boolean dontMiss, String status,
                                com.biecuoguo.security.CurrentUser actor);
 
+    /**
+     * 隐藏一条评论（举报处置）：要求对评论所在帖子有下架权限；同步扣减帖子评论数和父评论回复数。已隐藏的直接返回。
+     */
+    void hideComment(long commentId, com.biecuoguo.security.CurrentUser actor);
+
+    /** 被处置对象的当前状态（POST 为帖子状态，COMMENT 为评论状态）；不存在为空。 */
+    java.util.Optional<String> targetStatus(String type, long id);
+
     /** 帖子所在的权限范围（不论状态）；帖子不存在为空。 */
     java.util.Optional<com.biecuoguo.permission.api.ScopeTarget> scopeOf(long postId);
 

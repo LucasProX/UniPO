@@ -740,6 +740,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/report-cases/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-cases/{id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["claim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/message-deliveries/{id}/retry": {
         parameters: {
             query?: never;
@@ -1100,6 +1132,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["stats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/users/me/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["myReports"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1692,6 +1740,38 @@ export interface paths {
             cookie?: never;
         };
         get: operations["daily"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["cases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/report-cases/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["caseDetail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2684,6 +2764,57 @@ export interface components {
         RevokeRequest: {
             reason: string;
         };
+        ResolveRequest: {
+            /** Format: int32 */
+            version: number;
+            action: string;
+            reason: string;
+        };
+        ApiResponseCaseView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CaseView"];
+            requestId?: string;
+        };
+        CaseView: {
+            /** Format: int64 */
+            id?: number;
+            targetType?: string;
+            /** Format: int64 */
+            targetId?: number;
+            targetStatus?: string;
+            targetUserUid?: string;
+            targetUserNickname?: string;
+            status?: string;
+            /** Format: int32 */
+            reportCount?: number;
+            categories?: components["schemas"]["CategoryCount"][];
+            snapshot?: string;
+            /** Format: date-time */
+            firstReportedAt?: string;
+            /** Format: date-time */
+            lastReportedAt?: string;
+            assigneeUid?: string;
+            assigneeNickname?: string;
+            /** Format: date-time */
+            claimedAt?: string;
+            resolution?: string;
+            resolutionNote?: string;
+            /** Format: date-time */
+            handledAt?: string;
+            /** Format: int32 */
+            version?: number;
+        };
+        CategoryCount: {
+            category?: string;
+            label?: string;
+            /** Format: int64 */
+            count?: number;
+        };
+        ClaimRequest: {
+            /** Format: int32 */
+            version: number;
+        };
         RetryRequest: {
             /** Format: int32 */
             expectedAttempts: number;
@@ -3022,6 +3153,31 @@ export interface components {
             message?: string;
             data?: components["schemas"]["UserStats"];
             requestId?: string;
+        };
+        ApiResponseMyReportPage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["MyReportPage"];
+            requestId?: string;
+        };
+        MyReport: {
+            /** Format: int64 */
+            id?: number;
+            targetType?: string;
+            excerpt?: string;
+            category?: string;
+            categoryLabel?: string;
+            status?: string;
+            result?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            handledAt?: string;
+        };
+        MyReportPage: {
+            items?: components["schemas"]["MyReport"][];
+            /** Format: int64 */
+            nextBeforeId?: number;
         };
         ApiResponseNewFollowersView: {
             code?: string;
@@ -3413,6 +3569,38 @@ export interface components {
             newUsersTotal?: number;
             /** Format: int64 */
             postsTotal?: number;
+        };
+        ApiResponseCasePage: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CasePage"];
+            requestId?: string;
+        };
+        CasePage: {
+            items?: components["schemas"]["CaseView"][];
+            /** Format: int64 */
+            nextBeforeId?: number;
+        };
+        ApiResponseCaseDetail: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["CaseDetail"];
+            requestId?: string;
+        };
+        CaseDetail: {
+            kase?: components["schemas"]["CaseView"];
+            reports?: components["schemas"]["CaseReport"][];
+        };
+        CaseReport: {
+            /** Format: int64 */
+            id?: number;
+            source?: string;
+            category?: string;
+            categoryLabel?: string;
+            detail?: string;
+            reporterUid?: string;
+            /** Format: date-time */
+            createdAt?: string;
         };
         ApiResponseMonitorView: {
             code?: string;
@@ -5140,6 +5328,58 @@ export interface operations {
             };
         };
     };
+    resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCaseView"];
+                };
+            };
+        };
+    };
+    claim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCaseView"];
+                };
+            };
+        };
+    };
     retry: {
         parameters: {
             query?: never;
@@ -5743,6 +5983,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseUserStats"];
+                };
+            };
+        };
+    };
+    myReports: {
+        parameters: {
+            query?: {
+                beforeId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseMyReportPage"];
                 };
             };
         };
@@ -6552,6 +6814,51 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseReportView"];
+                };
+            };
+        };
+    };
+    cases: {
+        parameters: {
+            query?: {
+                status?: string;
+                beforeId?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCasePage"];
+                };
+            };
+        };
+    };
+    caseDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseCaseDetail"];
                 };
             };
         };

@@ -8,4 +8,7 @@ public interface NotificationApi {
 
     /** 社交类通知（关注的人发帖等），点开进入帖子。 */
     void notifyPost(Collection<Long> userIds, String type, String title, String body, long postId, String dedupeKey);
+
+    /** 系统通知（举报处理结果、内容下架、审核通过等）；postId 可为空，有值时点开进入帖子。 */
+    void notifySystem(Collection<Long> userIds, String type, String title, String body, Long postId, String dedupeKey);
 }

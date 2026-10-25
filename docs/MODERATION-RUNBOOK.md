@@ -1,0 +1,82 @@
+# 内容审核与举报处理手册
+
+> 给审核员、校运营和平台管理员。本期不做管理网页，处理通过受控接口完成（DEVELOPMENT-PLAN §5.8）。
+> 对应功能：F01 举报、F02 内容过滤、O01 处理单、O03 举报人回执。权限规则见 [ADR-0006](adr/0006-scoped-role-permissions.md)。
+
+## 1. 谁能处理
+
+| 角色 | 能处理的范围 | 能做的处置 |
+|---|---|---|
+| 审核员 MODERATOR | 被授予的那所学校 | 下架帖子、隐藏评论、通过待审核帖子、驳回、标记已处理 |
+| 校运营 SCHOOL_OPERATOR | 本校 | 同上 |
+| 院运营 COLLEGE_OPERATOR | 本院的院 PO、专业 PO 及其评论 | 同上 |
+| 平台管理员 | 全平台 | 同上；另外可封禁账号（`PUT /api/admin/users/{id}/status`） |
+
+专业运营、内容编辑没有举报处理权限。授予审核员由平台管理员完成：
+
+```bash
+curl -X POST "$API/admin/role-grants" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"userUid":"对方 UID","role":"MODERATOR","scopeId":学校ID,"reason":"试点审核员"}'
+```
+
+`TOKEN` 是审核员自己登录 App 后的访问凭证，只放在本机终端的环境变量里，**不要贴进聊天、文档或工单**。
+
+## 2. 队列从哪里来
+
+一个对象（帖子、评论或用户）同一时间只有一张未结案的**处理单**，同一对象的多条举报都归到这张单上：
+
+- **用户举报**：帖子菜单「举报这条 PO」「举报作者」、评论长按「举报这条评论」、对方主页「举报」。
+- **系统标记**（`source=FILTER`）：
+  - 发帖命中可疑词，帖子进「待审核」，同时开单；通过前只有作者自己看得到。
+  - 评论命中可疑词，评论照常显示，同时开单等人看一眼。
+- 命中违禁词的内容直接拒绝发布，不进队列。词表在 `backend/src/main/resources/moderation/`，改动随版本发布。
+
+结案后同一对象再被举报，会开一张新单。
+
+## 3. 处理流程
+
+```bash
+# 1. 看队列（默认只看未结案的；也可 ?status=RESOLVED / REJECTED）
+curl "$API/admin/report-cases" -H "Authorization: Bearer $TOKEN"
+
+# 2. 看详情：每条举报的理由、补充说明、举报时的内容摘录，以及对象此刻的状态
+curl "$API/admin/report-cases/{id}" -H "Authorization: Bearer $TOKEN"
+
+# 3. 领取（version 取自上一步返回的 version）
+curl -X POST "$API/admin/report-cases/{id}/claim" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"version":0}'
+
+# 4. 处置（version 用领取后返回的新值；理由必填，会进审计）
+curl -X POST "$API/admin/report-cases/{id}/resolve" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{"version":1,"action":"REMOVE_CONTENT","reason":"确认为引流广告"}'
+```
+
+| action | 适用对象 | 效果 | 举报人看到 | 作者收到 |
+|---|---|---|---|---|
+| `REMOVE_CONTENT` | 帖子、评论 | 帖子下架，评论隐藏（评论数同步扣减） | 已处理：内容已下架 | 「你的 PO / 评论已被下架」，附主要理由 |
+| `APPROVE_CONTENT` | 待审核的帖子 | 发布，按通过时间进信息流并通知粉丝 | 经核实未发现违规 | 「你的 PO 已通过审核」，可点开 |
+| `NO_VIOLATION` | 全部 | 驳回，内容不动 | 经核实未发现违规 | — |
+| `HANDLED` | 全部 | 已用其他方式处理（线下提醒、交给管理员封号等） | 已处理 | — |
+
+- 领取后别人不能处置这张单（平台管理员除外）；两个人同时操作，只有一个会成功，另一个会收到「处理单已变化，请刷新后重试」。
+- 举报用户的单不能「下架内容」，需要封号时选 `HANDLED` 并注明，再请平台管理员封禁。
+- 作者已经自己删掉的内容，下架时不会再改它的状态。
+
+## 4. 判断参考
+
+- **先看摘录，再看现状**：`snapshot` 是举报那一刻的内容，作者之后改了或删了，以摘录为证据。
+- **疑似违规内容（系统识别）** 只是命中了可疑词。正常的二手转让、组队、找搭子都会命中，多数应该「通过」或「驳回」。
+- 涉及人身安全、诈骗钱财、未成年人的，先下架，再报告平台管理员。
+- 拿不准的，不要先下架；在理由里写清楚疑点，交给校运营或平台管理员。
+
+## 5. 时效与记录
+
+- 试点期建议：工作日 24 小时内处理完待审核帖子和用户举报，系统标记的评论 48 小时内看完。
+- 每次领取、处置都写必需审计（`REPORT_CLAIM`、`REPORT_RESOLVE`），平台管理员可在 `GET /api/admin/audit-logs` 查看。
+- 举报人只看得到结果（App「设置 → 我的举报」和「消息 → 通知」），看不到处理人、理由和其他人的举报。处理理由只写事实，不写举报人信息。
+- 作者对下架有异议，目前通过「设置 → 意见反馈」说明；正式的申诉流程（O02）之后上线。
+
+## 6. 隐私
+
+- 举报详情里能看到举报人 UID，只用于判断是否恶意举报，不要告诉被举报人。
+- 不把摘录、截图或举报人信息转发到群聊或个人设备之外的地方。

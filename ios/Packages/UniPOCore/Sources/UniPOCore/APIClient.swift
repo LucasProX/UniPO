@@ -508,6 +508,13 @@ public actor APIClient {
     }
 
     @discardableResult
+    /// 我提交过的举报和处理结果，按提交时间倒序；beforeId 为上一页的 nextBeforeId。
+    public func myReports(beforeId: Int64? = nil) async throws -> MyReportPage {
+        var query: [URLQueryItem] = []
+        if let beforeId { query.append(URLQueryItem(name: "beforeId", value: String(beforeId))) }
+        return try await request(path: "users/me/reports", query: query)
+    }
+
     /// 举报帖子；同一个人重复举报返回原来的回执。看不到的帖子返回 404。
     public func reportPost(id: Int64, category: ReportCategory, detail: String?) async throws -> ReportReceipt {
         var body: [String: Any] = ["category": category.rawValue]
