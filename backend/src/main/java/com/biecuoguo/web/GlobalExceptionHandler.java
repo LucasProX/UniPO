@@ -99,6 +99,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, "接口不存在");
     }
 
+    @ExceptionHandler(com.biecuoguo.error.ContentBlockedException.class)
+    ResponseEntity<ErrorResponse> handleContentBlocked(com.biecuoguo.error.ContentBlockedException ex) {
+        return badRequest(ErrorCode.CONTENT_BLOCKED, ex.getMessage());
+    }
+
     @ExceptionHandler(StateConflictException.class)
     ResponseEntity<ErrorResponse> handleStateConflict(StateConflictException ex) {
         return build(HttpStatus.CONFLICT, ErrorCode.STATE_CONFLICT, ex.getMessage());

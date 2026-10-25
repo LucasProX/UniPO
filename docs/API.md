@@ -74,6 +74,7 @@
 | `POST_DELETE_FORBIDDEN` | 403 | 只能删自己的帖子 |
 | `POST_SCHOOL_REQUIRED` | 400 | 发帖前必须先选学校 |
 | `COMMENT_NOT_FOUND` | 404 | 评论不存在或已删除 |
+| `CONTENT_BLOCKED` | 400 | 发帖、评论、昵称或简介命中违禁词（2026-10-25）；不返回命中的词 |
 | `USER_NOT_FOUND` | 404 | 用户不存在 |
 | `USER_ALREADY_FOLLOWED` | 400 | 重复关注 |
 | `USER_NOT_FOLLOWED` | 400 | 未关注就取关 |
@@ -287,6 +288,7 @@
 | POST | `/api/admin/role-grants` | ADMIN。`{userUid, role: CONTENT_EDITOR\|SCHOOL_OPERATOR\|COLLEGE_OPERATOR\|MAJOR_OPERATOR\|MODERATOR, scopeId?, reason, expiresAt?}`；范围层级由角色决定（内容编辑不带 scopeId），范围不存在 400，同一人同角色同范围已有有效授权 409，`expiresAt` 省略为当前学年 8 月 31 日 23:59:59 |
 | POST | `/api/admin/role-grants/{id}/revoke` | ADMIN。`{reason}`；已撤销 409。撤销后下一次请求即失去权限 |
 | GET | `/api/admin/posts?keyword=&status=&limit=` | 帖子搜索（含已下架），**只返回调用者授权范围内的帖子**：学校授权看全校，学院授权看本院的院 PO 与专业 PO，专业授权看本专业的专业 PO。`PATCH /{id}` 改 `status` 需要下架权限、改 `pinned` 需要置顶权限、改 `official`/`dontMiss` 需要官方帖权限，均按帖子范围判断，越权 403 |
+| — | 帖子 `status` | 新增 `pending`（2026-10-25，F02）：发帖命中可疑词或开启 `MODERATION_REVIEW_ALL_POSTS` 时返回 `status=pending`，信息流、他人主页、搜索都看不到，作者在 `/users/me/posts` 与详情里可见并可删除；待审核帖子不能点赞、收藏、评论、举报。审核员用 `/api/admin/posts?status=pending` 查队列，`PATCH /api/admin/posts/{id} {status: published}` 批准（需要下架权限），批准时 `publishedAt` 改为批准时间并通知粉丝 |
 | PATCH | `/api/admin/posts/{id}` | 置顶/官方/免错过/上下架（部分更新） |
 | GET/POST/PUT/DELETE | `/api/admin/spotlights[/{id}]` | 轮播位 CRUD（见 9.2） |
 | GET | `/api/admin/reports/daily?days=14` | 近 N 天新增用户/发布帖子（缺失日期补 0） |
@@ -309,7 +311,9 @@
 | GET | `/api/users/me/followers/new-count` | 上次打开粉丝列表后新增的粉丝数 |
 | POST | `/api/users/me/followers/seen` | 把 `users.followers_seen_at` 推到当前时间 |
 | POST / DELETE | `/api/users/{uid}/block` | 拉黑 / 取消拉黑；拉黑会双向取关 |
-| POST | `/api/users/{uid}/report` | 举报用户 |
+| POST | `/api/users/{uid}/report` | 举报用户 `{category, detail?}`，返回举报单 id（兼容旧契约）；2026-10-25 起写入统一的 `content_reports`，重复举报同一人返回原 id |
+| POST | `/api/posts/{id}/report` | 举报帖子 `{category: spam\|fraud\|harassment\|porn\|impersonation\|other, detail?（≤500）}`，返回回执 `{id, status: PENDING}`；看不到的帖子（别校、已删、待审核、已拉黑）404，举报自己 400，同一人重复举报返回原回执；每 IP 每 10 分钟 30 次 |
+| POST | `/api/posts/comments/{id}/report` | 举报评论，规则同上 |
 
 **新粉丝 +n**：服务端用 `users.followers_seen_at` 做游标，第一次没有该值时为 0（不补历史），
 打开粉丝列表后调用 `/seen` 清零，跨设备一致。

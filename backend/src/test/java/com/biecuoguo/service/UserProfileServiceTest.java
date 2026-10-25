@@ -44,7 +44,11 @@ class UserProfileServiceTest {
     private final UserService service = new UserService(users, preferences, follows, blocks,
             mock(UserCheckInMapper.class), mock(DeviceTokenMapper.class), presence,
             mock(PasswordEncoder.class), mock(SessionService.class), posts, mock(ExperienceService.class),
-            mock(com.biecuoguo.mapper.SchoolMapper.class), mock(com.biecuoguo.permission.api.PermissionApi.class));
+            mock(com.biecuoguo.mapper.SchoolMapper.class), mock(com.biecuoguo.permission.api.PermissionApi.class),
+            new com.biecuoguo.moderation.api.ContentFilterApi() {
+                    public Verdict check(String... texts) { return Verdict.ALLOW; }
+                    public boolean reviewAllPosts() { return false; }
+                });
     private User owner;
     private UserPreference preference;
     private boolean viewerFollowsOwner;

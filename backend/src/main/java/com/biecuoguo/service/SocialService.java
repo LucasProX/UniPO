@@ -7,12 +7,10 @@ import com.biecuoguo.config.SearchText;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.domain.UserBlock;
 import com.biecuoguo.domain.UserFollow;
-import com.biecuoguo.domain.UserReport;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.mapper.UserBlockMapper;
 import com.biecuoguo.mapper.UserFollowMapper;
 import com.biecuoguo.mapper.UserMapper;
-import com.biecuoguo.mapper.UserReportMapper;
 import com.biecuoguo.mapper.SocialRelationshipLockMapper;
 import com.biecuoguo.security.CurrentUser;
 import com.biecuoguo.social.api.BlockQueryApi;
@@ -36,23 +34,18 @@ public class SocialService implements BlockQueryApi {
 
     private static final int LIST_LIMIT = 200;
     private static final int USER_SEARCH_LIMIT = 20;
-    private static final Set<String> REPORT_CATEGORIES = Set.of(
-            "spam", "fraud", "harassment", "porn", "impersonation", "other"
-    );
 
     private final UserMapper userMapper;
     private final UserFollowMapper followMapper;
     private final UserBlockMapper blockMapper;
-    private final UserReportMapper reportMapper;
     private final SocialRelationshipLockMapper relationshipLockMapper;
 
     public SocialService(UserMapper userMapper, UserFollowMapper followMapper,
-                         UserBlockMapper blockMapper, UserReportMapper reportMapper,
+                         UserBlockMapper blockMapper,
                          SocialRelationshipLockMapper relationshipLockMapper) {
         this.userMapper = userMapper;
         this.followMapper = followMapper;
         this.blockMapper = blockMapper;
-        this.reportMapper = reportMapper;
         this.relationshipLockMapper = relationshipLockMapper;
     }
 
@@ -189,30 +182,6 @@ public class SocialService implements BlockQueryApi {
     }
 
     @Transactional
-    public Long report(String uid, UserDtos.ReportRequest request, CurrentUser currentUser) {
-        User target = userByUid(uid);
-        if (target.getId().equals(currentUser.id())) {
-            throw new IllegalArgumentException("不能举报自己");
-        }
-        String category = request.category() == null ? "" : request.category().trim();
-        if (!REPORT_CATEGORIES.contains(category)) {
-            throw new IllegalArgumentException("举报分类不合法");
-        }
-        String detail = request.detail() == null ? null : request.detail().trim();
-        if (detail != null && detail.length() > 500) {
-            throw new IllegalArgumentException("补充说明最多 500 字");
-        }
-        UserReport report = new UserReport();
-        report.setReporterId(currentUser.id());
-        report.setTargetUserId(target.getId());
-        report.setCategory(category);
-        report.setDetail(detail == null || detail.isBlank() ? null : detail);
-        report.setStatus("pending");
-        report.setCreatedAt(AppTime.nowLocal());
-        reportMapper.insert(report);
-        return report.getId();
-    }
-
     public long followingCount(Long userId) {
         return followMapper.selectCount(new LambdaQueryWrapper<UserFollow>().eq(UserFollow::getFollowerId, userId));
     }

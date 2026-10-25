@@ -515,6 +515,12 @@ public struct ShareResponse: Codable {
 }
 
 /** 举报分类的稳定 key 由后端校验；标题只用于展示。 */
+/// 举报受理回执：只有编号和状态，不含处理细节。
+public struct ReportReceipt: Codable, Hashable {
+    public let id: Int64
+    public let status: String
+}
+
 public enum ReportCategory: String, CaseIterable, Identifiable {
     case spam, fraud, harassment, porn, impersonation, other
     public var id: String { rawValue }

@@ -18,6 +18,7 @@ struct ComposeSheet: View {
     @State private var content = ""
     @State private var isSubmitting = false
     @State private var errorMessage: String?
+    @State private var heldForReview = false
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var imageURLs: [String] = []
     @State private var tags: [String] = []
@@ -78,6 +79,11 @@ struct ComposeSheet: View {
                 #endif
             }
             .navigationBarTitleDisplayMode(.inline)
+            .alert("已提交审核", isPresented: $heldForReview) {
+                Button("好的") { dismiss() }
+            } message: {
+                Text("这条 PO 里有需要人工确认的内容，审核通过后会出现在信息流。你可以在「我的 → 作品」里看到它。")
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("取消") { dismiss() }
@@ -392,7 +398,7 @@ struct ComposeSheet: View {
             if submitRequestID == requestID { isSubmitting = false; submitRequestID = nil }
         }
         do {
-            _ = try await APIClient.shared.createPost(
+            let created = try await APIClient.shared.createPost(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
                 board: board,
@@ -402,7 +408,7 @@ struct ComposeSheet: View {
             )
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             NotificationCenter.default.post(name: .unipoPostPublished, object: nil)
-            dismiss()
+            if created.status == "pending" { heldForReview = true } else { dismiss() }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "发布失败"

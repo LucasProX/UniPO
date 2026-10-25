@@ -53,7 +53,10 @@ class PostServiceBlockTest {
                 mock(com.biecuoguo.notification.api.NotificationApi.class), mock(UserFollowMapper.class), new com.biecuoguo.permission.api.PermissionApi() {
                     public com.biecuoguo.permission.api.Grants grantsOf(Long userId) { return com.biecuoguo.permission.api.Grants.none(); }
                     public boolean hasScopedGrant(long userId) { return false; }
-                });
+                }, new com.biecuoguo.moderation.api.ContentFilterApi() {
+                    public Verdict check(String... texts) { return Verdict.ALLOW; }
+                    public boolean reviewAllPosts() { return false; }
+                }, org.mockito.Mockito.mock(com.biecuoguo.report.api.ReportFlagApi.class));
 
         assertThrows(NoSuchElementException.class, () -> service.comment(70L,
                 new PostDtos.CreateCommentRequest("Blocked reply", 80L),

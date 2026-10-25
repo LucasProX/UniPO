@@ -703,7 +703,7 @@ class MessageBlockMySqlIntegrationTest {
         @Bean
         SocialService socialService(SqlSessionTemplate template) {
             return new SocialService(template.getMapper(UserMapper.class), template.getMapper(UserFollowMapper.class),
-                    template.getMapper(UserBlockMapper.class), template.getMapper(UserReportMapper.class),
+                    template.getMapper(UserBlockMapper.class),
                     template.getMapper(SocialRelationshipLockMapper.class));
         }
 

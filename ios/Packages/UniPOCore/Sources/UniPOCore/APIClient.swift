@@ -508,6 +508,19 @@ public actor APIClient {
     }
 
     @discardableResult
+    /// 举报帖子；同一个人重复举报返回原来的回执。看不到的帖子返回 404。
+    public func reportPost(id: Int64, category: ReportCategory, detail: String?) async throws -> ReportReceipt {
+        var body: [String: Any] = ["category": category.rawValue]
+        if let detail, !detail.isEmpty { body["detail"] = detail }
+        return try await request(path: "posts/\(id)/report", method: "POST", body: body)
+    }
+
+    public func reportComment(id: Int64, category: ReportCategory, detail: String?) async throws -> ReportReceipt {
+        var body: [String: Any] = ["category": category.rawValue]
+        if let detail, !detail.isEmpty { body["detail"] = detail }
+        return try await request(path: "posts/comments/\(id)/report", method: "POST", body: body)
+    }
+
     public func reportUser(uid: String, category: ReportCategory, detail: String?) async throws -> Int64 {
         var body: [String: Any] = ["category": category.rawValue]
         if let detail, !detail.isEmpty { body["detail"] = detail }

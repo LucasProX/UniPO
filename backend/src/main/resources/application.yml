@@ -95,6 +95,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  moderation:
+    # true 时所有帖子先审后发；默认只有命中可疑词的帖子进待审核（F02）。
+    review-all-posts: ${MODERATION_REVIEW_ALL_POSTS:false}
   message:
     outbox:
       enabled: ${MESSAGE_OUTBOX_ENABLED:true}

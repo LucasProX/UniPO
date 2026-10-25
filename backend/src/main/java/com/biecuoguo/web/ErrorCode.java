@@ -27,6 +27,8 @@ public enum ErrorCode {
     POST_DELETE_FORBIDDEN("只能删除自己的帖子"),
     POST_SCHOOL_REQUIRED("请先选择学校"),
     COMMENT_NOT_FOUND("评论不存在或已删除"),
+    /** 内容命中违禁词（F02）。不告诉客户端命中的是哪个词。 */
+    CONTENT_BLOCKED("内容包含不允许发布的词语，请修改后再发"),
 
     // ---- 用户 ----
     USER_NOT_FOUND("用户不存在"),

@@ -7,6 +7,8 @@ import com.biecuoguo.domain.*;
 import com.biecuoguo.dto.UserDtos;
 import com.biecuoguo.dto.UserProfile;
 import com.biecuoguo.mapper.*;
+import com.biecuoguo.error.ContentBlockedException;
+import com.biecuoguo.moderation.api.ContentFilterApi;
 import com.biecuoguo.permission.api.PermissionApi;
 import com.biecuoguo.post.api.PostQueryApi;
 import com.biecuoguo.security.SessionService;
@@ -36,12 +38,14 @@ public class UserService {
     private final ExperienceService experienceService;
     private final SchoolMapper schoolMapper;
     private final PermissionApi permissions;
+    private final ContentFilterApi contentFilter;
 
     public UserService(UserMapper userMapper, UserPreferenceMapper preferenceMapper, UserFollowMapper userFollowMapper,
                        UserBlockMapper userBlockMapper, UserCheckInMapper checkInMapper, DeviceTokenMapper deviceTokenMapper,
                        PresenceService presenceService, PasswordEncoder passwordEncoder, SessionService sessionService,
                        PostQueryApi postQueryApi, ExperienceService experienceService, SchoolMapper schoolMapper,
-                       PermissionApi permissions) {
+                       PermissionApi permissions, ContentFilterApi contentFilter) {
+        this.contentFilter = contentFilter;
         this.schoolMapper = schoolMapper;
         this.permissions = permissions;
         this.userMapper = userMapper;
@@ -69,6 +73,8 @@ public class UserService {
         if (!"active".equals(user.getStatus())) {
             throw new AccessDeniedException("账号不可用");
         }
+        // 昵称、简介是公开展示的：只拦违禁词，可疑词不处理（「欢迎加微信交流」在简介里很常见）。
+        if (contentFilter.check(request.nickname(), request.bio()).blocked()) throw new ContentBlockedException();
         if (request.nickname() != null) {
             String nickname = request.nickname().trim();
             if (nickname.isBlank()) {
@@ -249,6 +255,7 @@ public class UserService {
         if (user == null) {
             throw new NoSuchElementException("用户不存在");
         }
+        if (contentFilter.check(request.nickname(), request.signature()).blocked()) throw new ContentBlockedException();
         if (request.nickname() != null && !request.nickname().isBlank()) {
             String nickname = request.nickname().trim();
             User same = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getNickname, nickname));

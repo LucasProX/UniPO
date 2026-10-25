@@ -81,11 +81,6 @@ public class SocialController {
         return ApiResponse.ok(socialService.unblock(uid, SecurityUtils.currentUser()));
     }
 
-    @PostMapping("/{uid}/report")
-    public ApiResponse<Long> report(@PathVariable String uid, @Valid @RequestBody UserDtos.ReportRequest request) {
-        return ApiResponse.ok(socialService.report(uid, request, SecurityUtils.currentUser()));
-    }
-
     private Long viewerId(Authentication authentication) {
         return authentication != null && authentication.getPrincipal() instanceof CurrentUser user ? user.id() : null;
     }

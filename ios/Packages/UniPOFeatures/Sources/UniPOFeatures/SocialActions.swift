@@ -10,11 +10,41 @@ extension Notification.Name {
     static let unipoPostPublished = Notification.Name("unipo.post.published")
 }
 
-/// 举报用户：固定原因 + 可选说明。提交成功只表示已受理，不承诺处理结果。
+/// 举报的对象：用户、帖子或评论。
+enum ReportTarget: Identifiable, Hashable {
+    case user(uid: String, name: String)
+    case post(id: Int64)
+    case comment(id: Int64)
+
+    var id: String {
+        switch self {
+        case .user(let uid, _): return "user-\(uid)"
+        case .post(let id): return "post-\(id)"
+        case .comment(let id): return "comment-\(id)"
+        }
+    }
+
+    var reasonHeader: String {
+        switch self {
+        case .user(_, let name): return "举报 \(name) 的原因"
+        case .post: return "举报这条 PO 的原因"
+        case .comment: return "举报这条评论的原因"
+        }
+    }
+}
+
+/// 举报：固定原因 + 可选说明。提交成功只表示已受理，不承诺处理结果；重复举报同一对象不会重复建单。
 struct ReportSheet: View {
     @Environment(\.dismiss) private var dismiss
-    let uid: String
-    let name: String
+    let target: ReportTarget
+
+    init(target: ReportTarget) {
+        self.target = target
+    }
+
+    init(uid: String, name: String) {
+        self.target = .user(uid: uid, name: name)
+    }
 
     @State private var category: ReportCategory?
     @State private var detail = ""
@@ -30,7 +60,7 @@ struct ReportSheet: View {
                         Image(systemName: "checkmark.shield.fill")
                             .uniFont(40).foregroundStyle(UniColor.blue)
                         Text("举报已提交").uniFont(20, weight: .bold).foregroundStyle(UniColor.ink)
-                        Text("我们会尽快核实处理。你也可以在对方主页选择拉黑，不再看到 TA 的内容。")
+                        Text("我们会尽快核实处理，处理期间内容可能仍然可见。你也可以在对方主页选择拉黑，不再看到 TA 的内容。")
                             .uniFont(13).foregroundStyle(UniColor.secondary)
                             .multilineTextAlignment(.center).padding(.horizontal, 30)
                         Button("完成") { dismiss() }
@@ -55,7 +85,7 @@ struct ReportSheet: View {
                                 }
                             }
                         } header: {
-                            Text("举报 \(name) 的原因")
+                            Text(target.reasonHeader)
                         }
                         Section {
                             TextField("补充说明（可选，最多 500 字）", text: $detail, axis: .vertical)
@@ -91,8 +121,12 @@ struct ReportSheet: View {
         errorMessage = nil
         defer { isSending = false }
         do {
-            _ = try await APIClient.shared.reportUser(uid: uid, category: category,
-                                                     detail: detail.trimmingCharacters(in: .whitespacesAndNewlines))
+            let note = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            switch target {
+            case .user(let uid, _): _ = try await APIClient.shared.reportUser(uid: uid, category: category, detail: note)
+            case .post(let id): _ = try await APIClient.shared.reportPost(id: id, category: category, detail: note)
+            case .comment(let id): _ = try await APIClient.shared.reportComment(id: id, category: category, detail: note)
+            }
             submitted = true
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "提交失败，请重试"

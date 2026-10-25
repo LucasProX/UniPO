@@ -1340,7 +1340,7 @@ class PostInteractionMySqlIntegrationTest {
         @Bean
         SocialService socialService(SqlSessionTemplate template) {
             return new SocialService(statusObservingUserMapper(template), template.getMapper(UserFollowMapper.class),
-                    readGatedBlockMapper(template), template.getMapper(UserReportMapper.class),
+                    readGatedBlockMapper(template),
                     template.getMapper(SocialRelationshipLockMapper.class));
         }
 
@@ -1365,7 +1365,10 @@ class PostInteractionMySqlIntegrationTest {
                                 : com.biecuoguo.permission.api.Grants.none();
                     }
                     public boolean hasScopedGrant(long userId) { return false; }
-                });
+                }, new com.biecuoguo.moderation.api.ContentFilterApi() {
+                    public Verdict check(String... texts) { return Verdict.ALLOW; }
+                    public boolean reviewAllPosts() { return false; }
+                }, org.mockito.Mockito.mock(com.biecuoguo.report.api.ReportFlagApi.class));
         }
 
         @Bean
@@ -1382,6 +1385,9 @@ class PostInteractionMySqlIntegrationTest {
                                 : com.biecuoguo.permission.api.Grants.none();
                     }
                     public boolean hasScopedGrant(long userId) { return false; }
+                }, new com.biecuoguo.moderation.api.ContentFilterApi() {
+                    public Verdict check(String... texts) { return Verdict.ALLOW; }
+                    public boolean reviewAllPosts() { return false; }
                 });
         }
 

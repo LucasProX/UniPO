@@ -33,7 +33,8 @@ struct PostCardView: View {
                     .frame(minHeight: 44)
                 }
                 Spacer(minLength: 4)
-                UniChip(boardLabel(post.board))
+                // 待审核只出现在作者自己的作品里，用板块位置提示状态，不改变卡片高度。
+                UniChip(post.status == "pending" ? "审核中" : boardLabel(post.board))
             }
 
             Button(action: onOpen) {

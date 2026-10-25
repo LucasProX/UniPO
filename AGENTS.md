@@ -39,7 +39,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
 | `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V36，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V37，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -90,7 +90,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V36）：
+后端（Flyway 自动执行 V1–V37）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -195,6 +195,8 @@ xcrun simctl launch booted com.unipo.app
   `STATE_BACKEND`、`REDIS_HOST`、`REDIS_PORT`、`REDIS_PASSWORD` 只加在 `.env.example` 与 `docker-compose.yml`，
   **故意没进 `deploy-app.sh` 的 `required_vars`**——它们都有安全的默认值，强制必填会让老部署直接起不来。
   `MESSAGE_OUTBOX_ENABLED`、`MESSAGE_OUTBOX_POLL_INTERVAL_MS` 同样为可选变量（默认 true / 1000ms），仅维护示例和 Compose；暂停 worker 会保留待投递事实。
+- **举报与内容过滤（2026-10-25，F01/F02，V37）**：举报用户、帖子、评论统一写 `content_reports`（`report` 模块），带被举报对象的学校/学院/专业和举报当时的内容摘录（`snapshot`，只给处理人看），同一人对同一对象重复举报返回原回执；举报人只看到 `{id, status}`。旧 `user_reports` 已迁入、不再写入。内容过滤在 `moderation` 模块：`resources/moderation/blocked.txt` 命中返回 400 `CONTENT_BLOCKED`（不告诉是哪个词、不写日志），`review.txt` 命中时**帖子**进 `pending`（只有作者能看、能撤回，审核员在 `/admin/posts?status=pending` 批准后按批准时间进信息流并通知粉丝），**评论**照常显示但自动以 `source=FILTER` 进举报队列；昵称、简介只拦违禁词。`posts.risk_level` 只由过滤结果决定，不再接受客户端传值。`MODERATION_REVIEW_ALL_POSTS=true` 时所有帖子先审后发（可选变量，默认 false，只加在 `.env.example` 与 Compose）。词表改动随版本发布，并写明原因。
+- **一个 Spring Bean 有两个构造函数时必须给注入用的那个加 `@Autowired`**（2026-10-25 部署时踩过：单测全绿，测试实例启动报 `No default constructor found`，已先跑完 V37）。给单测留的包内构造函数不要和注入构造函数并列而不标注。
 - **新模块的 Mapper 要加进 `BieCuoGuoApplication` 的 `@MapperScan` 列表**：它是按包逐个列出的，漏了单测照样全绿，只有起 Spring 上下文才报 `required a bean of type ...Mapper`（2026-10-23 部署 activity 时踩过，Flyway 已先跑完迁移）。
 - **MyBatis 注解 SQL 只有包在 `<script>` 里才写 `&lt;`**：普通 `@Select` 字符串原样发给 MySQL，`&lt;` 会变成语法错误；不在 `<script>` 里直接写 `<`。
 - **角色与权限走范围授权（2026-10-25，V36，ADR-0006）**：平台管理员是 `users.role = 'ADMIN'`；其余运营权限只认 `role_grants`（角色 × PLATFORM/SCHOOL/COLLEGE/MAJOR 范围，带授予人、理由、到期、撤销）。能力清单与角色模板在 `permission.api.Capability` / `Role`，**写在代码里，不做在线可编辑的角色表**；判断一律 `permissions.grantsOf(...)` 后 `can(能力, ScopeTarget)`，默认拒绝。**权限范围不能再从用户资料取**（以前院运营改了自己的学院就能替别的学院发活动）；`users.role/operator_scope` 只是展示缓存，由 `RoleGrantService` 在授予、撤销和每小时重算，除 `ADMIN` 外任何判断都不读它。授权不进 JWT，撤销后下一次请求即生效，所以授予与撤销范围授权不推进身份版本。授予与撤销第一期只有平台管理员（`/api/admin/role-grants`），与必需审计同事务，默认到学年结束 8 月 31 日；旧 `PUT /admin/users/{id}/role` 保留兼容。有运营授权的人不能自己换学校（409）。审计日志、报表、监控、轮播与授权管理只给平台管理员。演示运营的授权由 `DemoOperatorGrantSeeder` 在应用就绪后补（只在 seed-demo-data 打开时）。
@@ -207,7 +209,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V36 只增不改，下一次迁移按实际最高版本递增（当前应为 `V37__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V37 只增不改，下一次迁移按实际最高版本递增（当前应为 `V38__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。

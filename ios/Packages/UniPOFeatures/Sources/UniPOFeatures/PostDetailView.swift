@@ -31,7 +31,7 @@ struct PostDetailView: View {
     @State private var commentLikes: [Int64: (liked: Bool, count: Int)] = [:]
     @State private var likingComment: Int64?
     @State private var shareItem: ShareItem?
-    @State private var reporting = false
+    @State private var reportTarget: ReportTarget?
     @State private var confirmingDelete = false
     @State private var isDeleting = false
     @State private var viewing: ImageViewerTarget?
@@ -57,8 +57,11 @@ struct PostDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     header
                     bodyContent
-                    actions
-                    commentsSection
+                    // 待审核的帖子还不能点赞、收藏、评论，只给作者看正文和审核提示。
+                    if !isPending {
+                        actions
+                        commentsSection
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, 24)
@@ -66,7 +69,7 @@ struct PostDetailView: View {
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .safeAreaInset(edge: .bottom) {
-                commentComposer
+                if !isPending { commentComposer }
             }
             .navigationTitle("帖子")
             .navigationBarTitleDisplayMode(.inline)
@@ -82,8 +85,13 @@ struct PostDetailView: View {
                         if isMine {
                             Button("删除这条 PO", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                         } else {
-                            Button("举报作者", systemImage: "exclamationmark.bubble") {
-                                if auth.isAuthenticated { reporting = true } else { auth.requireLogin() }
+                            Button("举报这条 PO", systemImage: "exclamationmark.bubble") {
+                                if auth.isAuthenticated { reportTarget = .post(id: post.id) } else { auth.requireLogin() }
+                            }
+                            Button("举报作者", systemImage: "person.crop.circle.badge.exclamationmark") {
+                                if auth.isAuthenticated {
+                                    reportTarget = .user(uid: post.author.uid, name: post.author.nickname)
+                                } else { auth.requireLogin() }
                             }
                         }
                     } label: {
@@ -99,8 +107,8 @@ struct PostDetailView: View {
                 ShareSheet(items: [item.text]) { Task { await recordShare() } }
                     .presentationDetents([.medium, .large])
             }
-            .sheet(isPresented: $reporting) {
-                ReportSheet(uid: post.author.uid, name: post.author.nickname)
+            .sheet(item: $reportTarget) { target in
+                ReportSheet(target: target)
             }
             .confirmationDialog("删除后无法恢复，评论与点赞也会一起隐藏。", isPresented: $confirmingDelete,
                                 titleVisibility: .visible) {
@@ -218,6 +226,14 @@ struct PostDetailView: View {
 
     private var bodyContent: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if post.status == "pending" {
+                Label("审核中：通过后其他同学才能看到这条 PO", systemImage: "hourglass")
+                    .uniFont(13, weight: .semibold)
+                    .foregroundStyle(UniColor.gold)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(UniColor.gold.opacity(0.1), in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+            }
             Text(post.title)
                 .uniFont(24, weight: .heavy)
                 .foregroundStyle(UniColor.ink)
@@ -299,8 +315,10 @@ struct PostDetailView: View {
             } else {
                 ForEach(threads, id: \.root.id) { thread in
                     commentRow(thread.root, isReply: false)
+                        .contextMenu { commentMenu(thread.root) }
                     ForEach(thread.replies) { reply in
                         commentRow(reply, isReply: true)
+                            .contextMenu { commentMenu(reply) }
                             .padding(.leading, 44)
                     }
                 }
@@ -328,6 +346,17 @@ struct PostDetailView: View {
             if root == comment.id { roots.append(comment) } else { replies[root, default: []].append(comment) }
         }
         return roots.map { ($0, replies[$0.id] ?? []) }
+    }
+
+    /// 长按评论：复制；别人的评论可以举报。
+    @ViewBuilder
+    private func commentMenu(_ comment: CommentView) -> some View {
+        Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = comment.content }
+        if comment.author.uid != auth.profile?.publicUid {
+            Button("举报这条评论", systemImage: "exclamationmark.bubble") {
+                if auth.isAuthenticated { reportTarget = .comment(id: comment.id) } else { auth.requireLogin() }
+            }
+        }
     }
 
     private func commentRow(_ comment: CommentView, isReply: Bool) -> some View {
@@ -531,6 +560,7 @@ struct PostDetailView: View {
     }
 
     private func loadComments() async {
+        guard !isPending else { return }
         let userID = auth.profile?.id
         let revision = auth.authenticationRevision
         let requestID = UUID()
@@ -631,6 +661,7 @@ struct PostDetailView: View {
     }
 
     private var isMine: Bool { post.author.uid == auth.profile?.publicUid }
+    private var isPending: Bool { post.status == "pending" }
 
     private var shareText: String {
         let summary = post.excerpt ?? String(post.content.prefix(80))

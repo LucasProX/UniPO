@@ -173,7 +173,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post: operations["report"];
+        post: operations["reportUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -340,6 +340,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/posts/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reportPost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/posts/comments/{id}/like": {
         parameters: {
             query?: never;
@@ -351,6 +367,22 @@ export interface paths {
         put?: never;
         post: operations["likeComment"];
         delete: operations["unlikeComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/posts/comments/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reportComment"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2459,6 +2491,17 @@ export interface components {
             createdAt?: string;
             author?: components["schemas"]["AuthorView"];
         };
+        ApiResponseReportReceipt: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["ReportReceipt"];
+            requestId?: string;
+        };
+        ReportReceipt: {
+            /** Format: int64 */
+            id?: number;
+            status?: string;
+        };
         ApiResponseInteger: {
             code?: string;
             message?: string;
@@ -3941,7 +3984,7 @@ export interface operations {
             };
         };
     };
-    report: {
+    reportUser: {
         parameters: {
             query?: never;
             header?: never;
@@ -4369,6 +4412,32 @@ export interface operations {
             };
         };
     };
+    reportPost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReportReceipt"];
+                };
+            };
+        };
+    };
     likeComment: {
         parameters: {
             query?: never;
@@ -4409,6 +4478,32 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    reportComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseReportReceipt"];
                 };
             };
         };

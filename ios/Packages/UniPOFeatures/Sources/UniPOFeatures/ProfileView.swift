@@ -644,11 +644,12 @@ struct ProfileView: View {
         }
     }
 
+    /// 待审核的作品在角标位置显示「审核中」，其余显示点赞数。
     private func likeBadge(_ post: PostView) -> some View {
         HStack(spacing: 3) {
-            Image(systemName: "heart.fill")
+            Image(systemName: post.status == "pending" ? "hourglass" : "heart.fill")
                 .uniFont(8, weight: .semibold)
-            Text("\(post.likeTotal)")
+            Text(post.status == "pending" ? "审核中" : "\(post.likeTotal)")
                 .uniFont(9, weight: .semibold)
                 .monospacedDigit()
         }

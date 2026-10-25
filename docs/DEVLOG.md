@@ -5081,3 +5081,11 @@ iOS 卡片上的关联标签最开始也想做成能点的按钮，直接跳到�
 演示运营的授权放在 `DemoOperatorGrantSeeder`，第一版写成 `CommandLineRunner` 加 `@Order(LOWEST_PRECEDENCE)`，想排在 `AuthService` 后面——但 `AuthService` 本身没写 `@Order`，默认也是最低优先级，两个同级 runner 的先后是不确定的，演示账号可能还没建好就去补授权。改成监听 `ApplicationReadyEvent`，它在所有 runner 跑完之后才发。
 
 还有一个刻意的行为变化：以前活动发布者本人永远能管自己的活动，现在也要靠 `activity.manage` 授权。原因是换届——社团负责人卸任撤销授权后，他发过的活动应该由新负责人或上级运营接手，而不是一直留在前任手里。
+
+## 2026-10-25 可疑评论不进「审核中」；两个构造函数让测试实例起不来
+
+做 F02 时，帖子的「先审后发」很自然：加一个 `pending` 状态，信息流本来就只查 `published`，待审核的帖子自动看不见，作者在自己的作品里看到「审核中」。评论第一反应也想这么做，回头一看评论只有 `visible / hidden` 两态，`comments()` 只排除 `hidden`——加个 `pending` 会直接显示给所有人，要改就得同时改评论列表、楼中楼、计数和回复校验，还要给审核员补一个评论审核接口。评论区出现一条条「审核中」的空洞体验也差。最后的取舍是：评论命中违禁词直接拒绝；命中可疑词照常显示，同时以 `source=FILTER` 写一条系统举报进同一个举报队列，审核员在 O01 里和用户举报一起处理。
+
+部署到测试实例时后端没起来，日志是 `Failed to instantiate [ContentFilterService]: No default constructor found`。`ContentFilterService` 有两个构造函数：一个给 Spring（读配置、加载词表），一个包内的给单测直接塞词表。单测全绿，因为单测根本不经过 Spring。两个构造函数都没标注时 Spring 不知道用哪个，就去找无参构造。给注入用的那个加 `@Autowired` 后正常。教训和 `@MapperScan` 那次一样：单测通过不代表上下文能起，新模块部署前最好先在测试实例上看一眼启动日志。这次测试实例因此停了约三分钟，V37 迁移已经先执行，重启后无需再迁。
+
+验收时还发现作者删不掉自己待审核的帖子：`deleteOwnPost` 复用了 `requireMutablePost`，它只认 `published`。点赞、评论这些确实应该只对已发布的帖子开放，但「撤回」恰恰最需要在审核中做。删除改成自己锁行、允许 `published` 和 `pending`。

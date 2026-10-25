@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @SpringBootApplication
 @MapperScan({"com.biecuoguo.mapper", "com.biecuoguo.activity.internal", "com.biecuoguo.wallet.internal", "com.biecuoguo.notification.internal", "com.biecuoguo.media.internal", "com.biecuoguo.message.internal",
         "com.biecuoguo.post.internal", "com.biecuoguo.spotlight.internal", "com.biecuoguo.push.internal",
-        "com.biecuoguo.admin.internal", "com.biecuoguo.achievement.internal", "com.biecuoguo.auth.internal", "com.biecuoguo.growth.internal", "com.biecuoguo.feedback.internal", "com.biecuoguo.permission.internal"})
+        "com.biecuoguo.admin.internal", "com.biecuoguo.achievement.internal", "com.biecuoguo.auth.internal", "com.biecuoguo.growth.internal", "com.biecuoguo.feedback.internal", "com.biecuoguo.permission.internal", "com.biecuoguo.report.internal"})
 @ConfigurationPropertiesScan
 public class BieCuoGuoApplication {
     public static void main(String[] args) {

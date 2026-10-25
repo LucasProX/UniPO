@@ -8,6 +8,9 @@ import com.biecuoguo.domain.User;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.config.AppTime;
 import com.biecuoguo.config.SearchText;
+import com.biecuoguo.error.ContentBlockedException;
+import com.biecuoguo.moderation.api.ContentFilterApi;
+import com.biecuoguo.report.api.ReportFlagApi;
 import com.biecuoguo.permission.api.Capability;
 import com.biecuoguo.permission.api.Grant;
 import com.biecuoguo.permission.api.Grants;
@@ -67,11 +70,16 @@ public class PostService implements PostQueryApi, PostAdminApi {
     private final UserFollowMapper followMapper;
 
     private final PermissionApi permissions;
+    private final ContentFilterApi contentFilter;
+    private final ReportFlagApi reportFlags;
 
     public PostService(AppProperties appProperties, PostMapper postMapper, PostImageMapper imageMapper, PostLikeMapper likeMapper, PostFavoriteMapper favoriteMapper, PostShareMapper shareMapper, PostDailyStatMapper dailyStatMapper, CommentMapper commentMapper, CommentLikeMapper commentLikeMapper, UserMapper userMapper, SchoolMapper schoolMapper, CollegeMapper collegeMapper, MajorMapper majorMapper, PresenceService presenceService, ExperienceService experienceService, BlockQueryApi blockQueryApi, AdminAuditApi auditApi,
                        ActivityParticipationApi activityRefs, TaskLookupApi taskLookup, NotificationApi notifications,
-                       UserFollowMapper followMapper, PermissionApi permissions) {
+                       UserFollowMapper followMapper, PermissionApi permissions, ContentFilterApi contentFilter,
+                       ReportFlagApi reportFlags) {
         this.permissions = permissions;
+        this.contentFilter = contentFilter;
+        this.reportFlags = reportFlags;
         this.auditApi = auditApi;
         this.activityRefs = activityRefs;
         this.taskLookup = taskLookup;
@@ -281,6 +289,11 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (author.getSchoolId() == null) {
             throw new IllegalArgumentException("请先在个人中心选择学校");
         }
+        // F02：违禁词直接拒绝；可疑内容或全局「先审后发」时进待审核，审核通过前只有作者自己看得到。
+        ContentFilterApi.Verdict verdict = contentFilter.check(request.title(), request.content(),
+                request.tags() == null ? null : String.join(" ", request.tags()));
+        if (verdict.blocked()) throw new ContentBlockedException();
+        boolean holdForReview = verdict.needsReview() || contentFilter.reviewAllPosts();
         LocalDateTime now = AppTime.nowLocal();
         Post post = new Post();
         post.setAuthorId(author.getId());
@@ -293,7 +306,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
         post.setContent(request.content().trim());
         post.setExcerpt(excerpt(request.content()));
         post.setCoverUrl(firstNonBlank(request.coverUrl(), null));
-        post.setRiskLevel(firstNonBlank(request.riskLevel(), "normal"));
+        // 风险等级只由服务端的过滤结果决定，不再接受客户端传值。
+        post.setRiskLevel(verdict.needsReview() ? "review" : "normal");
         // 官方、别错过、置顶都按授权范围判断（ADR-0006），帖子所在范围由板块和作者此刻的学校、学院、专业决定。
         Grants grants = permissions.grantsOf(author.getId());
         ScopeTarget target = postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId());
@@ -311,14 +325,14 @@ public class PostService implements PostQueryApi, PostAdminApi {
         post.setCommentCount(0);
         post.setFavoriteCount(0);
         post.setShareCount(0);
-        post.setStatus("published");
+        post.setStatus(holdForReview ? "pending" : "published");
         post.setPublishedAt(now);
         post.setCreatedAt(now);
         post.setUpdatedAt(now);
         postMapper.insert(post);
         saveImages(post.getId(), request.images(), now);
         grantXp(author, 12);
-        notifyFollowers(author, post);
+        if (!holdForReview) notifyFollowers(author, post);
         return toView(postMapper.selectById(post.getId()), currentUser);
     }
 
@@ -364,6 +378,11 @@ public class PostService implements PostQueryApi, PostAdminApi {
     public PostDtos.PostView detail(long postId, CurrentUser currentUser) {
         User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         Post post = postMapper.selectOne(baseVisibleWrapper(viewer).eq(Post::getId, postId));
+        if (post == null && currentUser != null) {
+            // 待审核的帖子只有作者自己能打开。
+            Post own = postMapper.selectById(postId);
+            if (own != null && "pending".equals(own.getStatus()) && Objects.equals(own.getAuthorId(), currentUser.id())) post = own;
+        }
         if (post == null) throw new NoSuchElementException("PO 不存在");
         return toView(post, currentUser);
     }
@@ -442,10 +461,37 @@ public class PostService implements PostQueryApi, PostAdminApi {
         }
     }
 
+    @Override
+    public java.util.Optional<ReportableContent> reportable(String type, long id, CurrentUser currentUser) {
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        if ("POST".equals(type)) {
+            Post post = postMapper.selectOne(baseVisibleWrapper(viewer).eq(Post::getId, id));
+            if (post == null) return java.util.Optional.empty();
+            return java.util.Optional.of(new ReportableContent(post.getId(), post.getAuthorId(),
+                    postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()),
+                    post.getTitle() + "\n" + post.getContent()));
+        }
+        if ("COMMENT".equals(type)) {
+            Comment comment = commentMapper.selectById(id);
+            if (comment == null || comment.getPostId() == null || "hidden".equals(comment.getStatus())) return java.util.Optional.empty();
+            if (isBlockedPair(currentUser, comment.getUserId())) return java.util.Optional.empty();
+            Post post = postMapper.selectOne(baseVisibleWrapper(viewer).eq(Post::getId, comment.getPostId()));
+            if (post == null) return java.util.Optional.empty();
+            return java.util.Optional.of(new ReportableContent(comment.getId(), comment.getUserId(),
+                    postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()),
+                    comment.getContent()));
+        }
+        return java.util.Optional.empty();
+    }
+
     @Transactional
     public boolean deleteOwnPost(Long postId, CurrentUser currentUser) {
         requireAuthenticated(currentUser);
-        Post post = requireMutablePost(postId, currentUser);
+        // 作者也能撤回还在审核中的帖子，所以不走只认 published 的 requireMutablePost。
+        Post post = postMapper.lockById(postId);
+        if (post == null || !Set.of("published", "pending").contains(post.getStatus())) {
+            throw new NoSuchElementException("PO 不存在");
+        }
         if (!Objects.equals(post.getAuthorId(), currentUser.id())) {
             throw new AccessDeniedException("只能删除自己的 PO");
         }
@@ -485,6 +531,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
             }
         }
         User author = requireRewardUser(currentUser.id());
+        ContentFilterApi.Verdict verdict = contentFilter.check(request.content());
+        if (verdict.blocked()) throw new ContentBlockedException();
         LocalDateTime now = AppTime.nowLocal();
         Comment comment = new Comment();
         comment.setPostId(post.getId());
@@ -514,6 +562,12 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (request.parentId() != null) { commentMapper.incrementReplies(request.parentId(), now); }
         upsertDailyStat(post.getId(), 0, 1, 0);
         grantXp(author, 4);
+        if (verdict.needsReview()) {
+            // 可疑评论照常显示，同时进举报队列等审核员看（不让评论区出现「审核中」的空洞）。
+            reportFlags.flag("COMMENT", comment.getId(), author.getId(),
+                    postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()),
+                    verdict.category(), comment.getContent());
+        }
         return commentViews(List.of(comment), currentUser).get(0);
     }
 
@@ -716,9 +770,10 @@ public class PostService implements PostQueryApi, PostAdminApi {
                 || ((official != null || dontMiss != null) && !grants.can(Capability.POST_OFFICIAL, target))) {
             throw new AccessDeniedException("没有权限处理这条帖子");
         }
+        boolean approved = "pending".equals(post.getStatus()) && "published".equals(status);
         if (status != null) {
-            if (!Set.of("published", "removed", "draft").contains(status)) {
-                throw new IllegalArgumentException("status 只能是 published / removed / draft");
+            if (!Set.of("published", "removed", "draft", "pending").contains(status)) {
+                throw new IllegalArgumentException("status 只能是 published / removed / draft / pending");
             }
             post.setStatus(status);
         }
@@ -732,7 +787,16 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (pinned != null) update.set(Post::getPinned, pinned);
         if (official != null) update.set(Post::getOfficial, official);
         if (dontMiss != null) update.set(Post::getDontMiss, dontMiss);
+        if (approved) {
+            // 审核通过按通过时间进信息流，并通知粉丝（发帖时没有通知）。
+            post.setPublishedAt(AppTime.nowLocal());
+            update.set(Post::getPublishedAt, post.getPublishedAt());
+        }
         postMapper.update(null, update);
+        if (approved) {
+            User author = userMapper.selectById(post.getAuthorId());
+            if (author != null) notifyFollowers(author, post);
+        }
         return toViews(List.of(post), null).get(0);
     }
 
@@ -759,9 +823,10 @@ public class PostService implements PostQueryApi, PostAdminApi {
 
     public List<PostDtos.PostView> userPosts(Long userId, CurrentUser currentUser) {
         if (isBlockedPair(currentUser, userId)) return List.of();
+        boolean own = currentUser != null && Objects.equals(currentUser.id(), userId);
         return toViews(postMapper.selectList(new LambdaQueryWrapper<Post>()
                 .eq(Post::getAuthorId, userId)
-                .eq(Post::getStatus, "published")
+                .in(Post::getStatus, own ? List.of("published", "pending") : List.of("published"))
                 .orderByDesc(Post::getPublishedAt)), currentUser);
     }
 

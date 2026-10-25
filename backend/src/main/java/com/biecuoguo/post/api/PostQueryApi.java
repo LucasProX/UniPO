@@ -49,4 +49,13 @@ public interface PostQueryApi {
     List<PostDtos.PostView> favoritePosts(CurrentUser viewer);
 
     List<PostDtos.PostView> favoritePostsByUid(String uid, CurrentUser viewer);
+
+    /** 被举报对象的必要信息：作者、所在范围和举报当时的内容摘录。 */
+    record ReportableContent(long id, long authorId, com.biecuoguo.permission.api.ScopeTarget scope, String snapshot) {}
+
+    /**
+     * viewer 能看到的帖子或评论（type 为 POST / COMMENT）；看不到的一律为空，举报接口据此返回 404，
+     * 不暴露别校或已拉黑对象是否存在。
+     */
+    java.util.Optional<ReportableContent> reportable(String type, long id, CurrentUser viewer);
 }
