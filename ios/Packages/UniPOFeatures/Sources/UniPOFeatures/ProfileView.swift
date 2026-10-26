@@ -18,6 +18,8 @@ struct ProfileView: View {
     @State private var showPublish = false
     @State private var showWallet = false
     @State private var organizer: ActivityOrganizerProfile?
+    @State private var capabilities: Capabilities?
+    @State private var showModeration = false
     @State private var isLoading = true
     @State private var loadGeneration = 0
     @State private var dataUserID: Int64?
@@ -73,11 +75,13 @@ struct ProfileView: View {
             ActivityListView(initialTab: item.id).environment(auth)
         }
         .sheet(isPresented: $showWallet) { WalletScreen().environment(auth) }
+        .sheet(isPresented: $showModeration) { ModerationQueueView().environment(auth) }
         .sheet(isPresented: $showPublish) {
             if let organizer { CreateActivityView(profile: organizer).environment(auth) }
         }
         .task(id: auth.profile?.id) {
             organizer = try? await APIClient.shared.activityOrganizerProfile()
+            capabilities = try? await APIClient.shared.capabilities()
         }
         .sheet(item: $followList) { target in
             FollowListView(target: target).environment(auth)
@@ -377,6 +381,10 @@ struct ProfileView: View {
             if organizer?.canPublish == true {
                 shortcut("发布", "plus.circle.fill", tint: UniColor.gold) { showPublish = true }
                 shortcut("我发布的", "list.bullet.rectangle", tint: UniColor.inkSoft) { activityList = "organized" }
+            }
+            // 只有持有举报处理授权的人才看得到（服务端按授权范围过滤队列）。
+            if capabilities?.canHandleReports == true {
+                shortcut("审核", "checkmark.shield", tint: UniColor.blue) { showModeration = true }
             }
         }
     }

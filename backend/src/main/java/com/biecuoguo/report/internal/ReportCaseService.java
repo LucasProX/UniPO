@@ -75,6 +75,8 @@ public class ReportCaseService {
         if (!unrestricted && scoped.isEmpty()) throw new AccessDeniedException("没有权限执行该操作");
         LambdaQueryWrapper<ReportCase> query = new LambdaQueryWrapper<ReportCase>()
                 .lt(beforeId != null, ReportCase::getId, beforeId)
+                // 与自己有关的举报（自己是被举报人）不出现在自己的队列里，避免既当事人又当裁判。
+                .and(w -> w.isNull(ReportCase::getTargetUserId).or().ne(ReportCase::getTargetUserId, actor.id()))
                 .orderByDesc(ReportCase::getId)
                 .last("LIMIT " + (PAGE_SIZE + 1));
         if (status == null || status.isBlank() || "open".equalsIgnoreCase(status)) query.in(ReportCase::getStatus, OPEN);
@@ -232,6 +234,9 @@ public class ReportCaseService {
         if (kase == null) throw new NoSuchElementException("处理单不存在");
         permissions.require(actor, Capability.REPORT_HANDLE,
                 new ScopeTarget(kase.getSchoolId(), kase.getCollegeId(), kase.getMajorId()));
+        if (Objects.equals(kase.getTargetUserId(), actor.id())) {
+            throw new StateConflictException("不能处理与自己有关的举报，请交给其他审核员");
+        }
         return kase;
     }
 

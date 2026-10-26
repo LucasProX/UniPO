@@ -508,6 +508,31 @@ public actor APIClient {
     }
 
     @discardableResult
+    public func capabilities() async throws -> Capabilities {
+        try await request(path: "users/me/capabilities")
+    }
+
+    /// 审核员看到的处理单；status 为空看未结案的，也可传 RESOLVED / REJECTED。
+    public func reportCases(status: String? = nil, beforeId: Int64? = nil) async throws -> ReportCasePage {
+        var query: [URLQueryItem] = []
+        if let status { query.append(URLQueryItem(name: "status", value: status)) }
+        if let beforeId { query.append(URLQueryItem(name: "beforeId", value: String(beforeId))) }
+        return try await request(path: "admin/report-cases", query: query)
+    }
+
+    public func reportCase(id: Int64) async throws -> ReportCaseDetail {
+        try await request(path: "admin/report-cases/\(id)")
+    }
+
+    public func claimReportCase(id: Int64, version: Int) async throws -> ReportCase {
+        try await request(path: "admin/report-cases/\(id)/claim", method: "POST", body: ["version": version])
+    }
+
+    public func resolveReportCase(id: Int64, version: Int, action: CaseAction, reason: String) async throws -> ReportCase {
+        try await request(path: "admin/report-cases/\(id)/resolve", method: "POST",
+                          body: ["version": version, "action": action.rawValue, "reason": reason])
+    }
+
     /// 我提交过的举报和处理结果，按提交时间倒序；beforeId 为上一页的 nextBeforeId。
     public func myReports(beforeId: Int64? = nil) async throws -> MyReportPage {
         var query: [URLQueryItem] = []

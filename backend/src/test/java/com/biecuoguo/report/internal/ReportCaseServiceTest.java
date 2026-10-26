@@ -87,6 +87,14 @@ class ReportCaseServiceTest {
     }
 
     @Test
+    void moderatorsCannotHandleReportsAboutThemselves() {
+        kase.setTargetUserId(moderator.id());
+        assertThrows(StateConflictException.class, () -> service.claim(moderator, 5L, new ReportCaseDtos.ClaimRequest(0)));
+        assertThrows(StateConflictException.class, () -> service.detail(moderator, 5L));
+        verify(cases, never()).update(any(), any());
+    }
+
+    @Test
     void claimedByAnotherModeratorIsAConflict() {
         kase.setStatus("IN_PROGRESS");
         kase.setAssigneeId(3L);
