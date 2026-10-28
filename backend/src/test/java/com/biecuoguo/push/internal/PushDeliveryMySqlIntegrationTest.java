@@ -484,6 +484,6 @@ class PushDeliveryMySqlIntegrationTest {
         PushDeliveryProgress progress(SqlSessionTemplate template) { return new PushDeliveryProgress(template.getMapper(PushDeliveryProgressMapper.class)); }
 
         @Bean
-        PushTokenService tokens(SqlSessionTemplate template) { return new PushTokenService(template.getMapper(DeviceTokenMapper.class)); }
+        PushTokenService tokens(SqlSessionTemplate template) { return new PushTokenService(template.getMapper(DeviceTokenMapper.class), null); }
     }
 }

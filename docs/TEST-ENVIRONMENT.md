@@ -105,3 +105,24 @@ Flyway 管理测试库迁移，不直接手工改业务表。`StartupSafetyGuard
 
 测试实例迁移到 V32（`achievement_task_posts`，`posts.verified_at` / `expires_at`），部署前备份 `/var/backups/unipo/test-before-g06-20261023T092313Z/`，回退镜像 `unipo-backend:test-rollback-20261023T092313Z`。验收后保留「四级报名」任务关联 2 号帖（四六级报名截止）作演示；3 号帖（项目实训组队）有效期设到 2027 年 5 月、核实日期 2026-10-23。
 
+## 接通 sandbox APNs（M05，待苹果凭证）
+
+服务端推送代码（Pushy、按设备的投递进度、登录会话绑定）都已就绪，测试实例目前 `APNS_ENABLED=false`。真机收到推送还差这几样，都需要你在苹果开发者后台操作：
+
+1. **付费的 Apple Developer Program 账号**。现在真机 Debug 用的是免费个人 Team `27B586T4LV`，免费 Team 不支持 Push Notifications 权限，所以 `project.yml` 里真机用的是不含 `aps-environment` 的 `UniPO.personal.entitlements` 和单独的包名 `com.unipo.lj27b586.dev`。
+2. 在开发者后台给正式包名 `com.unipo.app` 打开 Push Notifications，然后在 Keys 里新建一个 APNs 认证密钥（.p8，只能下载一次），记下 Key ID 和 Team ID。
+3. 把 .p8 放到服务器 `/opt/unipo/secrets/apns/AuthKey_<KeyID>.p8`（属主 root，权限 600，**不要入库、不要发到聊天里**），在 `docker-compose.test.yml` 的 `backend-test` 下把这个目录只读挂进容器，并在 `.env.test` 里设：
+
+   ```bash
+   APNS_ENABLED=true
+   APNS_KEY_PATH=/run/secrets/apns/AuthKey_<KeyID>.p8
+   APNS_KEY_ID=<KeyID>
+   APNS_TEAM_ID=<TeamID>
+   APNS_TOPIC=com.unipo.app
+   APNS_PRODUCTION=false
+   ```
+
+   同时把 Compose 里写死的 `APNS_ENABLED: "false"` 改成读环境变量。
+4. `project.yml` 的真机 Debug 改用付费 Team、包名 `com.unipo.app`、`UniPO.entitlements`（`aps-environment = development`），重新生成工程并装到手机。
+
+验收：两台设备分别登录 A、B，B 给 A 发私信，只有 A 的手机收到「新私信」；A 退出登录后再发，A 的手机不再收到；A 的手机换登 C 后，发给 A 的私信不会出现在这台手机上。会话绑定这部分 2026-10-28 已在测试实例用接口实测过（登记、退出、全部退出、换账号、过期清理）。

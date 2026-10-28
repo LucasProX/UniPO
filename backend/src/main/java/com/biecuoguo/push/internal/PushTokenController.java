@@ -17,7 +17,8 @@ public class PushTokenController {
 
     @PostMapping
     public ApiResponse<Boolean> register(@RequestBody RegisterRequest request) {
-        service.register(SecurityUtils.currentUser().id(), request.token(), request.platform(), request.environment());
+        var user = SecurityUtils.currentUser();
+        service.register(user.id(), user.sessionId(), request.token(), request.platform(), request.environment());
         return ApiResponse.ok(true);
     }
 

@@ -2,7 +2,9 @@ package com.biecuoguo.auth.api;
 
 import com.biecuoguo.security.CurrentUser;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 
 /** Shared authority for Cookie and Bearer authentication. No positive cache of revoked identities. */
 public interface AccountSecurityApi {
@@ -13,4 +15,7 @@ public interface AccountSecurityApi {
     Optional<ValidatedIdentity> validate(CurrentUser credential);
     void revokeSession(String sessionId, long userId);
     void revokeAll(long userId);
+
+    /** 这些会话里仍然有效的那部分（未撤销、未过期、身份版本未推进、账号正常）。读最新已提交数据。 */
+    Set<String> activeSessions(Collection<String> sessionIds);
 }

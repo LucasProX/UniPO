@@ -50,7 +50,7 @@ struct PostMediaGrid: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .overlay {
                     if let url = AppConfig.absoluteURL(raw) {
-                        AsyncImage(url: url) { phase in
+                        RemoteImage(url: url) { phase in
                             if case .success(let image) = phase {
                                 image.resizable().scaledToFill()
                             }
@@ -126,7 +126,7 @@ private struct ZoomableImage: View {
     var body: some View {
         Group {
             if let url = AppConfig.absoluteURL(raw) {
-                AsyncImage(url: url) { phase in
+                RemoteImage(url: url, sizing: .original) { phase in
                     switch phase {
                     case .success(let image):
                         image.resizable().scaledToFit()

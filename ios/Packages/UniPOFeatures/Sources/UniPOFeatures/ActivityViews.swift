@@ -52,7 +52,7 @@ struct ActivityCard: View {
     private var cover: some View {
         ZStack(alignment: .topLeading) {
             if let url = activity.coverUrl.flatMap(AppConfig.absoluteURL) {
-                AsyncImage(url: url) { phase in
+                RemoteImage(url: url) { phase in
                     if case .success(let image) = phase { image.resizable().scaledToFill() } else { placeholder }
                 }
             } else {

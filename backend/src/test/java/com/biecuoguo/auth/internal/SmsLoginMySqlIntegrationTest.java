@@ -495,6 +495,7 @@ class SmsLoginMySqlIntegrationTest {
         public Optional<ValidatedIdentity> validate(CurrentUser user) { return delegate.validate(user); }
         public void revokeSession(String sid, long id) { delegate.revokeSession(sid, id); }
         public void revokeAll(long id) { delegate.revokeAll(id); }
+        public java.util.Set<String> activeSessions(java.util.Collection<String> ids) { return delegate.activeSessions(ids); }
     }
 
     @Configuration(proxyBeanMethods = false)

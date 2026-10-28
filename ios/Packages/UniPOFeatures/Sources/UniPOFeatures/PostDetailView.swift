@@ -203,7 +203,8 @@ struct PostDetailView: View {
     private func detailImages(_ images: [String]) -> some View {
         if images.count == 1, let url = AppConfig.absoluteURL(images[0]) {
             Button { viewing = ImageViewerTarget(urls: images, index: 0) } label: {
-                AsyncImage(url: url) { phase in
+                // 按原比例展示，高度由图片决定，不能量格子；详情页宽度按 1080 像素一档取。
+                RemoteImage(url: url, sizing: .pixels(1080)) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFit()
                     } else {

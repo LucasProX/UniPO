@@ -28,8 +28,10 @@ public class MediaController {
     }
 
     @GetMapping("/{id}/content")
-    public ResponseEntity<InputStreamResource> content(@PathVariable Long id, @RequestParam(required = false) String v) {
-        MediaDtos.StoredObject object = mediaService.open(id);
+    public ResponseEntity<InputStreamResource> content(@PathVariable Long id, @RequestParam(required = false) String v,
+                                                       @RequestParam(required = false) Integer size) {
+        // size 是缩小图档位（短边像素：360 / 720 / 1080），不带就是原图。
+        MediaDtos.StoredObject object = mediaService.open(id, size);
         ResponseEntity.BodyBuilder response = ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(object.contentType()))
                 .contentLength(object.sizeBytes())

@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
@@ -26,6 +27,8 @@ import java.net.UnknownHostException;
 import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
 import java.util.UUID;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class MediaService {
@@ -40,6 +43,12 @@ public class MediaService {
     private final AppProperties properties;
     private final MediaObjectMapper mediaObjectMapper;
     private final long maxImageBytes;
+
+    /** 同时生成缩小图的上限：测试实例堆只有 384MB，一张 2048 图解码约 12MB。 */
+    private final Semaphore variantPermits = new Semaphore(2);
+
+    /** 超过这个大小的原图不做缩小图（上传上限默认 5MB，这里留余量给以前的大图）。 */
+    private static final int MAX_VARIANT_SOURCE_BYTES = 20 * 1024 * 1024;
 
     public MediaService(AppProperties properties, MediaObjectMapper mediaObjectMapper,
                         @Value("${spring.servlet.multipart.max-file-size:5MB}") String maxFileSize) {
@@ -102,10 +111,96 @@ public class MediaService {
     }
 
     public MediaDtos.StoredObject open(Long mediaId) {
+        return open(find(mediaId));
+    }
+
+    /**
+     * E04：按档位取缩小图，size 为空时取原图。
+     *
+     * <p>缩小图第一次被请求时才生成，存进 MinIO 的 {@code variants/{size}/原路径}，之后直接读，
+     * 所以老图片不用补跑任务。原图短边本来就不超过这一档、或者不能缩（GIF、WebP、像素太多）时，
+     * 存一个空对象做标记，以后直接回原图，不再反复解码。
+     * 生成最多同时两张，排不上队就先回原图，不让缩图把小机器的 CPU 和内存占满。
+     */
+    public MediaDtos.StoredObject open(Long mediaId, Integer size) {
+        if (size == null) {
+            return open(mediaId);
+        }
+        if (!ImageVariants.SIZES.contains(size)) {
+            throw new IllegalArgumentException("不支持的图片尺寸");
+        }
+        MediaObject media = find(mediaId);
+        if (!ImageVariants.supports(media.getContentType())) {
+            return open(media);
+        }
+        String key = "variants/" + size + "/" + media.getObjectKey();
+        try {
+            MinioClient client = client();
+            StatObjectResponse stat = client.statObject(StatObjectArgs.builder()
+                    .bucket(media.getBucket()).object(key).build());
+            if (stat.size() == 0) {
+                return open(media);
+            }
+            InputStream stream = client.getObject(GetObjectArgs.builder()
+                    .bucket(media.getBucket()).object(key).build());
+            return new MediaDtos.StoredObject(stream, "image/jpeg", stat.size());
+        } catch (ErrorResponseException missing) {
+            if (!"NoSuchKey".equals(missing.errorResponse().code())) {
+                return open(media);
+            }
+        } catch (Exception unavailable) {
+            return open(media);
+        }
+        return generateVariant(media, key, size);
+    }
+
+    private MediaDtos.StoredObject generateVariant(MediaObject media, String key, int size) {
+        boolean acquired = false;
+        try {
+            acquired = variantPermits.tryAcquire(3, TimeUnit.SECONDS);
+            if (!acquired) {
+                return open(media);
+            }
+            MinioClient client = client();
+            byte[] original;
+            try (InputStream in = client.getObject(GetObjectArgs.builder()
+                    .bucket(media.getBucket()).object(media.getObjectKey()).build())) {
+                original = in.readNBytes(MAX_VARIANT_SOURCE_BYTES + 1);
+            }
+            byte[] shrunk = original.length > MAX_VARIANT_SOURCE_BYTES ? null : ImageVariants.shrink(original, size);
+            byte[] body = shrunk == null ? new byte[0] : shrunk;
+            client.putObject(PutObjectArgs.builder()
+                    .bucket(media.getBucket())
+                    .object(key)
+                    .contentType(shrunk == null ? "application/octet-stream" : "image/jpeg")
+                    .stream(new ByteArrayInputStream(body), body.length, -1)
+                    .build());
+            if (shrunk == null) {
+                return open(media);
+            }
+            return new MediaDtos.StoredObject(new ByteArrayInputStream(shrunk), "image/jpeg", (long) shrunk.length);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return open(media);
+        } catch (Exception ex) {
+            log.warn("Image variant failed. mediaId={}, size={}, error={}", media.getId(), size, ex.getClass().getSimpleName());
+            return open(media);
+        } finally {
+            if (acquired) {
+                variantPermits.release();
+            }
+        }
+    }
+
+    private MediaObject find(Long mediaId) {
         MediaObject media = mediaObjectMapper.selectById(mediaId);
         if (media == null) {
             throw new NoSuchElementException("文件不存在");
         }
+        return media;
+    }
+
+    private MediaDtos.StoredObject open(MediaObject media) {
         try {
             MinioClient client = client();
             StatObjectResponse stat = client.statObject(StatObjectArgs.builder()

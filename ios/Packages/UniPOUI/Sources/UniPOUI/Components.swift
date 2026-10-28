@@ -21,7 +21,7 @@ public struct UniAvatar: View {
     public var body: some View {
         Group {
             if let url, let parsed = AvatarURL.resolve(url) {
-                AsyncImage(url: parsed) { phase in
+                RemoteImage(url: parsed) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
                     } else {

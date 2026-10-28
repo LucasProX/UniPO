@@ -33,7 +33,10 @@ targets:
       path: UniPO/Resources/Info.plist
       properties:
         CFBundleDisplayName: UniPO
-        UILaunchScreen: {}
+        # 启动页与首页同为浅色纸白，中间放 UP 标志（App 整体锁定浅色，登录、引导页另行切深色）
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchMark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         NSAppTransportSecurity:

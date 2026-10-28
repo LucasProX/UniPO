@@ -6607,6 +6607,7 @@ export interface operations {
         parameters: {
             query?: {
                 v?: string;
+                size?: number;
             };
             header?: never;
             path: {

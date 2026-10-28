@@ -36,6 +36,8 @@ public class Post {
     @TableField(updateStrategy = FieldStrategy.NEVER) private Integer commentCount;
     @TableField(updateStrategy = FieldStrategy.NEVER) private Integer favoriteCount;
     @TableField(updateStrategy = FieldStrategy.NEVER) private Integer shareCount;
+    /** 推荐流排序分（V39 生成列，MySQL 按互动和发布时间算），只读。 */
+    @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER) private Double hotScore;
     private String status;
     private LocalDateTime publishedAt;
     /** 运营最近一次核实攻略仍然有效的日期。 */

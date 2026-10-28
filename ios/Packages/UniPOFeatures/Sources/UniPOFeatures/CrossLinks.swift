@@ -264,7 +264,7 @@ struct CompactPostRow: View {
             }
             Spacer(minLength: 4)
             if let first = post.images?.first, let url = AppConfig.absoluteURL(first) {
-                AsyncImage(url: url) { phase in
+                RemoteImage(url: url) { phase in
                     if case .success(let image) = phase { image.resizable().scaledToFill() } else { UniColor.mist }
                 }
                 .frame(width: 52, height: 52)

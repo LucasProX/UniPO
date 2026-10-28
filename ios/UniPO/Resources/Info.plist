@@ -51,7 +51,12 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>UniPO 需要访问相册，用于设置头像、主页背景和给帖子添加图片。</string>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchMark</string>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

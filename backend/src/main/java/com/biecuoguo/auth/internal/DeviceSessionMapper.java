@@ -51,6 +51,21 @@ public interface DeviceSessionMapper {
             """)
     int revokeOne(@Param("sessionId") String sessionId, @Param("userId") long userId, @Param("nowMs") long nowMs);
 
+    /** 与 findValid 同一套有效条件，批量判断（推送清理用）。 */
+    @Select("""
+            <script>
+            SELECT d.session_id
+            FROM auth_device_sessions d
+            JOIN users u ON u.id = d.user_id
+            WHERE d.session_id IN
+              <foreach collection="sessionIds" item="id" open="(" separator="," close=")">#{id}</foreach>
+              AND u.auth_version = d.auth_version AND u.status = 'active'
+              AND d.revoked_at_ms IS NULL AND d.expires_at_ms &gt; #{nowMs}
+            </script>
+            """)
+    @Options(timeout = 2, useCache = false, flushCache = Options.FlushCachePolicy.TRUE)
+    java.util.List<String> findActive(@Param("sessionIds") java.util.Collection<String> sessionIds, @Param("nowMs") long nowMs);
+
     @Update("UPDATE users SET auth_version = auth_version + 1 WHERE id = #{userId}")
     int advanceUserVersion(@Param("userId") long userId);
 

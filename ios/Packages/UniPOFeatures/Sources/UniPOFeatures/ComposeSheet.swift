@@ -187,7 +187,7 @@ struct ComposeSheet: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 ForEach(imageURLs, id: \.self) { url in
-                    AsyncImage(url: AppConfig.absoluteURL(url)) { phase in
+                    RemoteImage(url: AppConfig.absoluteURL(url)) { phase in
                         if case .success(let image) = phase {
                             image.resizable().scaledToFill()
                         } else {

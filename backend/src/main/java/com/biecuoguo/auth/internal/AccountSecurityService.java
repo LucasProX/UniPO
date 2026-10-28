@@ -1,9 +1,11 @@
 package com.biecuoguo.auth.internal;
 
 import com.biecuoguo.auth.api.AccountSecurityApi;
+import com.biecuoguo.auth.api.DeviceSessionsEnded;
 import com.biecuoguo.config.AppProperties;
 import com.biecuoguo.security.CurrentUser;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -13,7 +15,10 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** The database is the common revocation authority for every authentication carrier. */
 @Service
@@ -22,10 +27,17 @@ public class AccountSecurityService implements AccountSecurityApi {
     private final DeviceSessionMapper mapper;
     private final Clock clock;
     private final long lifetimeMillis;
+    private ApplicationEventPublisher events;
 
     @Autowired
     public AccountSecurityService(DeviceSessionMapper mapper, AppProperties properties) {
         this(mapper, properties, Clock.systemUTC());
+    }
+
+    /** 会话结束事件（推送设备随之解绑）。单测不设置时不发布。 */
+    @Autowired
+    void setEvents(ApplicationEventPublisher events) {
+        this.events = events;
     }
 
     AccountSecurityService(DeviceSessionMapper mapper, AppProperties properties, Clock clock) {
@@ -74,6 +86,7 @@ public class AccountSecurityService implements AccountSecurityApi {
     public void revokeSession(String sessionId, long userId) {
         if (userId > 0 && validSessionId(sessionId)) {
             mapper.revokeOne(sessionId, userId, clock.millis());
+            publish(new DeviceSessionsEnded(userId, sessionId));
         }
     }
 
@@ -83,6 +96,24 @@ public class AccountSecurityService implements AccountSecurityApi {
         if (userId > 0 && mapper.advanceUserVersion(userId) == 1) {
             // Version advancement is authoritative; marking the old rows also records the operation.
             mapper.revokeOlderVersions(userId, clock.millis());
+            publish(new DeviceSessionsEnded(userId, null));
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public Set<String> activeSessions(Collection<String> sessionIds) {
+        List<String> valid = sessionIds == null ? List.of()
+                : sessionIds.stream().filter(AccountSecurityService::validSessionId).distinct().toList();
+        if (valid.isEmpty()) {
+            return Set.of();
+        }
+        return Set.copyOf(mapper.findActive(valid, clock.millis()));
+    }
+
+    private void publish(DeviceSessionsEnded event) {
+        if (events != null) {
+            events.publishEvent(event);
         }
     }
 

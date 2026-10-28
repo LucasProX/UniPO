@@ -585,7 +585,7 @@ struct ProfileView: View {
             if let url = imageURL(post) {
                 Color.clear
                     .overlay {
-                        AsyncImage(url: url) { phase in
+                        RemoteImage(url: url) { phase in
                             if case .success(let image) = phase {
                                 image.resizable().scaledToFill()
                             } else {

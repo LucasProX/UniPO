@@ -110,10 +110,11 @@ public class PostService implements PostQueryApi, PostAdminApi {
     /**
      * 游标分页（keyset pagination）的列表。
      *
-     * 排序键与老版完全一致：pinned > official > dontMiss > likeCount > commentCount > publishedAt > id。
+     * 排序键：pinned > hotScore > id。hotScore 是 V39 的生成列，按互动量和发布时间算，
+     * 晚发一天等于互动多十倍，官方帖相当于提前一天（公式见迁移文件）。
+     * 它只随互动和发布时间变，不随「现在」变，所以游标翻页稳定，也不用定时刷新。
      *
-     * 为什么不能只用 id 当游标：排序是按热度/权重排的，id 小的帖子完全可能排在
-     * id 大的前面（实测 legacy 顺序 2,3,1,4,5,15,14,... 就是这种情况）。
+     * 为什么不能只用 id 当游标：排序是按热度排的，id 小的帖子完全可能排在 id 大的前面。
      * 只按 id < cursor 过滤会把排在 cursor 之前、但 id 更小的帖子重复吐出来。
      * 所以游标必须编码上一页最后一条的**完整排序键元组**，
      * 下一页用「字典序小于」精确接续，这也是标准 keyset pagination 的做法。
@@ -125,55 +126,24 @@ public class PostService implements PostQueryApi, PostAdminApi {
         int limit = normalizeLimit(requestedLimit);
         LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer);
         applyTab(wrapper, normalizeBoard(tab), viewer);
-        PostCursor cursorKey = PostCursor.parse(cursor);
+        HotCursor cursorKey = HotCursor.parse(cursor);
         if (cursorKey != null) {
-            applyCursor(wrapper, cursorKey);
+            // (pinned, hotScore, id) 全部 DESC：第一个不同的键比它小，就排在它后面。
+            // nested 会补外层括号，生成 AND ((a) OR (b) OR (c))，不会和其他条件串味。
+            wrapper.nested(w -> w.lt(Post::getPinned, cursorKey.pinned())
+                    .or().eq(Post::getPinned, cursorKey.pinned()).lt(Post::getHotScore, cursorKey.hotScore())
+                    .or().eq(Post::getPinned, cursorKey.pinned()).eq(Post::getHotScore, cursorKey.hotScore())
+                    .lt(Post::getId, cursorKey.id()));
         }
         wrapper.orderByDesc(Post::getPinned)
-                .orderByDesc(Post::getOfficial)
-                .orderByDesc(Post::getDontMiss)
-                .orderByDesc(Post::getLikeCount)
-                .orderByDesc(Post::getCommentCount)
-                .orderByDesc(Post::getPublishedAt)
+                .orderByDesc(Post::getHotScore)
                 .orderByDesc(Post::getId);
         // 多查一条用于判断 hasMore
         List<Post> page = postMapper.selectList(wrapper.last("limit " + (limit + 1)));
         boolean hasMore = page.size() > limit;
         List<Post> items = hasMore ? page.subList(0, limit) : page;
-        String nextCursor = hasMore ? PostCursor.of(items.get(items.size() - 1)).encode() : null;
+        String nextCursor = hasMore ? HotCursor.of(items.get(items.size() - 1)).encode() : null;
         return PostDtos.PostPageView.of(toViews(items, currentUser), nextCursor, limit);
-    }
-
-    /**
-     * 把「上一页最后一条的排序键」翻译成 SQL 的字典序小于条件。
-     *
-     * 排序是 (pinned, official, dontMiss, likeCount, commentCount, publishedAt, id) 全部 DESC，
-     * 所以「排在它后面」等价于：第一个不同的键比它小。
-     * 展开成 OR 链：
-     *   pinned < k.pinned
-     *   OR (pinned = k.pinned AND official < k.official)
-     *   OR (pinned = k.pinned AND official = k.official AND dontMiss < k.dontMiss)
-     *   ... 以此类推到 id
-     */
-    private void applyCursor(LambdaQueryWrapper<Post> wrapper, PostCursor key) {
-        // LambdaQueryWrapper 没有 and(Consumer)，改用 AbstractWrapper 的 nested 形式：
-        // 手写一段 OR 链，MyBatis-Plus 会自动补上外层括号，
-        // 生成的 SQL 形如 AND ((a) OR (b) OR ...)，不会和现有条件串味。
-        wrapper.nested(w -> {
-            w.lt(Post::getPinned, key.pinned());
-            w.or().eq(Post::getPinned, key.pinned()).lt(Post::getOfficial, key.official());
-            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).lt(Post::getDontMiss, key.dontMiss());
-            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
-                    .lt(Post::getLikeCount, key.likeCount());
-            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
-                    .eq(Post::getLikeCount, key.likeCount()).lt(Post::getCommentCount, key.commentCount());
-            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
-                    .eq(Post::getLikeCount, key.likeCount()).eq(Post::getCommentCount, key.commentCount())
-                    .lt(Post::getPublishedAt, key.publishedAt());
-            w.or().eq(Post::getPinned, key.pinned()).eq(Post::getOfficial, key.official()).eq(Post::getDontMiss, key.dontMiss())
-                    .eq(Post::getLikeCount, key.likeCount()).eq(Post::getCommentCount, key.commentCount())
-                    .eq(Post::getPublishedAt, key.publishedAt()).lt(Post::getId, key.id());
-        });
     }
 
     private int normalizeLimit(Integer requestedLimit) {
@@ -181,50 +151,34 @@ public class PostService implements PostQueryApi, PostAdminApi {
         return Math.max(1, Math.min(50, value));
     }
 
-    /** 排序键元组：与 list() 的 ORDER BY 严格一一对应，顺序不能改。 */
-    private record PostCursor(boolean pinned, boolean official, boolean dontMiss, int likeCount, int commentCount, LocalDateTime publishedAt, long id) {
+    /**
+     * 推荐流游标：pinned|hotScore|id，与 list() 的 ORDER BY 一一对应。
+     * hotScore 用 Double.toString 编码，能原样解析回同一个 double，和库里的值做相等比较不会有误差。
+     * 2026-10-28 前的七段旧游标一律按无效游标处理（400），客户端从第一页重新拉。
+     */
+    record HotCursor(boolean pinned, double hotScore, long id) {
 
-        static PostCursor of(Post post) {
-            return new PostCursor(
-                    Boolean.TRUE.equals(post.getPinned()),
-                    Boolean.TRUE.equals(post.getOfficial()),
-                    Boolean.TRUE.equals(post.getDontMiss()),
-                    post.getLikeCount() == null ? 0 : post.getLikeCount(),
-                    post.getCommentCount() == null ? 0 : post.getCommentCount(),
-                    post.getPublishedAt() == null ? LocalDateTime.MIN : post.getPublishedAt(),
-                    post.getId()
-            );
+        static HotCursor of(Post post) {
+            return new HotCursor(Boolean.TRUE.equals(post.getPinned()),
+                    post.getHotScore() == null ? 0 : post.getHotScore(), post.getId());
         }
 
-        /**
-         * 游标编码：字段用 | 分隔，Boolean 存 1/0，时间存 ISO-8601。
-         * 之所以不 Base64：游标会出现在 URL 和日志里，可读性好排查；
-         * 且这些都是服务端自己产出的值，不承载用户输入，无需防篡改。
-         */
         String encode() {
-            return pinned + "|" + official + "|" + dontMiss + "|" + likeCount + "|" + commentCount + "|"
-                    + (publishedAt == null ? "" : publishedAt.toString()) + "|" + id;
+            return pinned + "|" + hotScore + "|" + id;
         }
 
-        static PostCursor parse(String cursor) {
+        static HotCursor parse(String cursor) {
             if (cursor == null || cursor.isBlank()) {
                 return null;
             }
             String[] parts = cursor.trim().split("\\|", -1);
-            if (parts.length != 7) {
+            if (parts.length != 3 || !("true".equals(parts[0]) || "false".equals(parts[0]))) {
                 throw new IllegalArgumentException("分页游标无效");
             }
             try {
-                LocalDateTime publishedAt = parts[5].isEmpty() ? LocalDateTime.MIN : LocalDateTime.parse(parts[5]);
-                return new PostCursor(
-                        Boolean.parseBoolean(parts[0]),
-                        Boolean.parseBoolean(parts[1]),
-                        Boolean.parseBoolean(parts[2]),
-                        Integer.parseInt(parts[3]),
-                        Integer.parseInt(parts[4]),
-                        publishedAt,
-                        Long.parseLong(parts[6])
-                );
+                double score = Double.parseDouble(parts[1]);
+                if (!Double.isFinite(score)) throw new NumberFormatException();
+                return new HotCursor(Boolean.parseBoolean(parts[0]), score, Long.parseLong(parts[2]));
             } catch (RuntimeException ex) {
                 throw new IllegalArgumentException("分页游标无效");
             }
@@ -234,7 +188,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
     public List<PostDtos.BoardView> boards(CurrentUser currentUser) {
         User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         return List.of(
-                new PostDtos.BoardView("recommend", "推荐", "按热度、官方权重和发布时间混排", countForBoard("recommend", viewer)),
+                new PostDtos.BoardView("recommend", "推荐", "按热度和发布时间混排，越新越靠前", countForBoard("recommend", viewer)),
                 new PostDtos.BoardView("school", "校 PO", "全校同学都能看到的校园动态", countForBoard("school", viewer)),
                 new PostDtos.BoardView("college", "院 PO", "同学院范围内更贴近课程和活动", countForBoard("college", viewer)),
                 new PostDtos.BoardView("major", "专业 PO", "专业相关经验、作业、竞赛和提醒", countForBoard("major", viewer))

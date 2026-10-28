@@ -7,7 +7,10 @@ let package = Package(
     products: [
         .library(name: "UniPOUI", targets: ["UniPOUI"])
     ],
+    dependencies: [
+        .package(path: "../UniPOCore")
+    ],
     targets: [
-        .target(name: "UniPOUI")
+        .target(name: "UniPOUI", dependencies: [.product(name: "UniPOCore", package: "UniPOCore")])
     ]
 )

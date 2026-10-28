@@ -33,6 +33,29 @@ class AccountSecurityServiceTest {
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
+    void endingSessionsTellsListenersWhichDevicesToDrop() {
+        var events = mock(org.springframework.context.ApplicationEventPublisher.class);
+        service.setEvents(events);
+        String sid = "a".repeat(43);
+        service.revokeSession(sid, USER);
+        verify(events).publishEvent(new com.biecuoguo.auth.api.DeviceSessionsEnded(USER, sid));
+        when(mapper.advanceUserVersion(USER)).thenReturn(1);
+        service.revokeAll(USER);
+        verify(events).publishEvent(new com.biecuoguo.auth.api.DeviceSessionsEnded(USER, null));
+        service.revokeSession("not-a-session", USER);
+        verifyNoMoreInteractions(events);
+    }
+
+    @Test
+    void activeSessionsIgnoresMalformedIdsAndAsksOnce() {
+        String good = "b".repeat(43);
+        when(mapper.findActive(java.util.List.of(good), NOW.toEpochMilli())).thenReturn(java.util.List.of(good));
+        assertEquals(Set.of(good), service.activeSessions(java.util.List.of(good, good, "bad")));
+        assertEquals(Set.of(), service.activeSessions(java.util.List.of("bad")));
+        verify(mapper, times(1)).findActive(any(), anyLong());
+    }
+
+    @Test
     void createUsesCapturedVersionAndConfiguredAbsoluteLifetime() {
         when(mapper.insertIfCurrent(anyString(), eq(USER), eq(VERSION), anyLong(), anyLong())).thenReturn(1);
         when(mapper.findValid(anyString(), eq(USER), eq(VERSION), anyLong())).thenAnswer(call ->

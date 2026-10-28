@@ -13,7 +13,7 @@ struct ProfileBackdrop: View {
             ZStack {
                 defaultBackdrop
                 if let imageURL = AppConfig.absoluteURL(url), !(url?.isEmpty ?? true) {
-                    AsyncImage(url: imageURL) { phase in
+                    RemoteImage(url: imageURL) { phase in
                         if case .success(let image) = phase {
                             image.resizable()
                                 .scaledToFill()

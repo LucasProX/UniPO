@@ -41,14 +41,15 @@
   "requestId": "e2075084cb304be9",
   "data": {
     "items": ["...PostView..."],
-    "nextCursor": "false|false|false|186|34|2026-10-19T15:22:01|5",
+    "nextCursor": "false|300.86714110666395|38",
     "hasMore": true,
     "limit": 20
   }
 }
 ```
 
-- `nextCursor` 是上一页最后一条的**完整排序键**（`pinned|official|dontMiss|likeCount|commentCount|publishedAt|id`，全 DESC）。之所以不只编码 `id`：排序按热度/权重排，id 小的帖子可能排在 id 大的前面，只按 `id < cursor` 过滤会把排在前面的帖子重复吐出来。
+- 推荐流排序是 `pinned DESC, hotScore DESC, id DESC`（2026-10-28 起，F08）。`hotScore = log10(1 + 点赞 + 2×评论 + 2×收藏) + 官方 1 + 别错过 0.5 + 发布天数`，晚发一天约等于互动多十倍；它只随互动和发布时间变，翻页时不会因为时间流逝重排。
+- `nextCursor` 是上一页最后一条的**完整排序键**（`pinned|hotScore|id`）。之所以不只编码 `id`：排序按热度排，id 小的帖子可能排在 id 大的前面，只按 `id < cursor` 过滤会把排在前面的帖子重复吐出来。2026-10-28 之前的七段游标按非法游标处理（400），客户端从第一页重新拉。
 - `hasMore` 为 `false` 时 `nextCursor` 为 `null`，不要继续请求。
 - 游标非法返回 **400** `{"code":"VALIDATION_FAILED","message":"分页游标无效",...}`（不会静默降级成第一页）。
 - 同一 tab 内翻页；换 tab 必须重新从第一页开始，游标和排序键是按 tab 的过滤条件生成的。
@@ -186,6 +187,8 @@
 | POST | `/upload` (multipart: `file`, `purpose`) | 登录 | **按文件头**识别 JPEG/PNG/GIF/WebP（改扩展名或 Content-Type 都会被拒）；上限 5MB |
 | GET | `/{id}/content? v=` | 公开 | 经后端流式转发 MinIO；带 `v` 时 30 天强缓存 |
 
+
+**缩小图（2026-10-28，E04）**：`GET /api/media/{id}/content?v=...&size=360|720|1080` 返回短边不超过 `size` 像素的 JPEG（保持比例、不放大、EXIF 方向已转正），缓存头与原图相同（带 `v` 时 30 天 immutable）。`size` 取其他值返回 400；原图本来就更小、GIF、WebP 时直接返回原图。第一次请求某一档时现场生成（几百毫秒），之后直接读存好的结果。iOS 按格子的长边像素挑档位。
 ## 7. 选项与分类（全部公开）
 
 | 方法 | 路径 | 说明 |
@@ -501,7 +504,7 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | POST | `/api/push/tokens` | 注册 APNs token，body `{ "token": "...", "platform": "ios", "environment": "sandbox" }` |
-| DELETE | `/api/push/tokens?token=...` | 注销 token（退出/换设备时可选） |
+| DELETE | `/api/push/tokens?token=...` | 注销 token（可选）。登记时服务端会记下当前登录会话，退出这台设备、全部退出、改密 / 封禁 / 注销时自动解绑，会话过期的每小时清理（V40） |
 
 - token 存 `device_tokens`，同一 token 只保留一条（换账号会覆盖）；
 - 私信提交后由持久 worker 向收件人投递；失败保留重试或失败记录，不改变消息已保存的结果；

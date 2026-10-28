@@ -119,22 +119,21 @@ struct LoginView: View {
     }
 
     private var brand: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(.white)
-                    .frame(width: 76, height: 76)
-                    .shadow(color: .white.opacity(0.18), radius: 30, y: 10)
-                Text("PO")
-                    .uniFont(24, weight: .heavy)
-                    .foregroundStyle(.black)
-            }
-            .scaleEffect(appeared ? 1 : 0.9)
+        // U01：深色底用白 U 蓝 P 的标志和白色横版字标（品牌资产见 output/brand/2026-10-24-01-blue-p）。
+        // 标志图稿自带四周留白，不另加底板、阴影或描边。
+        VStack(spacing: 10) {
+            Image("BrandMarkOnDark")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 104, height: 104)
+                .scaleEffect(appeared ? 1 : 0.9)
+                .accessibilityHidden(true)
 
-            Text("UniPO")
-                .uniFont(32, weight: .heavy)
-                .foregroundStyle(.white)
-                .tracking(1)
+            Image("WordmarkWhite")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 128)
+                .accessibilityLabel("UniPO")
 
             Text("大学生活缤纷多彩，开始探索吧")
                 .uniFont(13)
