@@ -7,7 +7,8 @@ struct PostDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let post: PostView
+    /// 作者编辑后就地换成新内容（F13）。
+    @State private var post: PostView
 
     @State private var comments: [CommentView] = []
     @State private var commentText = ""
@@ -35,6 +36,8 @@ struct PostDetailView: View {
     @State private var confirmingDelete = false
     @State private var isDeleting = false
     @State private var viewing: ImageViewerTarget?
+    @State private var isEditing = false
+    @State private var deletingComment: CommentView?
     @FocusState private var commentFocused: Bool
 
     private let commentLimit = 1_000
@@ -43,7 +46,7 @@ struct PostDetailView: View {
     }
 
     init(post: PostView) {
-        self.post = post
+        _post = State(initialValue: post)
         _liked = State(initialValue: post.liked ?? false)
         _favorited = State(initialValue: post.favorited ?? false)
         _likeCount = State(initialValue: post.likeTotal)
@@ -83,6 +86,7 @@ struct PostDetailView: View {
                             shareItem = ShareItem(text: shareText)
                         }
                         if isMine {
+                            Button("编辑", systemImage: "square.and.pencil") { isEditing = true }
                             Button("删除这条 PO", systemImage: "trash", role: .destructive) { confirmingDelete = true }
                         } else {
                             Button("举报这条 PO", systemImage: "exclamationmark.bubble") {
@@ -109,6 +113,16 @@ struct PostDetailView: View {
             }
             .sheet(item: $reportTarget) { target in
                 ReportSheet(target: target)
+            }
+            .sheet(isPresented: $isEditing) {
+                ComposeSheet(editing: post) { updated in post = updated }
+                    .environment(auth)
+            }
+            .confirmationDialog("删除这条评论？", isPresented: Binding(
+                get: { deletingComment != nil }, set: { if !$0 { deletingComment = nil } }),
+                                titleVisibility: .visible, presenting: deletingComment) { comment in
+                Button("删除", role: .destructive) { Task { await deleteComment(comment) } }
+                Button("取消", role: .cancel) {}
             }
             .confirmationDialog("删除后无法恢复，评论与点赞也会一起隐藏。", isPresented: $confirmingDelete,
                                 titleVisibility: .visible) {
@@ -251,14 +265,31 @@ struct PostDetailView: View {
             }
 
             if !post.tagList.isEmpty {
+                // F09：点标签进同标签的帖子流。
                 HStack(spacing: 6) {
-                    ForEach(post.tagList, id: \.self) { UniChip($0) }
+                    ForEach(post.tagList, id: \.self) { tag in
+                        NavigationLink {
+                            TagPostsView(tag: tag).environment(auth)
+                        } label: {
+                            Text("#\(tag)")
+                                .uniFont(12, weight: .semibold)
+                                .foregroundStyle(UniColor.blue)
+                                .padding(.horizontal, 10)
+                                .frame(minHeight: 30)
+                                .background(UniColor.blue.opacity(0.08), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("标签 \(tag)，查看同标签的帖子")
+                    }
                 }
             }
 
-            Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
-                .uniFont(11, weight: .semibold)
-                .foregroundStyle(UniColor.tertiary)
+            HStack(spacing: 4) {
+                Text(RelativeTime.text(from: post.publishedAt ?? post.createdAt))
+                if post.editedAt != nil { Text("· 已编辑") }
+            }
+            .uniFont(11, weight: .semibold)
+            .foregroundStyle(UniColor.tertiary)
         }
     }
 
@@ -349,10 +380,13 @@ struct PostDetailView: View {
         return roots.map { ($0, replies[$0.id] ?? []) }
     }
 
-    /// 长按评论：复制；别人的评论可以举报。
+    /// 长按评论：复制；自己的可以删除（F13），别人的可以举报。
     @ViewBuilder
     private func commentMenu(_ comment: CommentView) -> some View {
         Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = comment.content }
+        if auth.isAuthenticated, comment.author.uid == auth.profile?.publicUid {
+            Button("删除", systemImage: "trash", role: .destructive) { deletingComment = comment }
+        }
         if comment.author.uid != auth.profile?.publicUid {
             Button("举报这条评论", systemImage: "exclamationmark.bubble") {
                 if auth.isAuthenticated { reportTarget = .comment(id: comment.id) } else { auth.requireLogin() }
@@ -683,6 +717,22 @@ struct PostDetailView: View {
             guard isCurrentIdentity(userID: userID, revision: revision) else { return }
             NotificationCenter.default.post(name: .unipoPostDeleted, object: post.id)
             dismiss()
+        } catch {
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "删除失败，请重试"
+        }
+    }
+
+    private func deleteComment(_ comment: CommentView) async {
+        guard let userID = auth.profile?.id else { return }
+        let revision = auth.authenticationRevision
+        deletingComment = nil
+        do {
+            try await APIClient.shared.deleteComment(id: comment.id)
+            guard isCurrentIdentity(userID: userID, revision: revision) else { return }
+            comments.removeAll { $0.id == comment.id }
+            commentCount = max(0, commentCount - 1)
+            if replyTarget?.id == comment.id { replyTarget = nil }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision) else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "删除失败，请重试"

@@ -89,6 +89,8 @@ export interface PostView {
   /** 关联的校园活动 / 主线任务（联动） */
   activity?: PostLinkRef;
   task?: PostLinkRef;
+  /** 作者最近一次编辑的时间（F13）；没编辑过为空 */
+  editedAt?: string;
 }
 
 export interface PostLinkRef {

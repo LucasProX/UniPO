@@ -316,6 +316,72 @@ public class PostService implements PostQueryApi, PostAdminApi {
 
     static final int FOLLOWER_FANOUT_LIMIT = 2000;
 
+    /** 对其他人不可见的评论：审核员隐藏（hidden）或作者自己删除（deleted）。 */
+    static final Set<String> INVISIBLE_COMMENT = Set.of("hidden", "deleted");
+
+    /**
+     * F13：作者编辑自己的帖子。内容重新过一遍过滤：违禁词拒绝；可疑内容或全局先审后发时，
+     * 已发布的帖子退回「待审核」并进队列，本来就在审核中的继续等审核——编辑不会让待审核的帖子自己发出去。
+     * 发布时间不变，所以推荐分不变、也不再通知粉丝。
+     */
+    @Transactional
+    public PostDtos.PostView update(Long postId, PostDtos.UpdatePostRequest request, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
+        Post post = postMapper.lockById(postId);
+        if (post == null || !Set.of("published", "pending").contains(post.getStatus())) {
+            throw new NoSuchElementException("PO 不存在");
+        }
+        if (!Objects.equals(post.getAuthorId(), currentUser.id())) {
+            throw new AccessDeniedException("只能编辑自己的 PO");
+        }
+        User author = requireRewardUser(currentUser.id());
+        ContentFilterApi.Verdict verdict = contentFilter.check(request.title(), request.content(),
+                request.tags() == null ? null : String.join(" ", request.tags()));
+        if (verdict.blocked()) throw new ContentBlockedException();
+        boolean holdForReview = verdict.needsReview() || contentFilter.reviewAllPosts();
+        boolean nowPending = "pending".equals(post.getStatus()) || holdForReview;
+        LocalDateTime now = AppTime.nowLocal();
+        postMapper.update(null, new LambdaUpdateWrapper<Post>().eq(Post::getId, postId)
+                .set(Post::getTitle, request.title().trim())
+                .set(Post::getContent, request.content().trim())
+                .set(Post::getExcerpt, excerpt(request.content()))
+                .set(Post::getTags, joinTags(request.tags()))
+                .set(Post::getRiskLevel, verdict.needsReview() ? "review" : "normal")
+                .set(Post::getActivityId, linkedActivity(request.activityId(), author))
+                .set(Post::getTaskId, linkedTask(request.taskId()))
+                .set(Post::getStatus, nowPending ? "pending" : "published")
+                .set(Post::getEditedAt, now)
+                .set(Post::getUpdatedAt, now));
+        imageMapper.delete(new LambdaQueryWrapper<PostImage>().eq(PostImage::getPostId, postId));
+        saveImages(postId, request.images(), now);
+        if (holdForReview) {
+            ScopeTarget target = postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId());
+            reportFlags.flag("POST", postId, author.getId(), target,
+                    verdict.needsReview() ? verdict.category() : "review_all",
+                    request.title().trim() + "\n" + request.content().trim());
+        }
+        return toView(postMapper.selectById(postId), currentUser);
+    }
+
+    /** F13：作者删除自己的评论。和审核员隐藏一样扣减评论数与回复数，状态记为 deleted 以便区分。 */
+    @Transactional
+    public boolean deleteOwnComment(Long commentId, CurrentUser currentUser) {
+        requireAuthenticated(currentUser);
+        Comment comment = commentMapper.lockById(commentId);
+        if (comment == null || comment.getPostId() == null || INVISIBLE_COMMENT.contains(comment.getStatus())) {
+            throw new NoSuchElementException("评论不存在");
+        }
+        if (!Objects.equals(comment.getUserId(), currentUser.id())) {
+            throw new AccessDeniedException("只能删除自己的评论");
+        }
+        LocalDateTime now = AppTime.nowLocal();
+        commentMapper.update(null, new LambdaUpdateWrapper<Comment>().eq(Comment::getId, commentId)
+                .set(Comment::getStatus, "deleted").set(Comment::getUpdatedAt, now));
+        postMapper.adjustCounters(comment.getPostId(), 0, -1, 0, 0, now);
+        if (comment.getParentId() != null) commentMapper.decrementReplies(comment.getParentId(), now);
+        return true;
+    }
+
     /**
      * 关注的人发帖：随发帖事务写站内通知。写扩散，单次最多 {@value #FOLLOWER_FANOUT_LIMIT} 个粉丝；
      * 粉丝更多的账号（运营号）以后改读扩散或异步 Outbox，不在发帖事务里循环写。拉黑双方不通知。
@@ -372,13 +438,65 @@ public class PostService implements PostQueryApi, PostAdminApi {
         return timeOrderedPage(wrapper, cursor, requestedLimit, currentUser);
     }
 
-    /** 搜索帖子标题、正文和标签，按发布时间倒序；可见性与信息流相同。 */
+    /** 搜索帖子标题、正文和标签，按发布时间倒序；可见性与信息流相同。以 # 开头时按标签精确查（F09）。 */
     public PostDtos.PostPageView search(String query, CurrentUser currentUser, String cursor, Integer requestedLimit) {
+        String trimmed = query == null ? "" : query.strip();
+        if (trimmed.startsWith("#") || trimmed.startsWith("＃")) {
+            return tagPage(trimmed, currentUser, cursor, requestedLimit);
+        }
         String phrase = SearchText.phrase(query);
         User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
         LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer)
                 .apply("MATCH(title, content, tags) AGAINST ({0} IN BOOLEAN MODE)", phrase);
         return timeOrderedPage(wrapper, cursor, requestedLimit, currentUser);
+    }
+
+    static final int TAG_MAX_LENGTH = 20;
+
+    /** 标签名：去掉开头的 #、首尾空白；不能为空、不能带逗号（库里用逗号分隔），最多 20 个字。 */
+    static String normalizeTag(String raw) {
+        String tag = raw == null ? "" : raw.strip();
+        while (tag.startsWith("#") || tag.startsWith("＃")) tag = tag.substring(1).strip();
+        if (tag.isEmpty() || tag.contains(",") || tag.contains("，")) throw new IllegalArgumentException("标签无效");
+        if (tag.codePointCount(0, tag.length()) > TAG_MAX_LENGTH) throw new IllegalArgumentException("标签最多 20 个字");
+        return tag;
+    }
+
+    /**
+     * 同一标签的帖子精确匹配：posts.tags 是逗号拼起来的，用 FIND_IN_SET 判断。
+     * 两个字以上的标签先用已有的 ngram 全文索引缩小范围，再精确过滤；单字标签全文索引查不到，只能扫本校的帖子。
+     */
+    private LambdaQueryWrapper<Post> tagWrapper(String tag, User viewer) {
+        LambdaQueryWrapper<Post> wrapper = baseVisibleWrapper(viewer).apply("FIND_IN_SET({0}, tags) > 0", tag);
+        if (tag.codePointCount(0, tag.length()) >= SearchText.MIN_LENGTH) {
+            wrapper.apply("MATCH(title, content, tags) AGAINST ({0} IN BOOLEAN MODE)", SearchText.phrase(tag));
+        }
+        return wrapper;
+    }
+
+    /** F09：标签页的帖子流，按发布时间倒序，可见性与信息流相同。 */
+    public PostDtos.PostPageView tagPage(String rawTag, CurrentUser currentUser, String cursor, Integer requestedLimit) {
+        String tag = normalizeTag(rawTag);
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        return timeOrderedPage(tagWrapper(tag, viewer), cursor, requestedLimit, currentUser);
+    }
+
+    static final int TAG_TASK_LIMIT = 3;
+
+    /** F09：标签页头部。关联任务取带这个标签的帖子里关联次数最多的几个。 */
+    public PostDtos.TagSummaryView tagSummary(String rawTag, CurrentUser currentUser) {
+        String tag = normalizeTag(rawTag);
+        User viewer = currentUser == null ? null : userMapper.selectById(currentUser.id());
+        long count = postMapper.selectCount(tagWrapper(tag, viewer));
+        Map<Long, Long> byTask = postMapper.selectList(tagWrapper(tag, viewer).select(Post::getTaskId).isNotNull(Post::getTaskId))
+                .stream().collect(Collectors.groupingBy(Post::getTaskId, Collectors.counting()));
+        List<Long> top = byTask.entrySet().stream()
+                .sorted(Map.Entry.<Long, Long>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
+                .limit(TAG_TASK_LIMIT).map(Map.Entry::getKey).toList();
+        Map<Long, String> titles = taskLookup.titles(top);
+        List<PostDtos.LinkRef> tasks = top.stream().filter(titles::containsKey)
+                .map(id -> new PostDtos.LinkRef(id, titles.get(id))).toList();
+        return new PostDtos.TagSummaryView(tag, count, tasks);
     }
 
     private PostDtos.PostPageView timeOrderedPage(LambdaQueryWrapper<Post> wrapper, String cursor,
@@ -433,7 +551,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         }
         if ("COMMENT".equals(type)) {
             Comment comment = commentMapper.selectById(id);
-            if (comment == null || comment.getPostId() == null || "hidden".equals(comment.getStatus())) return java.util.Optional.empty();
+            if (comment == null || comment.getPostId() == null || INVISIBLE_COMMENT.contains(comment.getStatus())) return java.util.Optional.empty();
             if (isBlockedPair(currentUser, comment.getUserId())) return java.util.Optional.empty();
             Post post = postMapper.selectOne(baseVisibleWrapper(viewer).eq(Post::getId, comment.getPostId()));
             if (post == null) return java.util.Optional.empty();
@@ -465,7 +583,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         requireNotBlocked(post, currentUser);
         List<Comment> comments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getPostId, post.getId())
-                .ne(Comment::getStatus, "hidden")
+                .notIn(Comment::getStatus, INVISIBLE_COMMENT)
                 .orderByDesc(Comment::getFeatured)
                 .orderByAsc(Comment::getCreatedAt));
         return commentViews(comments, currentUser);
@@ -483,7 +601,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         Post post = requireMutablePost(postId, currentUser);
         if (request.parentId() != null) {
             Comment parent = commentMapper.lockById(request.parentId());
-            if (parent == null || !Objects.equals(parent.getPostId(), postId) || "hidden".equals(parent.getStatus())) {
+            if (parent == null || !Objects.equals(parent.getPostId(), postId) || INVISIBLE_COMMENT.contains(parent.getStatus())) {
                 throw new IllegalArgumentException("回复的评论不存在或不属于此帖子");
             }
             if (blockQueryApi.isBlockedEitherWay(currentUser.id(), parent.getUserId())) {
@@ -717,7 +835,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (post == null) throw new NoSuchElementException("评论不存在");
         permissions.require(actor, Capability.POST_MODERATE,
                 postTarget(post.getBoard(), post.getSchoolId(), post.getCollegeId(), post.getMajorId()));
-        if ("hidden".equals(comment.getStatus())) return;
+        if (INVISIBLE_COMMENT.contains(comment.getStatus())) return;
         LocalDateTime now = AppTime.nowLocal();
         commentMapper.update(null, new LambdaUpdateWrapper<Comment>().eq(Comment::getId, commentId)
                 .set(Comment::getStatus, "hidden").set(Comment::getUpdatedAt, now));
@@ -883,20 +1001,20 @@ public class PostService implements PostQueryApi, PostAdminApi {
                 .in(Comment::getPostId, postIds)
                 .notIn(!blockedAuthors.isEmpty(), Comment::getUserId, blockedAuthors)
                 .ne(Comment::getUserId, currentUserId)
-                .ne(Comment::getStatus, "hidden")
+                .notIn(Comment::getStatus, INVISIBLE_COMMENT)
                 .orderByDesc(Comment::getCreatedAt));
 
         List<Comment> myRootComments = commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .eq(Comment::getUserId, currentUserId)
                 .isNotNull(Comment::getPostId)
                 .isNull(Comment::getParentId)
-                .ne(Comment::getStatus, "hidden"));
+                .notIn(Comment::getStatus, INVISIBLE_COMMENT));
         List<Long> myRootCommentIds = myRootComments.stream().map(Comment::getId).toList();
         List<Comment> commentReplies = myRootCommentIds.isEmpty() ? List.of() : commentMapper.selectList(new LambdaQueryWrapper<Comment>()
                 .in(Comment::getParentId, myRootCommentIds)
                 .notIn(!blockedAuthors.isEmpty(), Comment::getUserId, blockedAuthors)
                 .ne(Comment::getUserId, currentUserId)
-                .ne(Comment::getStatus, "hidden")
+                .notIn(Comment::getStatus, INVISIBLE_COMMENT)
                 .orderByDesc(Comment::getCreatedAt));
         Set<Long> replyCommentIds = commentReplies.stream().map(Comment::getId).collect(Collectors.toSet());
         comments = comments.stream()
@@ -1133,7 +1251,8 @@ public class PostService implements PostQueryApi, PostAdminApi {
                         post.getActivityId() == null || !activities.containsKey(post.getActivityId()) ? null
                                 : new PostDtos.LinkRef(post.getActivityId(), activities.get(post.getActivityId()).title()),
                         post.getTaskId() == null || !tasks.containsKey(post.getTaskId()) ? null
-                                : new PostDtos.LinkRef(post.getTaskId(), tasks.get(post.getTaskId()))
+                                : new PostDtos.LinkRef(post.getTaskId(), tasks.get(post.getTaskId())),
+                        AppTime.toOffset(post.getEditedAt())
                 ))
                 .toList();
     }
@@ -1332,7 +1451,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
         if (locator == null || locator.getPostId() == null) { throw new NoSuchElementException("评论不存在"); }
         requireMutablePost(locator.getPostId(), viewer);
         Comment current = commentMapper.lockById(commentId);
-        if (current == null || !Objects.equals(current.getPostId(), locator.getPostId()) || "hidden".equals(current.getStatus())) {
+        if (current == null || !Objects.equals(current.getPostId(), locator.getPostId()) || INVISIBLE_COMMENT.contains(current.getStatus())) {
             throw new NoSuchElementException("评论不存在");
         }
         Set<Long> blockedAuthors = viewer == null ? Set.of() : blockQueryApi.blockedUserIds(viewer.id());
@@ -1356,7 +1475,7 @@ public class PostService implements PostQueryApi, PostAdminApi {
 
     private Comment requirePostComment(Long commentId) {
         Comment comment = commentMapper.selectById(commentId);
-        if (comment == null || comment.getPostId() == null || "hidden".equals(comment.getStatus())) {
+        if (comment == null || comment.getPostId() == null || INVISIBLE_COMMENT.contains(comment.getStatus())) {
             throw new NoSuchElementException("评论不存在");
         }
         requirePost(comment.getPostId());

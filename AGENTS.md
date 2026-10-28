@@ -39,7 +39,7 @@ UniPO：校园成长应用，SwiftUI iOS（主战场）+ Vue 3 Web（分享/兜�
 | `backend/src/main/java/com/biecuoguo/wallet/` | 金币账本（2026-10-23）：`api/WalletApi` 是唯一入账入口（须在调用方事务内，按幂等键入账，有每日上限）；`internal/` 存余额与流水 |
 | `backend/src/main/java/com/biecuoguo/notification/` | 站内通知（2026-10-23）：`api/NotificationApi.notify` 随业务事务写入，`(user_id, dedupe_key)` 唯一保证同一事件只发一次；活动开始提醒由 `ActivityReminderSchedule` 每分钟扫描 |
 | `backend/src/main/java/com/biecuoguo/dto/` | 请求/响应 record |
-| `backend/src/main/resources/db/migration/` | Flyway V1–V40，**只增不改** |
+| `backend/src/main/resources/db/migration/` | Flyway V1–V41，**只增不改** |
 | `frontend/src/App.vue` | 61 行外壳：挂 AppShell + 全局弹窗 + 会话引导（2026-10-20 完成组件化） |
 | `frontend/src/layouts/AppShell.vue` | 布局壳：header + 左右栏 + 底部 dock + `<router-view>` |
 | `frontend/src/views/` | 路由视图：Home / Compose / Schedule / Messages / Profile / UserProfile |
@@ -90,7 +90,7 @@ npm.cmd run gen:api                                 # 后端起着时，重生�
 docker compose --profile local-db up -d mysql minio   # 127.0.0.1:12306 + MinIO 9000/9001
 docker compose --profile redis up -d redis            # 仅 STATE_BACKEND=redis 时需要
 ```
-后端（Flyway 自动执行 V1–V40）：
+后端（Flyway 自动执行 V1–V41）：
 ```bash
 cd backend
 mvn -DskipTests package                  # 只编译打包，安全
@@ -200,6 +200,8 @@ xcrun simctl launch booted com.unipo.app
 - **推荐流排序（2026-10-28，F08，V39）**：`pinned DESC, hot_score DESC, id DESC`。`posts.hot_score` 是 MySQL **生成列** = `log10(1 + 点赞 + 2×评论 + 2×收藏) + 官方 1 + 别错过 0.5 + 发布天数`（自 2026-01-01 起），晚发一天约等于互动多十倍。它只随互动和发布时间变，**不随「现在」变**，所以不需要定时刷新、游标也稳定；实体里是只读字段（insert/update 都 NEVER），不要在 Java 里算或写它。改权重只能新开迁移改这一列。七段旧游标一律 400。
 - **图片缩小图（2026-10-28，E04）**：`GET /api/media/{id}/content?size=360|720|1080` 返回短边不超过该值的 JPEG，其他尺寸 400，不放大。第一次请求时生成并存进 MinIO 的 `variants/{size}/原路径`，以后直接读；原图本来就小、像素超过 5000 万或文件超过 20MB 时存一个空对象做标记、回原图；GIF / WebP 不缩，直接回原图。生成最多同时两张（`Semaphore`），排不上队就先回原图。JPEG 的 EXIF 方向在缩图时转正。老图片不用补跑任务。
 - **推送设备跟登录会话绑定（2026-10-28，M05，V40）**：`device_tokens.device_session_id` 在登记时取当前会话；`AccountSecurityService` 撤销单台设备或全部会话时**同步发布 `auth.api.DeviceSessionsEnded`**，`PushTokenService` 监听并在同一事务删除对应设备（这是项目里第一个领域事件）。会话自然过期由 `pruneEndedSessions` 每小时经 `AccountSecurityApi.activeSessions` 对账删除，没有会话的老登记也删掉，App 以登录状态启动时会重新登记。换账号登录时同一个设备 token 先删后插，归属跟着最后登录的人。真实 APNs 还没接通（需要付费开发者账号，见 `docs/TEST-ENVIRONMENT.md`「接通 sandbox APNs」）。
+- **标签、编辑与删评（2026-10-28，F09 / F13，V41）**：标签仍存在 `posts.tags`（逗号拼接），标签页 `GET /posts/tag` 用 `FIND_IN_SET` 精确匹配，两个字以上先走已有的 ngram 全文索引缩小范围；搜索词以 `#` 开头时转标签页。作者编辑 `PUT /posts/{id}` 只改内容、图片、标签和关联，**不改发布时间**（推荐分不变、不再通知粉丝），记 `edited_at`；内容重新过滤，可疑时已发布的退回 `pending`，**待审核的帖子编辑后不会自己发出去**。作者删评论记 `status = 'deleted'`，和审核员隐藏的 `hidden` 区分；**评论是否可见一律看 `PostService.INVISIBLE_COMMENT`**，不要再单独判断 `"hidden"`。
+- **主页称号（2026-10-28，F15，V41）**：存在 achievement 模块自己的 `achievement_titles`（不进 `users` 表），每次读成长数据时按此刻是否仍获得判断，失效就不展示、行保留；`AchievementView.title` 与 `PublicGrowthView.title` 带出。稀有度配色只在 iOS `BadgeStyle` 一处维护，U03 正式视觉未定。
 - **定时任务**：`BieCuoGuoApplication` 有 `@EnableScheduling`（2026-10-28 才加：之前 `RoleGrantService` 的整点 `@Scheduled` 从来没跑过）。活动提醒、Outbox 用自己的单线程执行器，新任务两种写法都可以，但 `@Scheduled` 方法里要自己兜住异常。
 - **一个 Spring Bean 有两个构造函数时必须给注入用的那个加 `@Autowired`**（2026-10-25 部署时踩过：单测全绿，测试实例启动报 `No default constructor found`，已先跑完 V37）。给单测留的包内构造函数不要和注入构造函数并列而不标注。
 - **新模块的 Mapper 要加进 `BieCuoGuoApplication` 的 `@MapperScan` 列表**：它是按包逐个列出的，漏了单测照样全绿，只有起 Spring 上下文才报 `required a bean of type ...Mapper`（2026-10-23 部署 activity 时踩过，Flyway 已先跑完迁移）。
@@ -214,7 +216,7 @@ xcrun simctl launch booted com.unipo.app
   在线状态抛异常 -> 按离线处理。`redis` 模式启动时会 ping，连不上直接拒绝启动（否则会静默退化成「永远不生效」）。
 
 ## 5. 数据库
-- Flyway 管 schema：已有 V1–V40 只增不改，下一次迁移按实际最高版本递增（当前应为 `V41__xxx.sql`）。
+- Flyway 管 schema：已有 V1–V41 只增不改，下一次迁移按实际最高版本递增（当前应为 `V42__xxx.sql`）。
 - **只剩一套内容模型：`posts`**。`notices` 遗留域已于 2026-10-20 整体删除（`V11__drop_notices_domain.sql` 掉了 `notices` / `notice_tags` / `user_notice_status` / `favorites` / `reminders` 五张表，以及 `comments.notice_id` 列）。**不要再往 notices 方向加东西**；`comments` 表保留，但只认 `post_id`。
 - 计数冗余字段（`posts.like_count` / `comment_count` / `favorite_count` / `share_count`）在 Service 里手动加减，改互动逻辑要同步维护。
 - 完整表清单见 `docs/ARCHITECTURE.md` §4。
@@ -257,6 +259,7 @@ xcrun simctl launch booted com.unipo.app
 - **品牌与 App 图标（2026-10-24）**：标志是大写「UP」（University + Post），U 墨黑 `#0B0F17`、P 品牌蓝 `#2F6BFF`，U、P 顶底严格对齐，字组宽 75%、按轮廓居中。正式资产在 `output/brand/2026-10-24-01-blue-p/`（浅色 / 深色 / 着色图标、路径 SVG / PDF、横版字标、使用规范），由 `swift scripts/design/render-brand-assets.swift` 从选定源稿 `output/brand-exploration/2026-10-24/01-essential/mark.svg` 生成。`AppIcon.appiconset` 里三张 1024 图标就是从这里复制的（浅色、深色不透明，着色版透明底）；要改图标先改品牌资产再复制，不要单独重画。
 - **Feature 不直接建 URLSession**：一律走 `UniPOCore.APIClient`，鉴权和错误映射只维护一份。
 - **图片一律用 `UniPOUI.RemoteImage`，不要再写 `AsyncImage`（2026-10-28，E04）**：它走 `ImagePipeline`（解码后的图进内存 NSCache 64MB，下载数据进独立 URLCache 300MB 磁盘缓存，同一地址只下载一次，不带凭证也不收发 Cookie），并按显示尺寸向后端要 `size` 档位（`UniPOCore.MediaURL.sized`：长边点数 × 屏幕倍数，挑能盖住的最小一档，允许差一成，超过 1080 用原图；只改写本服务的 `/api/media/{id}/content`）。默认 `.measured` 自己量格子，只能用在尺寸由外面给定的地方；按原比例、高度由图片决定的地方用 `.pixels(…)`，全屏看图用 `.original`。后两种模式下闭包在每个阶段都要画点东西（占位、进度），挂在 `EmptyView` 上的 `.task` 不会启动。
+- **标签页、发帖关联、草稿与编辑（2026-10-28，F09 / F12 / F13 / F14）**：帖子详情的标签是 `NavigationLink` 进 `TagPostsView`（卡片上仍只展示）；搜索输入 `#标签` 时顶部给标签页入口。发帖页没有关联时显示「关联活动或主线任务」，选择器是 `PostLinkPicker`（活动按参加过 → 报名了 → 本校近期，任务按当前学期优先）。`ComposeSheet(editing:)` 编辑已有帖子：预填内容、板块锁定，保存后 `onSaved` 回传并广播 `.unipoPostUpdated`，`FeedStore.replace` 就地替换。**草稿只给从底栏「发布」打开的空白发帖页用**（`ComposeDraftStore`，UserDefaults，按账号和 API 环境隔离，每次改动就存，发布成功清空）；带预设打开的、编辑已有帖子的都不读不写。换号读取时丢弃，**明确退出登录时在 `AuthStore.logout` 清空**，会话恢复失败不清，同一账号再登录还能接着写。评论长按：复制、自己的删除、别人的举报；私信气泡长按：复制、对方的举报对方；私信时间分隔用 `MessageTimeline`（隔 5 分钟以上显示一次）。徽章墙点开 `BadgeDetailSheet`，已获得的可设为主页称号，「我的」和他人主页名字下面显示 `BadgeTitleChip`。
 - **启动页与登录页品牌（2026-10-28，U01）**：资产目录里 `BrandMark`（浅底：墨黑 U 蓝 P）、`BrandMarkOnDark`（深底：白 U 蓝 P）、`WordmarkWhite`（白色横版字标）都是品牌 SVG 原样拷贝、保留矢量；画布标成 120pt，免得按 1024pt 栅格化出 3072px 的大图。`LaunchMark` 是同一份路径、画布 120pt、只栅格化，配 `LaunchBackground`（纸白 `#F7F8FB`），由 `project.yml` 的 `UILaunchScreen` 引用。App 整体锁定浅色，启动页与首页一致用浅色；登录、引导页锁定深色，用 `BrandMarkOnDark` + `WordmarkWhite`，不加底板、阴影或描边。改标志先改 `output/brand/`，再拷进资产目录。
 - **APNs**：`AppDelegate` 请求权限并把 device token 存 `PushTokenStore`，每次身份变化（`RootView.task(id: identityKey)`）POST `/push/tokens`，服务端把它绑到当前登录会话，退出即解绑；
   本地 `APNS_ENABLED=false` 时后端只打日志；模拟器用 `xcrun simctl push` 验通知 UI（payload 的 `data.conversationId` 点开直达会话）。

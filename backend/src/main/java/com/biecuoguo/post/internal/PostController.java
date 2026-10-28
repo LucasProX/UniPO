@@ -52,6 +52,20 @@ public class PostController {
         return ApiResponse.ok(postService.followingFeed(currentUser(authentication), cursor, limit));
     }
 
+    /** F09：标签页的帖子流，按发布时间倒序。?name= 可以带或不带 #。 */
+    @GetMapping("/tag")
+    public ApiResponse<PostDtos.PostPageView> tag(@RequestParam String name,
+                                                  @RequestParam(required = false) String cursor,
+                                                  @RequestParam(required = false) Integer limit,
+                                                  Authentication authentication) {
+        return ApiResponse.ok(postService.tagPage(name, currentUser(authentication), cursor, limit));
+    }
+
+    @GetMapping("/tag/summary")
+    public ApiResponse<PostDtos.TagSummaryView> tagSummary(@RequestParam String name, Authentication authentication) {
+        return ApiResponse.ok(postService.tagSummary(name, currentUser(authentication)));
+    }
+
     @GetMapping("/search")
     public ApiResponse<PostDtos.PostPageView> search(@RequestParam String q,
                                                      @RequestParam(required = false) String cursor,
@@ -88,6 +102,18 @@ public class PostController {
     @DeleteMapping("/{id}")
     public ApiResponse<Boolean> delete(@PathVariable Long id) {
         return ApiResponse.ok(postService.deleteOwnPost(id, SecurityUtils.currentUser()));
+    }
+
+    /** F13：作者编辑自己的帖子。 */
+    @PutMapping("/{id}")
+    public ApiResponse<PostDtos.PostView> update(@PathVariable Long id, @Valid @RequestBody PostDtos.UpdatePostRequest request) {
+        return ApiResponse.ok(postService.update(id, request, SecurityUtils.currentUser()));
+    }
+
+    /** F13：删除自己的评论。 */
+    @DeleteMapping("/comments/{id}")
+    public ApiResponse<Boolean> deleteComment(@PathVariable Long id) {
+        return ApiResponse.ok(postService.deleteOwnComment(id, SecurityUtils.currentUser()));
     }
 
     @GetMapping("/{id}/comments")

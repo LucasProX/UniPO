@@ -12,6 +12,7 @@ import com.biecuoguo.config.AppTime;
 import com.biecuoguo.domain.User;
 import com.biecuoguo.mapper.UserMapper;
 import com.biecuoguo.service.ExperienceService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +36,13 @@ public class AchievementService implements AchievementQueryApi {
     private final ActivityParticipationApi participation;
     private final TaskGuidePostMapper guideMapper;
     private final PostQueryApi postQueryApi;
+    private AchievementTitleMapper titleMapper;
+
+    /** 称号表（V41）。单测不设置时视为没选称号。 */
+    @Autowired
+    void setTitleMapper(AchievementTitleMapper titleMapper) {
+        this.titleMapper = titleMapper;
+    }
 
     public AchievementService(AchievementStageMapper stageMapper, AchievementTaskMapper taskMapper,
                               AchievementProgressMapper progressMapper, BadgeMapper badgeMapper,
@@ -51,6 +59,20 @@ public class AchievementService implements AchievementQueryApi {
         this.userBadgeMapper = userBadgeMapper;
         this.userMapper = userMapper;
         this.experienceService = experienceService;
+    }
+
+    /** F15：选一枚已获得的徽章做主页称号；传空取消。 */
+    @Transactional
+    public AchievementDtos.AchievementView setTitle(long userId, String badgeCode) {
+        String code = badgeCode == null ? "" : badgeCode.strip();
+        if (code.isEmpty()) {
+            titleMapper.deleteById(userId);
+        } else {
+            boolean earned = view(userId).badges().stream().anyMatch(badge -> badge.earned() && badge.code().equals(code));
+            if (!earned) throw new IllegalArgumentException("只能选已获得的徽章");
+            titleMapper.upsert(userId, code, AppTime.nowLocal());
+        }
+        return view(userId);
     }
 
     @Override
@@ -151,6 +173,12 @@ public class AchievementService implements AchievementQueryApi {
             ));
         }
 
+        // 称号只展示仍然有效的徽章：活动徽章随签到撤销会失效，这里每次按此刻的结果判断。
+        AchievementTitle chosen = titleMapper == null ? null : titleMapper.selectById(userId);
+        AchievementDtos.BadgeView title = chosen == null ? null : badgeViews.stream()
+                .filter(badge -> badge.earned() && badge.code().equals(chosen.getBadgeCode()))
+                .findFirst().orElse(null);
+
         return new AchievementDtos.AchievementView(
                 user.getLevel() == null ? 1 : user.getLevel(),
                 user.getXp() == null ? 0 : user.getXp(),
@@ -158,7 +186,8 @@ public class AchievementService implements AchievementQueryApi {
                 termIndex == null ? "PROGRESS" : "CALENDAR",
                 user.getEntryYear(),
                 termIndex == null ? null : GrowthTerms.termLabel(termIndex),
-                nextTask
+                nextTask,
+                title
         );
     }
 

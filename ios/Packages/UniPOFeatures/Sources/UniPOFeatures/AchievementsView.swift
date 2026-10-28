@@ -20,6 +20,7 @@ struct AchievementsView: View {
     @State private var termPlan = TermPlanStore()
     @State private var openedTask: TaskRef?
     @State private var showActivities = false
+    @State private var openedBadge: AchievementBadgeView?
 
     var body: some View {
         ScrollView {
@@ -436,34 +437,57 @@ struct AchievementsView: View {
                 }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                ForEach((achievement?.badges ?? []).prefix(12)) { badge in
-                    VStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
-                                .fill(badgeTint(badge.rarity).opacity(badge.earned ? 0.12 : 0.05))
-                                .frame(width: 58, height: 58)
-                            Image(systemName: badge.icon)
-                                .uniFont(22, weight: .semibold)
-                                .foregroundStyle(badge.earned ? badgeTint(badge.rarity) : UniColor.tertiary.opacity(0.6))
-                        }
-                        Text(badge.earned ? badge.title : "未解锁")
-                            .uniFont(11, weight: .semibold)
-                            .foregroundStyle(badge.earned ? UniColor.ink : UniColor.tertiary)
-                            .lineLimit(1)
-                        Text(rarityLabel(badge.rarity))
-                            .uniFont(9, weight: .semibold)
-                            .foregroundStyle(badgeTint(badge.rarity))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
-                            .stroke(badgeTint(badge.rarity).opacity(badge.earned ? 0.2 : 0.08), lineWidth: 1)
-                    )
-                    .scaleEffect(appeared ? 1 : 0.92)
+            if let title = achievement?.title {
+                HStack(spacing: 6) {
+                    Text("主页称号").uniFont(11, weight: .semibold).foregroundStyle(UniColor.tertiary)
+                    BadgeTitleChip(badge: title)
                 }
+            }
+
+            // F15：点开看获得条件、稀有度和获得时间，已获得的可以设为主页称号。
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                ForEach(achievement?.badges ?? []) { badge in
+                    Button { openedBadge = badge } label: {
+                        VStack(spacing: 8) {
+                            BadgeMedal(badge: badge)
+                            Text(badge.earned ? badge.title : "未解锁")
+                                .uniFont(11, weight: .semibold)
+                                .foregroundStyle(badge.earned ? UniColor.ink : UniColor.tertiary)
+                                .lineLimit(1)
+                            Text(badge.rarityLevel.label)
+                                .uniFont(9, weight: .semibold)
+                                .foregroundStyle(BadgeStyle.tint(badge.rarityLevel))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
+                                .stroke(BadgeStyle.tint(badge.rarityLevel).opacity(badge.earned ? 0.2 : 0.08), lineWidth: 1)
+                        )
+                        .overlay(alignment: .topTrailing) {
+                            if badge.code == achievement?.title?.code {
+                                Image(systemName: "person.crop.circle.badge.checkmark")
+                                    .uniFont(12, weight: .semibold)
+                                    .foregroundStyle(BadgeStyle.tint(badge.rarityLevel))
+                                    .padding(8)
+                                    .accessibilityLabel("当前称号")
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .scaleEffect(appeared ? 1 : 0.92)
+                    .accessibilityLabel("\(badge.earned ? badge.title : "未解锁的徽章")，\(badge.rarityLevel.label)")
+                    .accessibilityHint("查看获得条件")
+                }
+            }
+        }
+        .sheet(item: $openedBadge) { badge in
+            BadgeDetailSheet(badge: badge, isCurrentTitle: badge.code == achievement?.title?.code) { code in
+                let updated = try await APIClient.shared.setTitle(badgeCode: code)
+                achievement = updated
+                NotificationCenter.default.post(name: .unipoTitleChanged, object: updated.title)
             }
         }
     }
@@ -475,26 +499,6 @@ struct AchievementsView: View {
         if let current = achievement?.currentStage, stage.order < current.order { return .past }
         if stage.boss { return .boss }
         return .locked
-    }
-
-    private func badgeTint(_ rarity: String) -> Color {
-        switch rarity {
-        case "RARE": return UniColor.blue
-        case "EPIC": return UniColor.gold
-        case "LEGENDARY": return UniColor.danger
-        case "LIMITED": return Color(hex: 0x8B5CF6)
-        default: return UniColor.secondary
-        }
-    }
-
-    private func rarityLabel(_ rarity: String) -> String {
-        switch rarity {
-        case "RARE": return "稀有"
-        case "EPIC": return "史诗"
-        case "LEGENDARY": return "传说"
-        case "LIMITED": return "限定"
-        default: return "普通"
-        }
     }
 
     private func load() async {

@@ -82,7 +82,9 @@ public final class GrowthDtos {
             int attendedCount,
             List<AchievementDtos.BadgeView> badges,
             /** 最近参加的活动，最多 6 场。 */
-            List<RecentActivity> recentActivities
+            List<RecentActivity> recentActivities,
+            /** 对方选的主页称号；没选、已失效或互相拉黑时为空（F15）。 */
+            AchievementDtos.BadgeView title
     ) {}
 
     public record RecentActivity(long id, String title, String category, OffsetDateTime startsAt) {}

@@ -20,6 +20,12 @@ public class AchievementController {
         return ApiResponse.ok(achievementService.view(SecurityUtils.currentUser().id()));
     }
 
+    /** F15：主页称号，body {"badgeCode": "..."}，为空表示不展示。 */
+    @PutMapping("/title")
+    public ApiResponse<AchievementDtos.AchievementView> title(@RequestBody AchievementDtos.TitleRequest request) {
+        return ApiResponse.ok(achievementService.setTitle(SecurityUtils.currentUser().id(), request.badgeCode()));
+    }
+
     @GetMapping("/tasks/{taskId}")
     public ApiResponse<AchievementDtos.TaskDetailView> task(@PathVariable Long taskId) {
         return ApiResponse.ok(achievementService.detail(taskId, SecurityUtils.currentUser()));

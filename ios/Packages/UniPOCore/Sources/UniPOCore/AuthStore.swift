@@ -235,6 +235,8 @@ public final class AuthStore {
         let saved = session.map { SessionCredentials(accessToken: $0.token, refreshToken: $0.refreshToken) }
             ?? (try? credentials.load())
         let current = beginOperation()
+        // F14：明确退出时丢掉本机的发帖草稿；会话失效、恢复失败不算，同一账号再登录还能接着写。
+        ComposeDraftStore.shared.clear()
         await clearSession(revision: current)
         // Remote revocation owns the old snapshot and never clears a later login.
         if let saved { await api.logout(accessToken: saved.accessToken, refreshToken: saved.refreshToken) }

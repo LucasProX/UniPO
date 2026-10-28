@@ -67,6 +67,9 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .unipoPostDeleted)) { note in
             if let id = note.object as? Int64 { feed.remove(postID: id) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoPostUpdated)) { note in
+            if let post = note.object as? PostView { feed.replace(post) }
+        }
         .sheet(isPresented: $searching) {
             SearchView().environment(auth)
         }

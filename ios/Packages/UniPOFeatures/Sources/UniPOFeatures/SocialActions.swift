@@ -8,6 +8,8 @@ extension Notification.Name {
     static let unipoPostDeleted = Notification.Name("unipo.post.deleted")
     /// 本人发布成功；首页回到顶部刷新，让作者马上看到自己的 PO。
     static let unipoPostPublished = Notification.Name("unipo.post.published")
+    /// object 为编辑后的帖子（PostView）；信息流就地替换（F13）。
+    static let unipoPostUpdated = Notification.Name("unipo.post.updated")
 }
 
 /// 举报的对象：用户、帖子或评论。

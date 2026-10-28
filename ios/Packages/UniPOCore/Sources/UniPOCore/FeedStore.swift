@@ -86,6 +86,12 @@ public final class FeedStore {
         posts.removeAll { $0.id == postID }
     }
 
+    /// 本人编辑帖子后就地替换；改完需要重新审核的帖子不再出现在信息流里。
+    public func replace(_ post: PostView) {
+        guard let index = posts.firstIndex(where: { $0.id == post.id }) else { return }
+        if post.status == "pending" { posts.remove(at: index) } else { posts[index] = post }
+    }
+
     private func unique(_ items: [PostView]) -> [PostView] {
         var ids = Set<Int64>()
         return items.filter { ids.insert($0.id).inserted }

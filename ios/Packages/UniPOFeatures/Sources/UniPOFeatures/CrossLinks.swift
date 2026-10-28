@@ -132,10 +132,13 @@ struct LinkedPostsSection: View {
 struct ProfileGrowthSection: View {
     @Environment(AuthStore.self) private var auth
     let uid: String
+    /// 读到成长数据后交给主页（头部的称号用）。
+    var onLoad: (PublicGrowth) -> Void = { _ in }
 
     @State private var growth: PublicGrowth?
     @State private var failed = false
     @State private var openedActivity: ActivityRef?
+    @State private var openedBadge: AchievementBadgeView?
 
     var body: some View {
         Group {
@@ -151,6 +154,9 @@ struct ProfileGrowthSection: View {
         .sheet(item: $openedActivity) { ref in
             NavigationStack { ActivityDetailView(activityID: ref.id) }.environment(auth)
         }
+        .sheet(item: $openedBadge) { badge in
+            BadgeDetailSheet(badge: badge)
+        }
     }
 
     private func content(_ growth: PublicGrowth) -> some View {
@@ -165,12 +171,16 @@ struct ProfileGrowthSection: View {
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         ForEach(growth.badges) { badge in
-                            Label(badge.title, systemImage: badge.icon)
-                                .uniFont(11, weight: .semibold)
-                                .foregroundStyle(UniColor.ink)
-                                .padding(.horizontal, 10)
-                                .frame(minHeight: 30)
-                                .background(UniColor.gold.opacity(0.14), in: Capsule())
+                            Button { openedBadge = badge } label: {
+                                Label(badge.title, systemImage: badge.icon)
+                                    .uniFont(11, weight: .semibold)
+                                    .foregroundStyle(UniColor.ink)
+                                    .padding(.horizontal, 10)
+                                    .frame(minHeight: 30)
+                                    .background(BadgeStyle.tint(badge.rarityLevel).opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("查看获得条件")
                         }
                     }
                 }
@@ -231,8 +241,10 @@ struct ProfileGrowthSection: View {
 
     private func load() async {
         do {
-            growth = try await APIClient.shared.publicGrowth(uid: uid)
+            let loaded = try await APIClient.shared.publicGrowth(uid: uid)
+            growth = loaded
             failed = false
+            onLoad(loaded)
         } catch {
             failed = true
         }

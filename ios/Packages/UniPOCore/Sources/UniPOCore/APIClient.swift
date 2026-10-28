@@ -133,6 +133,17 @@ public actor APIClient {
         return try await request(path: "posts/search", query: query)
     }
 
+    /// 标签页的帖子流（F09），按发布时间倒序；name 带不带 # 都行。
+    public func tagPosts(name: String, cursor: String? = nil, limit: Int = 20) async throws -> PostPage {
+        var query = [URLQueryItem(name: "name", value: name), URLQueryItem(name: "limit", value: String(limit))]
+        if let cursor, !cursor.isEmpty { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        return try await request(path: "posts/tag", query: query)
+    }
+
+    public func tagSummary(name: String) async throws -> TagSummary {
+        try await request(path: "posts/tag/summary", query: [URLQueryItem(name: "name", value: name)])
+    }
+
     /// 按昵称或 UID 找人；需要登录。
     public func searchUsers(query text: String) async throws -> [FollowUserView] {
         try await request(path: "users/search", query: [URLQueryItem(name: "q", value: text)])
@@ -153,6 +164,18 @@ public actor APIClient {
         case nil: break
         }
         return try await request(path: "posts", method: "POST", body: body)
+    }
+
+    /// 作者编辑自己的帖子（F13）：板块和发布时间不变，图片、标签整体替换，link 为空表示去掉关联。
+    public func updatePost(id: Int64, title: String, content: String, tags: [String], images: [String],
+                           link: PostLink?) async throws -> PostView {
+        var body: [String: Any] = ["title": title, "content": content, "tags": tags, "images": images]
+        switch link {
+        case .activity(let ref): body["activityId"] = ref.id
+        case .task(let ref): body["taskId"] = ref.id
+        case nil: break
+        }
+        return try await request(path: "posts/\(id)", method: "PUT", body: body)
     }
 
     public func post(id: Int64) async throws -> PostView {
@@ -317,6 +340,11 @@ public actor APIClient {
     @discardableResult
     public func deleteAccount() async throws -> Bool {
         try await request(path: "users/me", method: "DELETE")
+    }
+
+    /// 选主页称号（F15）；传 nil 取消。只能选已获得的徽章。
+    public func setTitle(badgeCode: String?) async throws -> AchievementView {
+        try await request(path: "achievements/title", method: "PUT", body: ["badgeCode": badgeCode ?? ""])
     }
 
     public func achievements() async throws -> AchievementView {
@@ -496,6 +524,12 @@ public actor APIClient {
     @discardableResult
     public func likeComment(id: Int64, liked: Bool) async throws -> Bool {
         try await request(path: "posts/comments/\(id)/like", method: liked ? "DELETE" : "POST")
+    }
+
+    /// 删除自己的评论（F13）。
+    @discardableResult
+    public func deleteComment(id: Int64) async throws -> Bool {
+        try await request(path: "posts/comments/\(id)", method: "DELETE")
     }
 
     @discardableResult

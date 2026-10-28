@@ -322,15 +322,17 @@ public class GrowthPlanService {
         int level = user.getLevel() == null ? 1 : user.getLevel();
         int xp = user.getXp() == null ? 0 : user.getXp();
         if (hidden) {
-            return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, null, 0, List.of(), List.of());
+            return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, null, 0, List.of(), List.of(), null);
         }
-        List<AchievementDtos.BadgeView> badges = achievements.view(user.getId()).badges().stream()
+        AchievementDtos.AchievementView achievement = achievements.view(user.getId());
+        List<AchievementDtos.BadgeView> badges = achievement.badges().stream()
                 .filter(AchievementDtos.BadgeView::earned).toList();
         ActivityParticipationApi.AttendanceSummary attendance = participation.attendance(user.getId(), 1);
         List<GrowthDtos.RecentActivity> recent = participation.attended(user.getId(), RECENT_ACTIVITY_LIMIT).stream()
                 .map(item -> new GrowthDtos.RecentActivity(item.activityId(), item.title(), item.category(), item.startsAt()))
                 .toList();
-        return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, term, attendance.count(), badges, recent);
+        return new GrowthDtos.PublicGrowthView(level, user.getLevelTitle(), xp, term, attendance.count(), badges, recent,
+                achievement.title());
     }
 
     private User user(long userId) {

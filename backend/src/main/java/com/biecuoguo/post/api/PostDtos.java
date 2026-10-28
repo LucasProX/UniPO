@@ -61,7 +61,9 @@ public final class PostDtos {
             /** 关联的校园活动；没有为空。 */
             LinkRef activity,
             /** 关联的主线任务；没有为空。 */
-            LinkRef task
+            LinkRef task,
+            /** 作者最近一次编辑的时间；没编辑过为空（F13）。 */
+            OffsetDateTime editedAt
     ) {}
 
     /** 帖子挂载的活动或任务：只给 ID 和标题，点开后再读各自的详情。 */
@@ -86,6 +88,22 @@ public final class PostDtos {
             /** 挂一个主线任务（任务详情里「写经验」）。 */
             Long taskId
     ) {}
+
+    /**
+     * 作者编辑自己的帖子（F13）：只改内容、图片、标签和关联，不改板块、官方标记和发布时间。
+     * images、tags 整体替换；activityId / taskId 为空表示去掉关联。
+     */
+    public record UpdatePostRequest(
+            @NotBlank @Size(max = 120) String title,
+            @NotBlank @Size(max = 5000) String content,
+            List<String> images,
+            List<String> tags,
+            Long activityId,
+            Long taskId
+    ) {}
+
+    /** 标签页头部（F09）：标签名、同校可见的帖子数、带这个标签的帖子里最常关联的主线任务。 */
+    public record TagSummaryView(String name, long postCount, List<LinkRef> tasks) {}
 
     public record CreateCommentRequest(@NotBlank @Size(max = 1000) String content, Long parentId) {}
 

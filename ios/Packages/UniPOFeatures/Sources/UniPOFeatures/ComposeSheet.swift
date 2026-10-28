@@ -10,8 +10,16 @@ struct ComposeSheet: View {
     /// 从活动（签到后）或主线任务进入时带上的关联；用户可以去掉。
     var initialLink: PostLink? = nil
     var initialTitle: String = ""
+    /// 从标签页进入时预填的标签（F09）。
+    var initialTags: [String] = []
+    /// 编辑已有的帖子（F13）：预填内容，板块不能改，保存后把新内容交给调用方。
+    var editing: PostView? = nil
+    var onSaved: (PostView) -> Void = { _ in }
     @State private var link: PostLink?
     @State private var linkInitialized = false
+    @State private var pickingLink = false
+    /// 打开时恢复了上次没发出去的草稿（F14）。
+    @State private var restoredDraft = false
 
     @State private var board = "school"
     @State private var title = ""
@@ -37,6 +45,15 @@ struct ComposeSheet: View {
     private let maxTags = 5
     private let template = "遇到的问题：\n\n我的做法：\n\n结果怎么样：\n\n适合谁参考："
 
+    /// 只有从底栏「发布」打开的空白发帖页用草稿；带着预设打开的、编辑已有帖子的都不读也不写，免得互相覆盖。
+    private var usesDraft: Bool {
+        editing == nil && initialLink == nil && initialTitle.isEmpty && initialTags.isEmpty
+    }
+
+    private var draft: ComposeDraft {
+        ComposeDraft(board: board, title: title, content: content, tags: tags, images: imageURLs, link: link)
+    }
+
     private var canPublish: Bool {
         !title.trimmingCharacters(in: .whitespaces).isEmpty
             && !content.trimmingCharacters(in: .whitespaces).isEmpty
@@ -51,12 +68,39 @@ struct ComposeSheet: View {
                     signedOut
                 }
             }
-            .navigationTitle("发一条校园 PO")
+            .navigationTitle(editing == nil ? "发一条校园 PO" : "编辑 PO")
             .onAppear {
                 guard !linkInitialized else { return }
                 linkInitialized = true
+                if let editing {
+                    board = editing.board
+                    title = editing.title
+                    content = editing.content
+                    tags = editing.tagList
+                    imageURLs = editing.images?.filter { !$0.isEmpty } ?? []
+                    link = editing.link
+                    return
+                }
                 link = initialLink
                 if title.isEmpty { title = initialTitle }
+                if tags.isEmpty { tags = initialTags }
+                if usesDraft, let owner = auth.profile?.id, let saved = ComposeDraftStore.shared.load(owner: owner) {
+                    board = saved.board
+                    title = saved.title
+                    content = saved.content
+                    tags = saved.tags
+                    imageURLs = saved.images
+                    link = saved.link
+                    restoredDraft = true
+                }
+            }
+            .onChange(of: draft) { _, value in
+                // 每次改动就存，关掉、切到后台、被系统回收都不会丢。
+                guard usesDraft, linkInitialized, let owner = auth.profile?.id else { return }
+                ComposeDraftStore.shared.save(value, owner: owner)
+            }
+            .sheet(isPresented: $pickingLink) {
+                PostLinkPicker { link = $0 }
             }
             .onChange(of: pickerItems) { _, items in
                 guard !items.isEmpty else { return }
@@ -82,7 +126,9 @@ struct ComposeSheet: View {
             .alert("已提交审核", isPresented: $heldForReview) {
                 Button("好的") { dismiss() }
             } message: {
-                Text("这条 PO 里有需要人工确认的内容，审核通过后会出现在信息流。你可以在「我的 → 作品」里看到它。")
+                Text(editing == nil
+                     ? "这条 PO 里有需要人工确认的内容，审核通过后会出现在信息流。你可以在「我的 → 作品」里看到它。"
+                     : "修改后的内容需要人工确认，审核通过前只有你自己看得到这条 PO。")
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -95,7 +141,7 @@ struct ComposeSheet: View {
                         if isSubmitting {
                             ProgressView()
                         } else {
-                            Text("发布").fontWeight(.semibold)
+                            Text(editing == nil ? "发布" : "保存").fontWeight(.semibold)
                         }
                     }
                     .tint(canPublish ? UniColor.ink : UniColor.tertiary)
@@ -108,6 +154,19 @@ struct ComposeSheet: View {
     private var editor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                if restoredDraft {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.text").uniFont(12, weight: .semibold)
+                        Text("已恢复上次没发出去的草稿").uniFont(12, weight: .semibold)
+                        Spacer(minLength: 4)
+                        Button("清空") { clearDraft() }
+                            .uniFont(12, weight: .semibold)
+                            .frame(minHeight: 32)
+                    }
+                    .foregroundStyle(UniColor.secondary)
+                    .padding(.horizontal, 12)
+                    .background(UniColor.paper, in: Capsule())
+                }
                 if let link {
                     HStack(spacing: 8) {
                         Image(systemName: link.icon)
@@ -131,7 +190,8 @@ struct ComposeSheet: View {
                     .background(UniColor.blue.opacity(0.08), in: Capsule())
                 }
                 HStack(spacing: 8) {
-                    ForEach(boards, id: \.0) { item in
+                    // 编辑时板块不能改：板块决定谁看得到，改了等于换一条帖子。
+                    ForEach(editing == nil ? boards : boards.filter { $0.0 == board }, id: \.0) { item in
                         Button {
                             board = item.0
                         } label: {
@@ -178,6 +238,17 @@ struct ComposeSheet: View {
                 }
 
                 tagEditor
+
+                if link == nil {
+                    Button { pickingLink = true } label: {
+                        Label("关联活动或主线任务", systemImage: "link")
+                            .uniFont(13, weight: .semibold)
+                            .foregroundStyle(UniColor.blue)
+                            .frame(minHeight: 44, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("让这条 PO 出现在活动或任务的经验里")
+                }
             }
             .padding(18)
         }
@@ -398,6 +469,21 @@ struct ComposeSheet: View {
             if submitRequestID == requestID { isSubmitting = false; submitRequestID = nil }
         }
         do {
+            if let editing {
+                let updated = try await APIClient.shared.updatePost(
+                    id: editing.id,
+                    title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                    content: content.trimmingCharacters(in: .whitespacesAndNewlines),
+                    tags: tags,
+                    images: imageURLs,
+                    link: link
+                )
+                guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
+                onSaved(updated)
+                NotificationCenter.default.post(name: .unipoPostUpdated, object: updated)
+                if updated.status == "pending" && editing.status != "pending" { heldForReview = true } else { dismiss() }
+                return
+            }
             let created = try await APIClient.shared.createPost(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: content.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -407,12 +493,24 @@ struct ComposeSheet: View {
                 link: link
             )
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
+            if usesDraft { ComposeDraftStore.shared.clear() }
             NotificationCenter.default.post(name: .unipoPostPublished, object: nil)
             if created.status == "pending" { heldForReview = true } else { dismiss() }
         } catch {
             guard isCurrentIdentity(userID: userID, revision: revision), submitRequestID == requestID else { return }
             errorMessage = (error as? LocalizedError)?.errorDescription ?? "发布失败"
         }
+    }
+
+    private func clearDraft() {
+        ComposeDraftStore.shared.clear()
+        board = "school"
+        title = ""
+        content = ""
+        tags = []
+        imageURLs = []
+        link = nil
+        restoredDraft = false
     }
 
     private func isCurrentIdentity(userID: Int64, revision: UInt64) -> Bool {

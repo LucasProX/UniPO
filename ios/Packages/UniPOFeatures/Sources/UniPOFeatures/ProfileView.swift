@@ -19,6 +19,8 @@ struct ProfileView: View {
     @State private var showWallet = false
     @State private var organizer: ActivityOrganizerProfile?
     @State private var capabilities: Capabilities?
+    /// 主页称号（F15），在成长页的徽章详情里选。
+    @State private var title: AchievementBadgeView?
     @State private var showModeration = false
     @State private var isLoading = true
     @State private var loadGeneration = 0
@@ -64,6 +66,9 @@ struct ProfileView: View {
         .background(UniColor.paper.ignoresSafeArea())
         .refreshable { await load() }
         .task(id: auth.profile?.id) { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .unipoTitleChanged)) { note in
+            title = note.object as? AchievementBadgeView
+        }
         .onReceive(NotificationCenter.default.publisher(for: .unipoRelationshipsChanged)) { _ in
             Task { await load() }
         }
@@ -277,6 +282,8 @@ struct ProfileView: View {
                 .foregroundStyle(UniColor.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
+
+            if let title { BadgeTitleChip(badge: title) }
 
             HStack(spacing: 5) {
                 Text("UID \(profile.publicUid)")
@@ -745,6 +752,7 @@ struct ProfileView: View {
         if dataUserID != initialProfile.id {
             stats = nil
             myPosts = []; likedPosts = []; favoritePosts = []
+            title = nil
             dataUserID = initialProfile.id
         }
         isLoading = true
@@ -756,8 +764,9 @@ struct ProfileView: View {
         async let myTask = try? APIClient.shared.myPosts()
         async let likedTask = try? APIClient.shared.likedPosts()
         async let favoriteTask = try? APIClient.shared.favoritePosts()
-        let (latestProfile, latestStats, latestPosts, latestLikes, latestFavorites) =
-            await (profileTask, statsTask, myTask, likedTask, favoriteTask)
+        async let achievementTask = try? APIClient.shared.achievements()
+        let (latestProfile, latestStats, latestPosts, latestLikes, latestFavorites, latestAchievement) =
+            await (profileTask, statsTask, myTask, likedTask, favoriteTask, achievementTask)
         guard loadGeneration == generation, auth.profile?.id == initialProfile.id else { return }
         // A late refresh must not overwrite a cover/avatar saved while these requests were in flight.
         if auth.profile == initialProfile, let latestProfile { auth.applyProfile(latestProfile) }
@@ -765,6 +774,7 @@ struct ProfileView: View {
         myPosts = latestPosts ?? []
         likedPosts = latestLikes ?? []
         favoritePosts = latestFavorites ?? []
+        if let latestAchievement { title = latestAchievement.title }
     }
 
     private func age(_ profile: UserProfile) -> Int? {

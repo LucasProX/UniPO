@@ -69,6 +69,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
             new Rule("comment-report", "POST", "/api/posts/comments/*/report", 30, Duration.ofMinutes(10)),
             new Rule("user-report", "POST", "/api/users/*/report", 30, Duration.ofMinutes(10)),
             new Rule("post-create", "POST", "/api/posts", 20, Duration.ofMinutes(5)),
+            // 编辑会重新过滤内容，可疑时还会开审核单，和发帖同一量级。
+            new Rule("post-edit", "PUT", "/api/posts/*", 30, Duration.ofMinutes(5)),
+            // 单字标签走不了全文索引，要扫本校的帖子。
+            new Rule("post-tag", "GET", "/api/posts/tag", 60, Duration.ofMinutes(1)),
+            new Rule("post-tag-summary", "GET", "/api/posts/tag/summary", 60, Duration.ofMinutes(1)),
             new Rule("conversation-create", "POST", "/api/messages/conversations", 60, Duration.ofMinutes(1)),
             new Rule("message-send", "POST", "/api/messages/conversations/*/messages", 120, Duration.ofMinutes(1)),
             new Rule("outbox-retry", "POST", "/api/admin/message-deliveries/*/retry", 20, Duration.ofMinutes(1)),

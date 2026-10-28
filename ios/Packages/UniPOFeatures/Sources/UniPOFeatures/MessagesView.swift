@@ -11,6 +11,7 @@ struct MessagesView: View {
     @State private var store = MessagesStore()
     @State private var realtimeTick = 0
     @State private var nearBottom = true
+    @State private var reportTarget: ReportTarget?
 
     private let initialConversationId: Int64?
     /// 作为「消息」Tab 嵌入时不显示关闭按钮，也不自己弹登录页（RootView 统一处理）。
@@ -44,6 +45,9 @@ struct MessagesView: View {
                 } else {
                     list
                 }
+            }
+            .sheet(item: $reportTarget) { target in
+                ReportSheet(target: target)
             }
             .navigationTitle(selected == nil ? "消息" : "私信")
             .navigationBarTitleDisplayMode(.inline)
@@ -267,7 +271,16 @@ struct MessagesView: View {
                                 .padding(.vertical, 10)
                             }
                         }
-                        ForEach(messages) { message in
+                        ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            // U05：和上一条隔 5 分钟以上才显示一次时间。
+                            if MessageTimeline.showsTime(previous: index > 0 ? messages[index - 1].createdAt : nil,
+                                                         current: message.createdAt) {
+                                Text(MessageTimeline.label(message.createdAt))
+                                    .uniFont(11, weight: .medium)
+                                    .foregroundStyle(UniColor.tertiary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, index > 0 ? 6 : 0)
+                            }
                             bubble(message, conversation: conversation)
                                 .id(message.id)
                         }
@@ -332,6 +345,16 @@ struct MessagesView: View {
                     mine ? AnyShapeStyle(UniColor.ink) : AnyShapeStyle(UniColor.paper),
                     in: RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous)
                 )
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: UniRadius.tile, style: .continuous))
+                .contextMenu {
+                    // U05：长按气泡复制；对方的消息可以直接举报对方。
+                    Button("复制", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.content }
+                    if !mine {
+                        Button("举报对方", systemImage: "exclamationmark.bubble") {
+                            reportTarget = .user(uid: conversation.peer.uid, name: conversation.peer.nickname)
+                        }
+                    }
+                }
                 if mine && message.id == messages.last?.id {
                     Text("已发送").uniFont(10, weight: .semibold).foregroundStyle(UniColor.tertiary)
                 }

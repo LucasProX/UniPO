@@ -68,6 +68,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/posts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["detail"];
+        put: operations["update_1"];
+        post?: never;
+        delete: operations["delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/growth/tasks/{taskId}": {
         parameters: {
             query?: never;
@@ -76,7 +92,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_1"];
+        put: operations["update_2"];
         post?: never;
         delete: operations["delete_1"];
         options?: never;
@@ -124,7 +140,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_2"];
+        put: operations["update_3"];
         post?: never;
         delete: operations["delete_2"];
         options?: never;
@@ -156,7 +172,23 @@ export interface paths {
             cookie?: never;
         };
         get: operations["detail_1"];
-        put: operations["update_3"];
+        put: operations["update_4"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/achievements/title": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["title"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1300,17 +1332,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/posts/{id}": {
+    "/api/posts/tag": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["detail"];
+        get: operations["tag"];
         put?: never;
         post?: never;
-        delete: operations["delete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/posts/tag/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["tagSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2004,6 +2052,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/posts/comments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteComment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/achievement-tasks/{taskId}/guides/{postId}": {
         parameters: {
             query?: never;
@@ -2157,6 +2221,88 @@ export interface components {
             /** Format: int32 */
             entryYear: number;
         };
+        UpdatePostRequest: {
+            title: string;
+            content: string;
+            images?: string[];
+            tags?: string[];
+            /** Format: int64 */
+            activityId?: number;
+            /** Format: int64 */
+            taskId?: number;
+        };
+        ApiResponsePostView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["PostView"];
+            requestId?: string;
+        };
+        AuthorView: {
+            /** Format: int64 */
+            id?: number;
+            uid?: string;
+            nickname?: string;
+            avatarUrl?: string;
+            role?: string;
+            operatorScope?: string;
+            /** Format: int32 */
+            level?: number;
+            levelTitle?: string;
+            school?: string;
+            college?: string;
+            major?: string;
+            grade?: string;
+            online?: boolean;
+        };
+        LinkRef: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+        };
+        PostView: {
+            /** Format: int64 */
+            id?: number;
+            board?: string;
+            sourceType?: string;
+            title?: string;
+            content?: string;
+            excerpt?: string;
+            coverUrl?: string;
+            images?: string[];
+            riskLevel?: string;
+            official?: boolean;
+            dontMiss?: boolean;
+            pinned?: boolean;
+            /** Format: date-time */
+            deadlineAt?: string;
+            missConsequence?: string;
+            nextAction?: string;
+            tags?: string[];
+            /** Format: int32 */
+            likeCount?: number;
+            /** Format: int32 */
+            commentCount?: number;
+            /** Format: int32 */
+            favoriteCount?: number;
+            /** Format: int32 */
+            shareCount?: number;
+            liked?: boolean;
+            favorited?: boolean;
+            status?: string;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** Format: date-time */
+            createdAt?: string;
+            author?: components["schemas"]["AuthorView"];
+            verifiedAt?: string;
+            /** Format: date-time */
+            expiresAt?: string;
+            expired?: boolean;
+            activity?: components["schemas"]["LinkRef"];
+            task?: components["schemas"]["LinkRef"];
+            /** Format: date-time */
+            editedAt?: string;
+        };
         PersonalTaskRequest: {
             title: string;
             note?: string;
@@ -2295,76 +2441,6 @@ export interface components {
             /** Format: date-time */
             expiresAt?: string;
         };
-        ApiResponsePostView: {
-            code?: string;
-            message?: string;
-            data?: components["schemas"]["PostView"];
-            requestId?: string;
-        };
-        AuthorView: {
-            /** Format: int64 */
-            id?: number;
-            uid?: string;
-            nickname?: string;
-            avatarUrl?: string;
-            role?: string;
-            operatorScope?: string;
-            /** Format: int32 */
-            level?: number;
-            levelTitle?: string;
-            school?: string;
-            college?: string;
-            major?: string;
-            grade?: string;
-            online?: boolean;
-        };
-        LinkRef: {
-            /** Format: int64 */
-            id?: number;
-            title?: string;
-        };
-        PostView: {
-            /** Format: int64 */
-            id?: number;
-            board?: string;
-            sourceType?: string;
-            title?: string;
-            content?: string;
-            excerpt?: string;
-            coverUrl?: string;
-            images?: string[];
-            riskLevel?: string;
-            official?: boolean;
-            dontMiss?: boolean;
-            pinned?: boolean;
-            /** Format: date-time */
-            deadlineAt?: string;
-            missConsequence?: string;
-            nextAction?: string;
-            tags?: string[];
-            /** Format: int32 */
-            likeCount?: number;
-            /** Format: int32 */
-            commentCount?: number;
-            /** Format: int32 */
-            favoriteCount?: number;
-            /** Format: int32 */
-            shareCount?: number;
-            liked?: boolean;
-            favorited?: boolean;
-            status?: string;
-            /** Format: date-time */
-            publishedAt?: string;
-            /** Format: date-time */
-            createdAt?: string;
-            author?: components["schemas"]["AuthorView"];
-            verifiedAt?: string;
-            /** Format: date-time */
-            expiresAt?: string;
-            expired?: boolean;
-            activity?: components["schemas"]["LinkRef"];
-            task?: components["schemas"]["LinkRef"];
-        };
         UpdateActivityRequest: {
             title?: string;
             organizerName?: string;
@@ -2459,6 +2535,69 @@ export interface components {
             nickname?: string;
             avatarUrl?: string;
             role?: string;
+        };
+        TitleRequest: {
+            badgeCode?: string;
+        };
+        AchievementView: {
+            /** Format: int32 */
+            level?: number;
+            /** Format: int32 */
+            xp?: number;
+            /** Format: int32 */
+            completedTasks?: number;
+            /** Format: int32 */
+            totalTasks?: number;
+            currentStageCode?: string;
+            stages?: components["schemas"]["StageView"][];
+            badges?: components["schemas"]["BadgeView"][];
+            stageBasis?: string;
+            /** Format: int32 */
+            entryYear?: number;
+            termLabel?: string;
+            nextTask?: components["schemas"]["TaskView"];
+            title?: components["schemas"]["BadgeView"];
+        };
+        ApiResponseAchievementView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["AchievementView"];
+            requestId?: string;
+        };
+        BadgeView: {
+            code?: string;
+            title?: string;
+            description?: string;
+            rarity?: string;
+            icon?: string;
+            earned?: boolean;
+            earnedAt?: string;
+        };
+        StageView: {
+            /** Format: int64 */
+            id?: number;
+            code?: string;
+            title?: string;
+            subtitle?: string;
+            /** Format: int32 */
+            order?: number;
+            boss?: boolean;
+            tasks?: components["schemas"]["TaskView"][];
+            /** Format: int32 */
+            completedCount?: number;
+            /** Format: int32 */
+            totalCount?: number;
+        };
+        TaskView: {
+            /** Format: int64 */
+            id?: number;
+            title?: string;
+            description?: string;
+            /** Format: int32 */
+            xp?: number;
+            completed?: boolean;
+            completedAt?: string;
+            dueHint?: string;
         };
         ReportRequest: {
             category: string;
@@ -2947,65 +3086,6 @@ export interface components {
             /** Format: int32 */
             rewardCoins?: number;
         };
-        AchievementView: {
-            /** Format: int32 */
-            level?: number;
-            /** Format: int32 */
-            xp?: number;
-            /** Format: int32 */
-            completedTasks?: number;
-            /** Format: int32 */
-            totalTasks?: number;
-            currentStageCode?: string;
-            stages?: components["schemas"]["StageView"][];
-            badges?: components["schemas"]["BadgeView"][];
-            stageBasis?: string;
-            /** Format: int32 */
-            entryYear?: number;
-            termLabel?: string;
-            nextTask?: components["schemas"]["TaskView"];
-        };
-        ApiResponseAchievementView: {
-            code?: string;
-            message?: string;
-            data?: components["schemas"]["AchievementView"];
-            requestId?: string;
-        };
-        BadgeView: {
-            code?: string;
-            title?: string;
-            description?: string;
-            rarity?: string;
-            icon?: string;
-            earned?: boolean;
-            earnedAt?: string;
-        };
-        StageView: {
-            /** Format: int64 */
-            id?: number;
-            code?: string;
-            title?: string;
-            subtitle?: string;
-            /** Format: int32 */
-            order?: number;
-            boss?: boolean;
-            tasks?: components["schemas"]["TaskView"][];
-            /** Format: int32 */
-            completedCount?: number;
-            /** Format: int32 */
-            totalCount?: number;
-        };
-        TaskView: {
-            /** Format: int64 */
-            id?: number;
-            title?: string;
-            description?: string;
-            /** Format: int32 */
-            xp?: number;
-            completed?: boolean;
-            completedAt?: string;
-            dueHint?: string;
-        };
         ModerateRequest: {
             pinned?: boolean;
             official?: boolean;
@@ -3116,6 +3196,7 @@ export interface components {
             attendedCount?: number;
             badges?: components["schemas"]["BadgeView"][];
             recentActivities?: components["schemas"]["RecentActivity"][];
+            title?: components["schemas"]["BadgeView"];
         };
         RecentActivity: {
             /** Format: int64 */
@@ -3260,6 +3341,18 @@ export interface components {
             message?: string;
             data?: components["schemas"]["CommentView"][];
             requestId?: string;
+        };
+        ApiResponseTagSummaryView: {
+            code?: string;
+            message?: string;
+            data?: components["schemas"]["TagSummaryView"];
+            requestId?: string;
+        };
+        TagSummaryView: {
+            name?: string;
+            /** Format: int64 */
+            postCount?: number;
+            tasks?: components["schemas"]["LinkRef"][];
         };
         ApiResponseListInteractionNoticeView: {
             code?: string;
@@ -3950,7 +4043,77 @@ export interface operations {
             };
         };
     };
+    detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePostView"];
+                };
+            };
+        };
+    };
     update_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePostRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponsePostView"];
+                };
+            };
+        };
+    };
+    delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    update_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -4050,7 +4213,7 @@ export interface operations {
             };
         };
     };
-    update_2: {
+    update_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -4146,7 +4309,7 @@ export interface operations {
             };
         };
     };
-    update_3: {
+    update_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -4168,6 +4331,30 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["ApiResponseActivityView"];
+                };
+            };
+        };
+    };
+    title: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TitleRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseAchievementView"];
                 };
             };
         };
@@ -6189,13 +6376,15 @@ export interface operations {
             };
         };
     };
-    detail: {
+    tag: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
+            query: {
+                name: string;
+                cursor?: string;
+                limit?: number;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -6206,18 +6395,18 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponsePostView"];
+                    "*/*": components["schemas"]["ApiResponsePostPageView"];
                 };
             };
         };
     };
-    delete: {
+    tagSummary: {
         parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: number;
+            query: {
+                name: string;
             };
+            header?: never;
+            path?: never;
             cookie?: never;
         };
         requestBody?: never;
@@ -6228,7 +6417,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                    "*/*": components["schemas"]["ApiResponseTagSummaryView"];
                 };
             };
         };
@@ -7158,6 +7347,28 @@ export interface operations {
             header?: never;
             path: {
                 followerUid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["ApiResponseBoolean"];
+                };
+            };
+        };
+    };
+    deleteComment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
             };
             cookie?: never;
         };

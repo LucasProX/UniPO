@@ -99,6 +99,11 @@ public final class AchievementDtos {
             /** 例如「大一上学期」；没有入学年份时为空。 */
             String termLabel,
             /** 当前阶段里第一个未完成的任务；当前阶段已全部完成时为空。 */
-            TaskView nextTask
+            TaskView nextTask,
+            /** 主页称号：选中且仍然有效的那枚徽章；没选或已失效为空（F15）。 */
+            BadgeView title
     ) {}
+
+    /** 选称号：badgeCode 为空表示不展示称号。只能选已获得的徽章。 */
+    public record TitleRequest(String badgeCode) {}
 }

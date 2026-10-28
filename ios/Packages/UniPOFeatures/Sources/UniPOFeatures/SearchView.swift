@@ -60,7 +60,7 @@ struct SearchView: View {
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(UniColor.tertiary)
-            TextField(scope == .posts ? "搜帖子、标签" : "搜昵称或 UID", text: $text)
+            TextField(scope == .posts ? "搜帖子，# 开头搜标签" : "搜昵称或 UID", text: $text)
                 .uniFont(15)
                 .focused($fieldFocused)
                 .submitLabel(.search)
@@ -110,10 +110,39 @@ struct SearchView: View {
             UniErrorState(errorMessage) { Task { await search(submitted) } }
                 .frame(maxHeight: .infinity, alignment: .top)
         } else if scope == .posts {
-            postResults
+            VStack(spacing: 8) {
+                if let tag = submittedTag { tagShortcut(tag) }
+                postResults
+            }
         } else {
             userResults
         }
+    }
+
+    /// 以 # 开头时服务端按标签精确查（F09），这里再给一个进标签页的入口。
+    private var submittedTag: String? {
+        guard submitted.hasPrefix("#") || submitted.hasPrefix("＃") else { return nil }
+        let tag = submitted.drop(while: { $0 == "#" || $0 == "＃" }).trimmingCharacters(in: .whitespaces)
+        return tag.isEmpty ? nil : tag
+    }
+
+    private func tagShortcut(_ tag: String) -> some View {
+        NavigationLink {
+            TagPostsView(tag: tag).environment(auth)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "number").uniFont(15, weight: .bold)
+                Text("进入 #\(tag) 标签页").uniFont(15, weight: .semibold)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right").uniFont(12, weight: .semibold)
+            }
+            .foregroundStyle(UniColor.blue)
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
+            .background(Color.white, in: RoundedRectangle(cornerRadius: UniRadius.control, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 18)
     }
 
     @ViewBuilder

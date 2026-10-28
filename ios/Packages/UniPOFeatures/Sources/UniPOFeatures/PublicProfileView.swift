@@ -25,6 +25,8 @@ struct PublicProfileView: View {
     @State private var conversation: ConversationView?
     @State private var generation = 0
     @State private var previousViewer: Int64?
+    /// 对方的主页称号（F15），随成长卡一起读。
+    @State private var title: AchievementBadgeView?
 
     var body: some View {
         NavigationStack {
@@ -34,7 +36,7 @@ struct PublicProfileView: View {
                         header(value)
                         if let loadError { errorNotice(loadError) }
                         if !value.isBlockedEitherWay {
-                            ProfileGrowthSection(uid: value.profile.publicUid)
+                            ProfileGrowthSection(uid: value.profile.publicUid) { title = $0.title }
                                 .padding(.horizontal, 20)
                         }
                         if value.isBlockedEitherWay {
@@ -163,6 +165,7 @@ struct PublicProfileView: View {
                     .shadow(color: UniColor.blue.opacity(0.16), radius: 14, y: 6)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(user.nickname).uniFont(27, weight: .bold).foregroundStyle(UniColor.ink)
+                    if let title, !value.isBlockedEitherWay { BadgeTitleChip(badge: title) }
                     Text("UID \(user.publicUid)")
                         .uniFont(11, weight: .medium, design: .monospaced).foregroundStyle(UniColor.secondary)
                     if user.showGrade != false, let grade = clean(user.grade) {

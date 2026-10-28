@@ -125,12 +125,16 @@
 | GET | `/{id}` | 公开 | 帖子详情，可见性与 feed 相同（同校、未删除、未拉黑），否则 404；通知里的 `postId` 用它打开 |
 | GET | `/linked?activityId=\|taskId=&limit=` | 公开 | 关联到某场活动或某个主线任务的帖子（最新在前，默认 20、上限 50），二选一必填，否则 400 |
 | GET | `/following?cursor=&limit=` | 登录 | 关注的人的同校帖子，按发布时间倒序，返回 `{items,nextCursor,hasMore,limit}`；游标为 `publishedAt\|id`，非法 400；未登录 401（路径在 GET 白名单内，Service 判断） |
-| GET | `/search?q=&cursor=&limit=` | 公开 | 搜标题、正文、标签（ngram 全文索引，整词按短语匹配），可见性同信息流，按发布时间倒序；`q` 去引号后 2–40 字，否则 400；每 IP 每分钟 60 次 |
+| GET | `/search?q=&cursor=&limit=` | 公开 | 搜标题、正文、标签（ngram 全文索引，整词按短语匹配），可见性同信息流，按发布时间倒序；`q` 去引号后 2–40 字，否则 400；每 IP 每分钟 60 次。`q` 以 `#`（或全角 `＃`）开头时改为按标签精确查，等同 `/tag` |
+| GET | `/tag?name=&cursor=&limit=` | 公开 | 标签页帖子流（F09）：同标签精确匹配（不是包含），按发布时间倒序，游标 `publishedAt\|id`；`name` 可带 `#`，去掉后 1–20 字、不能含逗号，否则 400；每 IP 每分钟 60 次 |
+| GET | `/tag/summary?name=` | 公开 | 标签页头部：`{name, postCount, tasks:[{id,title}]}`，`tasks` 是带这个标签的帖子里关联次数最多的 3 个主线任务 |
 | POST | `/` | 登录 | 发帖；需先选学校；官方/置顶有角色限制 |
+| PUT | `/{id}` | 登录 | 作者编辑（F13）：body `{title, content, images, tags, activityId?, taskId?}`，图片和标签整体替换，关联不传即去掉；板块、官方标记、发布时间不变，返回的 `editedAt` 是编辑时间。内容重新过滤：违禁词 400 `CONTENT_BLOCKED`；可疑时已发布的帖子退回 `pending` 并进审核队列，待审核的帖子编辑后仍是 `pending`。非作者 403，已删除 404；每 IP 每 5 分钟 30 次 |
 | DELETE | `/{id}` | 登录 | 软删除（`status=deleted`），仅作者 |
 | GET | `/{id}/comments` | 公开 | 全部评论 + 楼中楼 |
 | POST | `/{id}/comments` | 登录 | 评论（`parentId` 支持回复）；可选 `Idempotency-Key` |
 | POST/DELETE | `/comments/{id}/like` | 登录 | 评论点赞（注意：路径在 `/api/posts` 下） |
+| DELETE | `/comments/{id}` | 登录 | 删除自己的评论（F13）：状态记为 `deleted`，评论数与父评论回复数同步扣减；别人的 403，已删除或已被隐藏的 404 |
 | POST/DELETE | `/{id}/like` | 登录 | 帖子点赞 |
 | POST/DELETE | `/{id}/favorite` | 登录 | 收藏 |
 | POST | `/{id}/share` | 登录 | 分享计数 +1；可选 `Idempotency-Key` |
@@ -356,7 +360,8 @@ WebSocket `message` 事件的 payload 增加 `eventId`，其余 `conversationId 
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/achievements/me` | 当前用户阶段、任务（含 `dueHint` 期限提示）、进度、徽章（需登录） |
+| GET | `/api/achievements/me` | 当前用户阶段、任务（含 `dueHint` 期限提示）、进度、徽章（需登录）；`title` 是选中且仍有效的主页称号（一枚 BadgeView，没有为空） |
+| PUT | `/api/achievements/title` | 选主页称号（F15）：body `{"badgeCode": "..."}`，空字符串取消；只能选已获得的徽章，否则 400；返回最新的成长数据。他人主页在 `GET /users/{uid}/growth` 的 `title` 里看到，徽章失效（签到被撤销）后自动不展示 |
 | GET | `/api/achievements/tasks/{taskId}` | 任务详情（G05）：`steps`、`dueHint`、`sourceType`（PLATFORM / SCHOOL / COMMUNITY）、`sourceName`、`sourceUrl`、`reviewedAt`、`version`、完成状态、`completedVersion`、`updatedSinceCompletion`、可得徽章；不存在 404 |
 | POST | `/api/achievements/tasks/{taskId}/complete` | 完成任务，幂等；发经验、按任务发徽章；记录完成时的任务版本 |
 | GET | `/api/admin/achievement-tasks/{taskId}/guides` | 运营：任务的全部攻略关联（含下架、过期、别校），每条带帖子当前状态 |

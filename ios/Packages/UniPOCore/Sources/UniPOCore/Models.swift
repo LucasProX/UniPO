@@ -209,11 +209,27 @@ public struct PostView: Codable, Identifiable, Hashable {
     /// 关联的校园活动 / 主线任务（联动）。
     public let activity: PostLinkRef?
     public let task: PostLinkRef?
+    /// 作者最近一次编辑的时间（F13）；没编辑过为空。
+    public var editedAt: String?
 
     public var likeTotal: Int { likeCount ?? 0 }
     public var commentTotal: Int { commentCount ?? 0 }
     public var favoriteTotal: Int { favoriteCount ?? 0 }
     public var tagList: [String] { tags ?? [] }
+
+    /// 帖子当前挂的关联（编辑时带回发帖页）。
+    public var link: PostLink? {
+        if let activity { return .activity(activity) }
+        if let task { return .task(task) }
+        return nil
+    }
+}
+
+/// 标签页头部（F09）：同校可见的帖子数和最常关联的主线任务。
+public struct TagSummary: Codable, Hashable {
+    public let name: String
+    public let postCount: Int
+    public let tasks: [PostLinkRef]
 }
 
 public struct PostLinkRef: Codable, Hashable {
@@ -254,6 +270,8 @@ public struct PublicGrowth: Codable, Hashable {
     public let attendedCount: Int
     public let badges: [AchievementBadgeView]
     public let recentActivities: [PublicGrowthActivity]
+    /// 对方选的主页称号（F15）。
+    public var title: AchievementBadgeView?
 }
 
 public struct PublicGrowthActivity: Codable, Hashable, Identifiable {
@@ -441,6 +459,30 @@ public struct AchievementBadgeView: Codable, Identifiable, Hashable {
     public let earnedAt: String?
 }
 
+/// 徽章稀有度（规划 §6.2）：普通、稀有、史诗、传说、限定。
+public enum BadgeRarity: String, CaseIterable {
+    case common = "COMMON", rare = "RARE", epic = "EPIC", legendary = "LEGENDARY", limited = "LIMITED"
+
+    public init(code: String) { self = BadgeRarity(rawValue: code) ?? .common }
+
+    public var label: String {
+        switch self {
+        case .common: return "普通"
+        case .rare: return "稀有"
+        case .epic: return "史诗"
+        case .legendary: return "传说"
+        case .limited: return "限定"
+        }
+    }
+
+    /// 排序用：越稀有越靠后。
+    public var rank: Int { Self.allCases.firstIndex(of: self) ?? 0 }
+}
+
+public extension AchievementBadgeView {
+    var rarityLevel: BadgeRarity { BadgeRarity(code: rarity) }
+}
+
 public struct AchievementView: Codable {
     public let level: Int
     public let xp: Int
@@ -454,6 +496,8 @@ public struct AchievementView: Codable {
     public let entryYear: Int?
     public let termLabel: String?
     public let nextTask: AchievementTaskView?
+    /// 自己选的主页称号（F15）；没选或徽章已失效为空。
+    public var title: AchievementBadgeView?
 
     public var currentStage: AchievementStageView? { stages.first { $0.code == currentStageCode } }
     public var needsBackground: Bool { stageBasis != "CALENDAR" }

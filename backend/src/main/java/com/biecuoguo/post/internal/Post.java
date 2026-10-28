@@ -40,6 +40,8 @@ public class Post {
     @TableField(insertStrategy = FieldStrategy.NEVER, updateStrategy = FieldStrategy.NEVER) private Double hotScore;
     private String status;
     private LocalDateTime publishedAt;
+    /** 作者最近一次编辑的时间（V41）；没编辑过为空。 */
+    private LocalDateTime editedAt;
     /** 运营最近一次核实攻略仍然有效的日期。 */
     private java.time.LocalDate verifiedAt;
     /** 攻略有效期；过期后不再作为任务的有效攻略。 */
